@@ -1,0 +1,248 @@
+# Spec 01 — 核心实体
+
+> 本 spec 定义 AgentHub 的 7 个核心实体。所有其他 spec 引用这里的类型。**修改此文档需先讨论。**
+
+---
+
+## 1. Agent
+
+可对话的智能体。在 IM 隐喻里就是「联系人」。
+
+```typescript
+interface Agent {
+  id: string                    // ag_<nanoid>
+  name: string                  // "Claude Code" / "TestBot" / 用户自建名
+  avatar: string                // emoji 字面量 or URL
+  description: string           // 一句话简介，用于卡片
+  capabilities: string[]        // 能力标签，如 ['react', 'testing']，用于 Orchestrator 选派
+
+  systemPrompt: string          // 决定 Agent 行为的核心
+  adapterName: AdapterName      // 'claude-code' | 'codex' | 'custom' | 'mock'
+
+  // 仅 adapterName === 'custom' 时使用
+  modelProvider?: 'anthropic' | 'openai' | 'deepseek'
+  modelId?: string              // 厂商内部 model id
+
+  toolNames: string[]           // 该 Agent 可调用的工具，引用 Spec 07
+
+  isBuiltin: boolean            // 内置（不可改不可删）
+  isOrchestrator: boolean       // 标记为协调者；可同时多个但同会话只允许 1 个
+
+  createdAt: number             // unix ms
+}
+
+type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
+```
+
+**约束**：
+- `isOrchestrator: true` 的 Agent 必须 `toolNames.includes('dispatch_to_agent')`
+- `adapterName === 'custom'` 时 `modelProvider` 和 `modelId` 必填
+- 删除 Agent 不级联删除使用它的 Conversation；前端应展示「已停用 Agent」灰态
+
+---
+
+## 2. Conversation
+
+会话。一个聊天窗口。
+
+```typescript
+interface Conversation {
+  id: string                    // conv_<nanoid>
+  title: string                 // 首条消息自动生成 or 用户改名
+  mode: 'single' | 'group'
+  agentIds: string[]            // 参与的 Agent（单聊 1 个；群聊 ≥ 2 个）
+  pinnedMessageIds: string[]    // 用户 pin 的关键消息，作为长期上下文
+
+  archived: boolean
+  createdAt: number
+  updatedAt: number             // 用于会话列表排序（按最近活跃）
+}
+```
+
+**约束**：
+- 单聊 `agentIds.length === 1`，群聊 `>= 2`
+- 群聊里 `isOrchestrator: true` 的 Agent 最多 1 个
+- 创建 Conversation 时自动创建关联的 Workspace（1:1）
+
+---
+
+## 3. Message
+
+消息。Message 是「容器」，真正内容在 `parts` 数组中（详见 Spec 03）。
+
+```typescript
+interface Message {
+  id: string                    // msg_<nanoid>
+  conversationId: string
+
+  role: 'user' | 'agent' | 'system'
+  agentId?: string              // role === 'agent' 时必填
+
+  parts: MessagePart[]          // 详见 Spec 03
+
+  status: 'streaming' | 'complete' | 'error' | 'aborted'
+  parentMessageId?: string      // 回复 / 引用关系
+  mentionedAgentIds: string[]   // 用户 @ 提及的 Agent
+
+  runId?: string                // role === 'agent' 时，由哪个 AgentRun 产生
+  createdAt: number
+}
+```
+
+**约束**：
+- `status === 'streaming'` 期间 `parts` 可能不完整，前端必须处理增量
+- 用户消息没有 `runId`，但群聊里用户消息会触发 1 个或多个 `AgentRun`
+- `parentMessageId` 仅用于「引用回复」UI，不影响上下文构建逻辑
+
+---
+
+## 4. Artifact
+
+产物。独立于 Message 存在，可被多条 Message 通过 `artifact_ref` part 引用。
+
+```typescript
+interface Artifact {
+  id: string                    // art_<nanoid>
+  conversationId: string
+  type: ArtifactType
+  title: string
+
+  content: ArtifactContent      // 类型不同字段不同，详见 Spec 04
+
+  version: number               // 同一逻辑产物的版本号（从 1 起）
+  parentArtifactId?: string     // 上一版本的 id；形成版本链
+
+  createdByAgentId: string
+  createdAt: number
+}
+
+type ArtifactType = 'web_app' | 'code_file' | 'diff' | 'document' | 'image'
+```
+
+**存储策略**（详见 Spec 04）：
+- `web_app` / `diff` / `document` / `image` 的 content 存 DB
+- `code_file` 的 content 仅记 workspace 内相对路径，文件本体在 workspace 磁盘
+
+**约束**：
+- 「修改一个 artifact」 = 创建新 Artifact 记录，`parentArtifactId` 指向旧版本，`version` 递增
+- 删除 Conversation 级联删除其下所有 Artifact
+
+---
+
+## 5. Workspace
+
+每个 Conversation 的独立工作目录。Agent 在此读写文件、运行命令。
+
+```typescript
+interface Workspace {
+  id: string                    // ws_<nanoid>
+  conversationId: string        // unique，与 Conversation 1:1
+  rootPath: string              // 绝对路径
+                                // <projectRoot>/.agenthub-data/workspaces/<conversationId>/
+  createdAt: number
+}
+```
+
+**约束（沙箱）**：
+- `fs_read` / `fs_write` 的 path 参数 resolve 后必须落在 `rootPath` 子树内
+- `bash` 工具的 cwd 强制为 `rootPath`
+- 单 workspace 限制：100 MB 总大小 / 1000 文件数（超出拒绝写入并返回错误）
+- 删除 Conversation 时物理删除 `rootPath` 目录
+
+---
+
+## 6. Tool
+
+Agent 可调用的能力。Tool 是声明 + 实现的组合，存储在代码中（不入库）。
+
+```typescript
+interface ToolDef {
+  name: string                  // 全局唯一，如 'write_artifact'
+  description: string           // LLM 看到的描述，影响调用决策
+  parameters: JSONSchema        // 标准 JSON Schema
+  handler: (args: any, ctx: ToolContext) => Promise<ToolResult>
+}
+
+interface ToolContext {
+  conversationId: string
+  workspacePath: string
+  agentId: string
+  runId: string
+  abortSignal: AbortSignal
+}
+
+type ToolResult =
+  | { ok: true, value: any }
+  | { ok: false, error: string }
+```
+
+**内置工具清单**详见 Spec 07。
+
+**约束**：
+- Tool handler 必须能在 5s 内返回（超时由 ToolExecutor 强制中止）
+- Tool 实现必须 honor `ctx.abortSignal`
+- `bash` 的命令在执行前必须通过黑名单校验（详见 CLAUDE.md §5.2）
+
+---
+
+## 7. AgentRun
+
+一次 Agent 执行的元信息。用于状态追踪与调用树可视化。
+
+```typescript
+interface AgentRun {
+  id: string                    // run_<nanoid>
+  conversationId: string
+  agentId: string
+  triggerMessageId: string      // 由哪条消息触发
+
+  status: 'queued' | 'running' | 'complete' | 'failed' | 'aborted'
+  error?: string
+
+  parentRunId?: string          // Orchestrator 调度的子 run 通过此字段链回
+                                // 没有外键约束，逻辑保证
+
+  startedAt: number
+  finishedAt?: number
+}
+```
+
+**约束**：
+- 一次 run 可能产生多条 Message（thinking → tool_use → 文本输出 → artifact_ref）
+- Orchestrator 的子 run `parentRunId` 必须指向其父 run
+- 同一 `triggerMessageId` 可能触发多个并行 run（群聊多 @ 场景）
+
+---
+
+## ID 命名规范
+
+| 实体 | 前缀 |
+|---|---|
+| Agent | `ag_` |
+| Conversation | `conv_` |
+| Message | `msg_` |
+| Artifact | `art_` |
+| Workspace | `ws_` |
+| AgentRun | `run_` |
+
+ID 用 `nanoid(12)`。
+
+---
+
+## 关系图
+
+```
+Conversation ─1:1─ Workspace
+     │
+     ├─1:N─ Message ─0:N─ artifact_ref part ──┐
+     │         │                              │
+     │         └─N:1─ Agent                   ▼
+     │                                    Artifact ─N:1─ Artifact (parent version)
+     │                                        │
+     └─1:N─ AgentRun                          │
+              │                               │
+              ├─N:1─ Agent                    │
+              └─0:N─ AgentRun (parent)        │
+                                              │
+              created_by ───────────────────────
+```

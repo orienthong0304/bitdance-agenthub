@@ -1,0 +1,188 @@
+# Spec 02 — StreamEvent 协议
+
+> 整个系统的「腰部」。L2 Adapter 产生事件 → L3 路由 → L4 SSE 推 → L5 store reducer 应用。**任何新 Adapter / UI 组件都必须围绕这套事件展开。**
+
+---
+
+## 设计原则
+
+1. **细粒度**：run / message / part / tool / artifact / dispatch 各自有事件
+2. **增量**：流式 part 用 `delta` 事件追加，不重传全量
+3. **可恢复**：所有事件携带稳定 ID，前端崩溃重连后可补对账
+4. **传输无关**：事件本身是纯数据，不绑死 SSE。未来换 WebSocket / RSC streaming 不影响事件定义
+
+---
+
+## 事件类型全集
+
+```typescript
+// 所有事件的公共字段
+interface BaseEvent {
+  conversationId: string        // 必带，前端按此分发到对应会话桶
+  timestamp: number             // unix ms，仅用于诊断
+}
+
+type StreamEvent = BaseEvent & (
+  // —— Run 生命周期 ——
+  | { type: 'run.start',    runId: string, agentId: string, triggerMessageId: string, parentRunId?: string }
+  | { type: 'run.end',      runId: string, status: 'complete' | 'failed' | 'aborted', error?: string }
+
+  // —— Message 生命周期 ——
+  | { type: 'message.start', messageId: string, agentId: string, runId: string }
+  | { type: 'message.end',   messageId: string }
+
+  // —— Part 增量（核心，最高频）——
+  | { type: 'part.start',  messageId: string, partIndex: number, part: MessagePart }
+  | { type: 'part.delta',  messageId: string, partIndex: number, delta: PartDelta }
+  | { type: 'part.end',    messageId: string, partIndex: number }
+
+  // —— 工具调用 ——
+  | { type: 'tool.call',   messageId: string, callId: string, toolName: string, args: any }
+  | { type: 'tool.result', messageId: string, callId: string, result: any, isError: boolean }
+
+  // —— 产物 ——
+  | { type: 'artifact.create', artifact: Artifact }
+  | { type: 'artifact.update', artifactId: string, patch: Partial<ArtifactContent> }
+
+  // —— Orchestrator 调度可视化 ——
+  | { type: 'dispatch.plan',  runId: string, plan: DispatchPlanItem[] }
+  | { type: 'dispatch.start', parentRunId: string, childRunId: string, taskId: string, agentId: string }
+  | { type: 'dispatch.end',   childRunId: string, taskId: string, status: 'complete' | 'failed' }
+
+  // —— 心跳 ——
+  | { type: 'heartbeat' }
+)
+
+interface DispatchPlanItem {
+  id: string                    // 子任务 id，如 't1'
+  agentId: string
+  task: string                  // 给该 agent 的具体任务描述
+  dependsOn: string[]           // 前置任务 id 列表
+}
+
+type PartDelta =
+  | { type: 'text.append',     text: string }
+  | { type: 'code.append',     text: string }
+  | { type: 'thinking.append', text: string }
+  // 注：tool_use / tool_result / artifact_ref 不增量，整体替换或独立事件
+```
+
+---
+
+## 事件流场景示例
+
+### 场景 A：单聊，Agent 回复一段文字 + 一个产物
+
+```
+run.start         (runId=r1, agentId=cc)
+message.start     (messageId=m1, agentId=cc, runId=r1)
+part.start        (m1, 0, { type:'text', content:'' })
+part.delta        (m1, 0, { type:'text.append', text:'好的，' })
+part.delta        (m1, 0, { type:'text.append', text:'我为你写一个组件...' })
+part.end          (m1, 0)
+tool.call         (m1, c1, 'write_artifact', { ... })
+artifact.create   ({ id:'a1', type:'web_app', ... })
+tool.result       (m1, c1, { artifactId:'a1' }, false)
+part.start        (m1, 1, { type:'artifact_ref', artifactId:'a1' })
+part.end          (m1, 1)
+message.end       (m1)
+run.end           (r1, 'complete')
+```
+
+### 场景 B：群聊，Orchestrator 调度 2 个子 Agent 并行
+
+```
+run.start         (r1, orch)
+message.start     (m1, orch, r1)
+part.start        (m1, 0, { type:'thinking', content:'' })
+part.delta        (...)
+part.end          (m1, 0)
+tool.call         (m1, c1, 'plan_tasks', ...)
+dispatch.plan     (r1, [{ id:'t1', agentId:'pm', ... }, { id:'t2', agentId:'design', dependsOn:['t1'] }])
+tool.result       (m1, c1, ...)
+message.end       (m1)
+
+dispatch.start    (r1, r2, t1, pm)
+  run.start       (r2, pm, parentRunId=r1)
+  message.start   (m2, pm, r2)
+  ...
+  run.end         (r2, 'complete')
+dispatch.end      (r2, t1, 'complete')
+
+dispatch.start    (r1, r3, t2, design)
+  ...
+dispatch.end      (r3, t2, 'complete')
+
+# 聚合
+message.start     (m4, orch, r1)
+part.start        (m4, 0, { type:'text', content:'' })
+part.delta        (...)
+message.end       (m4)
+run.end           (r1, 'complete')
+```
+
+---
+
+## 持久化 vs 透传
+
+| 事件 | 是否落库 | 备注 |
+|---|---|---|
+| `run.*` | ✅ 落到 `agent_runs` 表 | start/end 更新 status |
+| `message.start` | ✅ 创建 message 记录（parts=[]） | |
+| `message.end` | ✅ 更新 status='complete' | |
+| `part.start` | ✅ 写入 `messages.parts[i]` | parts 整体作为 JSON 更新 |
+| `part.delta` | ✅ 追加到 `messages.parts[i].content` | 高频写，可批量合并（每 100ms flush） |
+| `part.end` | ❌ 透传 | parts 状态由 part.start/delta 已足够 |
+| `tool.call` | ✅ 写为 message.parts 里的 tool_use part | |
+| `tool.result` | ✅ 写为 message.parts 里的 tool_result part | |
+| `artifact.*` | ✅ 落到 `artifacts` 表 | |
+| `dispatch.*` | ❌ 透传（信息来自 plan_tasks 工具调用 + agent_runs 表） | |
+| `heartbeat` | ❌ 透传 | |
+
+**写入策略**：流式 `part.delta` 高频，使用「内存缓冲 + 定时 flush」避免每个 delta 都打 DB：
+
+```typescript
+// 服务端伪代码
+const buffer = new Map<string, Message>()  // messageId → in-memory state
+const flushInterval = setInterval(() => {
+  for (const msg of buffer.values()) {
+    db.update(messages).set({ parts: msg.parts }).where(eq(messages.id, msg.id))
+  }
+}, 100)
+```
+
+---
+
+## SSE 编码
+
+```
+data: {"type":"part.delta","conversationId":"conv_abc","timestamp":1715000000000,...}\n\n
+```
+
+**不使用 SSE 的 `event:` 字段**（每个事件类型不同 event 名，前端切分支麻烦）。统一 `data:` 一个字段，前端 `JSON.parse` 后 switch type。
+
+**心跳间隔 15s**，防止中间代理 / 浏览器空闲断连。
+
+---
+
+## 不要做的事
+
+- ❌ 不在事件中携带完整产物内容（用 `artifact.create` 单独事件 + 后续用 id 引用）
+- ❌ 不为单个事件类型设计「事件 + 反向事件」（除生命周期 start/end 外）。状态机越简单越好
+- ❌ 不在 Adapter 里发 `dispatch.*` 事件——这是 Orchestrator 调度器（AgentRunner 内部）的职责
+- ❌ 不在事件 payload 里塞跟该事件无关的「全局状态」字段
+- ❌ 不在 `part.delta` 里传完整 `text`（增量违反原则会导致后期重传放大）
+
+---
+
+## 兼容性
+
+新增事件类型时：
+1. 在 `StreamEvent` 联合类型中追加
+2. 前端 reducer 增加 case；未实现的 case **必须** `default: ignore`（不报错）
+3. 后端 EventBus 不需要改动（pass-through）
+
+废弃事件类型时：
+1. 先打 `@deprecated` 注释，保留至少 1 个版本
+2. 验证所有 producer 已不再发该事件
+3. 删除时同步删 reducer case

@@ -141,7 +141,10 @@ export async function sendMessage(args: SendMessageArgs) {
     .where(eq(schema.conversations.id, args.conversationId))
 
   // 决定 responder
-  const responders = decideResponders(conv, args.mentionedAgentIds ?? [])
+  const agentsInConv = await db.query.agents.findMany({
+    where: (a, { inArray }) => inArray(a.id, conv.agentIds),
+  })
+  const responders = decideResponders(conv, args.mentionedAgentIds ?? [], agentsInConv)
 
   const runIds: string[] = []
   for (const agentId of responders) {
@@ -159,6 +162,7 @@ export async function sendMessage(args: SendMessageArgs) {
 function decideResponders(
   conv: typeof schema.conversations.$inferSelect,
   mentions: string[],
+  agentsInConv: { id: string; isOrchestrator: boolean }[],
 ): string[] {
   // 单聊：直接交给那个 agent
   if (conv.mode === 'single') return conv.agentIds
@@ -168,10 +172,9 @@ function decideResponders(
     return mentions.filter((id) => conv.agentIds.includes(id))
   }
 
-  // 群聊无 @ 时，由 Orchestrator 响应（后续 milestone 实现 Orchestrator 调度）
-  // MVP 阶段：找到群里的 isOrchestrator agent，没有则报错
-  // 这里仅保留入口位置，实际判定放到 Orchestrator 实现 milestone 再补
-  return []
+  // 群聊无 @ 时：交给群里的 Orchestrator
+  const orchestrator = agentsInConv.find((a) => a.isOrchestrator)
+  return orchestrator ? [orchestrator.id] : []
 }
 
 // ─── 中止 run ────────────────────────────────────────────

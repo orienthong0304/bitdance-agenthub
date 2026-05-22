@@ -23,6 +23,9 @@ export interface AdapterInput {
   /** 工作目录绝对路径 */
   workspacePath: string
 
+  /** 当前 run 可用的工具名列表。AgentRunner 已经做完 override 选择，adapter 直接用。 */
+  toolNames: string[]
+
   /** 仅 CustomAgentAdapter 使用 */
   customConfig?: {
     systemPrompt: string

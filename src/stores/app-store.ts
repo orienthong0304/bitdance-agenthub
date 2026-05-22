@@ -5,9 +5,17 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
 import type { AgentRunRow, AgentRow, ArtifactRow, ConversationRow, MessageRow } from '@/db/schema'
-import type { MessagePart, StreamEvent } from '@/shared/types'
+import type { DispatchPlanItem, MessagePart, StreamEvent } from '@/shared/types'
 
 enableMapSet()
+
+export interface DispatchState {
+  runId: string                                    // Orchestrator 的 runId
+  messageId: string                                // 触发 plan 的 Orchestrator message id
+  plan: DispatchPlanItem[]
+  taskStatus: Record<string, 'pending' | 'running' | 'complete' | 'failed'>
+  childRunIds: Record<string, string>              // taskId → childRunId
+}
 
 interface AppState {
   // ─── 实体 ──────────────────────────────────────────
@@ -19,6 +27,9 @@ interface AppState {
   // ─── 关系（按 conversationId 分桶）───────────────
   messageIdsByConv: Record<string, string[]>
   runsByConv: Record<string, Record<string, AgentRunRow>>
+
+  // Orchestrator 的调度状态，按 Orchestrator runId 索引
+  dispatchesByRunId: Record<string, DispatchState>
 
   // ─── 当前会话 ──────────────────────────────────────
   activeConversationId: string | null
@@ -56,6 +67,7 @@ export const useAppStore = create<AppState>()(
     artifacts: {},
     messageIdsByConv: {},
     runsByConv: {},
+    dispatchesByRunId: {},
     activeConversationId: null,
     streamConnected: false,
 
@@ -245,7 +257,47 @@ export const useAppStore = create<AppState>()(
             return
           }
 
-          // dispatch.* 在 Orchestrator milestone 接入，先 noop
+          case 'dispatch.plan': {
+            // 找该 runId 当前最新的 agent message，作为卡片挂载点
+            let attachMsgId = ''
+            let attachCreated = -1
+            for (const m of Object.values(s.messages)) {
+              if (m.runId === event.runId && m.role === 'agent' && m.createdAt > attachCreated) {
+                attachMsgId = m.id
+                attachCreated = m.createdAt
+              }
+            }
+            const status: DispatchState['taskStatus'] = {}
+            for (const t of event.plan) status[t.id] = 'pending'
+            s.dispatchesByRunId[event.runId] = {
+              runId: event.runId,
+              messageId: attachMsgId,
+              plan: event.plan,
+              taskStatus: status,
+              childRunIds: {},
+            }
+            return
+          }
+
+          case 'dispatch.start': {
+            const d = s.dispatchesByRunId[event.parentRunId]
+            if (!d) return
+            d.taskStatus[event.taskId] = 'running'
+            d.childRunIds[event.taskId] = event.childRunId
+            return
+          }
+
+          case 'dispatch.end': {
+            // dispatch.end 没有 parentRunId，得通过 childRunId 反查
+            for (const d of Object.values(s.dispatchesByRunId)) {
+              if (d.childRunIds[event.taskId] === event.childRunId) {
+                d.taskStatus[event.taskId] = event.status
+                return
+              }
+            }
+            return
+          }
+
           default:
             return
         }
@@ -275,3 +327,12 @@ export const useConversationList = () =>
   )
 
 export const useAgentList = () => useAppStore(useShallow((s) => Object.values(s.agents)))
+
+export const useDispatchForMessage = (messageId: string) =>
+  useAppStore((s) => {
+    for (const id in s.dispatchesByRunId) {
+      const d = s.dispatchesByRunId[id]
+      if (d.messageId === messageId) return d
+    }
+    return null
+  })

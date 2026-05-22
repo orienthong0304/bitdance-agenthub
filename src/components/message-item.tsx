@@ -2,14 +2,16 @@
 
 import { Loader2 } from 'lucide-react'
 
+import { DispatchPlanCard } from '@/components/dispatch-plan-card'
 import { PartList } from '@/components/message-parts'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import type { MessageRow } from '@/db/schema'
-import { useAppStore } from '@/stores/app-store'
+import { useAppStore, useDispatchForMessage } from '@/stores/app-store'
 
 export function MessageItem({ message }: { message: MessageRow }) {
   const agent = useAppStore((s) => (message.agentId ? s.agents[message.agentId] : null))
+  const dispatch = useDispatchForMessage(message.id)
 
   const isUser = message.role === 'user'
   const name = isUser ? '我' : agent?.name ?? 'Unknown'
@@ -39,6 +41,11 @@ export function MessageItem({ message }: { message: MessageRow }) {
           )}
         >
           <PartList parts={message.parts} />
+          {dispatch && (
+            <div className="mt-3">
+              <DispatchPlanCard dispatch={dispatch} />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -38,8 +38,7 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 
     const client = buildClient(modelProvider)
 
-    // 拉出该 agent 配置的工具
-    const toolDefs = await loadAgentTools(input.agentId)
+    const toolDefs = toolRegistry.resolve(input.toolNames)
     const apiTools = toolDefs.map(toApiTool)
 
     const ctx: ToolContext = {
@@ -218,15 +217,6 @@ function buildClient(
     return new OpenAI({ apiKey })
   }
   throw new Error(`CustomAgentAdapter does not support provider "${provider}" yet`)
-}
-
-async function loadAgentTools(agentId: string) {
-  // 局部 import 避免循环
-  const { db, schema } = await import('@/db/client')
-  const { eq } = await import('drizzle-orm')
-  const agent = await db.query.agents.findFirst({ where: eq(schema.agents.id, agentId) })
-  if (!agent) throw new Error(`Agent not found: ${agentId}`)
-  return toolRegistry.resolve(agent.toolNames)
 }
 
 function toApiTool(t: {

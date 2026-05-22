@@ -329,10 +329,38 @@ async function consumeStream(
   const partsBuffer = new Map<string, MessagePart[]>()
   const artifactIds: string[] = []
   const outputMessageIds: string[] = []
+  let currentMessageId: string | null = null
 
   for await (const event of stream) {
+    if (event.type === 'message.start') currentMessageId = event.messageId
+
     await persistEvent(event, partsBuffer, runId, agentId, outputMessageIds, artifactIds)
     publish(event)
+
+    // 工具产出的 artifact 自动作为 artifact_ref part 挂到当前 message 末尾，
+    // 让用户在聊天流里看到产物卡片而不仅是 tool_result。
+    if (event.type === 'artifact.create' && currentMessageId) {
+      const parts = partsBuffer.get(currentMessageId) ?? []
+      const partIndex = parts.length
+      const refPart: MessagePart = { type: 'artifact_ref', artifactId: event.artifact.id }
+      parts.push(refPart)
+      partsBuffer.set(currentMessageId, parts)
+      await db
+        .update(schema.messages)
+        .set({ parts })
+        .where(eq(schema.messages.id, currentMessageId))
+
+      publish({
+        type: 'part.start',
+        conversationId: event.conversationId,
+        timestamp: Date.now(),
+        messageId: currentMessageId,
+        partIndex,
+        part: refPart,
+      })
+    }
+
+    if (event.type === 'message.end') currentMessageId = null
     if (event.type === 'tool.call') onToolCall?.(event)
   }
 

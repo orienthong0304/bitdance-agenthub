@@ -1,6 +1,7 @@
 import type { AgentRow } from '@/db/schema'
 import type { AdapterName } from '@/shared/types'
 
+import { CustomAgentAdapter } from './custom-agent-adapter'
 import { MockAdapter } from './mock-adapter'
 import type { AgentPlatformAdapter } from './types'
 
@@ -34,7 +35,8 @@ const globalForRegistry = globalThis as unknown as {
 function buildRegistry(): AgentRegistry {
   const reg = new AgentRegistry()
   reg.register(new MockAdapter())
-  // TODO 后续 milestone 在此注册 ClaudeCodeAdapter / CodexAdapter / CustomAgentAdapter
+  reg.register(new CustomAgentAdapter())
+  // TODO ClaudeCodeAdapter / CodexAdapter in later milestones
   return reg
 }
 

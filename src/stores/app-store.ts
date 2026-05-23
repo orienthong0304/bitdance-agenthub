@@ -34,6 +34,9 @@ interface AppState {
   // ─── 当前会话 ──────────────────────────────────────
   activeConversationId: string | null
 
+  // ─── 产物预览 ──────────────────────────────────────
+  previewArtifactId: string | null
+
   // ─── 流连接状态 ────────────────────────────────────
   streamConnected: boolean
 
@@ -48,6 +51,9 @@ interface AppState {
 
   setMessagesForConversation(conversationId: string, list: MessageRow[]): void
   setActiveConversation(id: string | null): void
+
+  openArtifactPreview(artifactId: string): void
+  closeArtifactPreview(): void
 
   addLocalUserMessage(args: {
     tempId: string
@@ -70,6 +76,7 @@ export const useAppStore = create<AppState>()(
     runsByConv: {},
     dispatchesByRunId: {},
     activeConversationId: null,
+    previewArtifactId: null,
     streamConnected: false,
 
     setStreamConnected: (connected) =>
@@ -112,6 +119,16 @@ export const useAppStore = create<AppState>()(
     setActiveConversation: (id) =>
       set((s) => {
         s.activeConversationId = id
+      }),
+
+    openArtifactPreview: (artifactId) =>
+      set((s) => {
+        s.previewArtifactId = artifactId
+      }),
+
+    closeArtifactPreview: () =>
+      set((s) => {
+        s.previewArtifactId = null
       }),
 
     addLocalUserMessage: ({ tempId, conversationId, content, mentionedAgentIds }) =>

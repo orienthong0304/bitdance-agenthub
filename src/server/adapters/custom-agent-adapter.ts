@@ -186,6 +186,39 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
           isError: !result.ok,
         })
 
+        // 工具结果含 artifactId 视为「创建了产物」的约定，统一由 adapter 发布
+        // artifact.create 事件，让上层 AgentRunner 注入 artifact_ref part。
+        if (
+          result.ok &&
+          value &&
+          typeof value === 'object' &&
+          'artifactId' in value &&
+          typeof (value as { artifactId: unknown }).artifactId === 'string'
+        ) {
+          const artifactId = (value as { artifactId: string }).artifactId
+          const { db, schema } = await import('@/db/client')
+          const { eq } = await import('drizzle-orm')
+          const artifact = await db.query.artifacts.findFirst({
+            where: eq(schema.artifacts.id, artifactId),
+          })
+          if (artifact) {
+            yield baseEvent(input, {
+              type: 'artifact.create',
+              artifact: {
+                id: artifact.id,
+                conversationId: artifact.conversationId,
+                type: artifact.type,
+                title: artifact.title,
+                content: artifact.content,
+                version: artifact.version,
+                parentArtifactId: artifact.parentArtifactId ?? undefined,
+                createdByAgentId: artifact.createdByAgentId,
+                createdAt: artifact.createdAt,
+              },
+            })
+          }
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,

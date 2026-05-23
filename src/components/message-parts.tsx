@@ -216,6 +216,7 @@ function ToolUsePart({
 // ─── ArtifactRef ───────────────────────────────────────
 function ArtifactRefPart({ artifactId }: { artifactId: string }) {
   const artifact = useAppStore((s) => s.artifacts[artifactId])
+  const openPreview = useAppStore((s) => s.openArtifactPreview)
 
   if (!artifact) {
     return (
@@ -229,17 +230,23 @@ function ArtifactRefPart({ artifactId }: { artifactId: string }) {
   }
 
   return (
-    <Card className="cursor-pointer transition hover:border-foreground/30">
-      <CardContent className="flex items-start gap-3 px-3 py-2">
-        <ArtifactIcon type={artifact.type} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{artifact.title}</div>
-          <div className="text-xs text-muted-foreground">
-            {artifact.type} · v{artifact.version}
+    <button
+      type="button"
+      onClick={() => openPreview(artifact.id)}
+      className="block w-full text-left"
+    >
+      <Card className="cursor-pointer transition hover:border-primary/40 hover:shadow-sm">
+        <CardContent className="flex items-start gap-3 px-3 py-2">
+          <ArtifactIcon type={artifact.type} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{artifact.title}</div>
+            <div className="text-xs text-muted-foreground">
+              {artifact.type} · v{artifact.version} · 点击预览
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </button>
   )
 }
 

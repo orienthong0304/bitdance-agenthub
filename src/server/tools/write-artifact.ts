@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
 import { db, schema } from '@/db/client'
-import { eventBus } from '@/server/event-bus'
 import { newArtifactId } from '@/server/ids'
 import type { ArtifactContent, ArtifactType } from '@/shared/types'
 
@@ -9,6 +8,10 @@ import type { ToolDef } from './types'
 
 /**
  * write_artifact —— 创建一个新产物。修改已有产物请通过新版本（递增 version + parentArtifactId）。
+ *
+ * 仅写入 DB 并返回 artifactId；不直接发布 artifact.create 事件。Adapter 在 tool.result
+ * 之后检测到返回值里的 artifactId 会统一发 artifact.create，AgentRunner 再注入
+ * artifact_ref part 到当前 message。这样保证事件流的单一来源（来自 adapter）。
  *
  * MVP 阶段仅支持 web_app / document / image 三种 DB 类型；code_file 需配合 workspace
  * 写入逻辑（后续 milestone）。
@@ -64,22 +67,6 @@ export const writeArtifactTool: ToolDef = {
       version: 1,
       createdByAgentId: ctx.agentId,
       createdAt,
-    })
-
-    eventBus.publish({
-      type: 'artifact.create',
-      conversationId: ctx.conversationId,
-      timestamp: createdAt,
-      artifact: {
-        id: artifactId,
-        conversationId: ctx.conversationId,
-        type,
-        title,
-        content: fullContent,
-        version: 1,
-        createdByAgentId: ctx.agentId,
-        createdAt,
-      },
     })
 
     return { ok: true, value: { artifactId, title, type } }

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -89,9 +89,7 @@ export function NewConversationDialog({
                     isSelected && 'border-primary bg-primary/5',
                   )}
                 >
-                  <Avatar className="size-9 shrink-0">
-                    <AvatarFallback>{a.avatar}</AvatarFallback>
-                  </Avatar>
+                  <AgentAvatar agent={a} size="lg" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{a.name}</span>

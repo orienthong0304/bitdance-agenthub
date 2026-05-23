@@ -3,8 +3,8 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
+import { AgentAvatar } from '@/components/agent-avatar'
 import { CreateAgentDialog } from '@/components/create-agent-dialog'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -72,9 +72,7 @@ export function AgentLibrary() {
                 key={a.id}
                 className="group flex items-start gap-2 rounded-md border bg-card px-2 py-2 transition hover:border-foreground/20"
               >
-                <Avatar className="size-8 shrink-0">
-                  <AvatarFallback className="text-sm">{a.avatar}</AvatarFallback>
-                </Avatar>
+                <AgentAvatar agent={a} size="md" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-xs font-medium">{a.name}</span>

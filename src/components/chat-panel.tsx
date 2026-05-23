@@ -4,7 +4,7 @@ import { UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
 import { AddAgentDialog } from '@/components/add-agent-dialog'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MessageInput } from '@/components/message-input'
@@ -36,9 +36,7 @@ export function ChatPanel() {
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex shrink-0 -space-x-2">
             {participantAgents.map((a) => (
-              <Avatar key={a.id} className="size-8 border-2 border-background">
-                <AvatarFallback className="text-sm">{a.avatar}</AvatarFallback>
-              </Avatar>
+              <AgentAvatar key={a.id} agent={a} size="md" className="border-2 border-background" />
             ))}
           </div>
           <div className="min-w-0">

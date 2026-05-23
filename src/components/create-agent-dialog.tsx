@@ -37,7 +37,6 @@ export function CreateAgentDialog({
   const upsertAgent = useAppStore((s) => s.upsertAgent)
 
   const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState('🤖')
   const [description, setDescription] = useState('')
   const [capabilitiesText, setCapabilitiesText] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -51,7 +50,6 @@ export function CreateAgentDialog({
 
   const resetForm = () => {
     setName('')
-    setAvatar('🤖')
     setDescription('')
     setCapabilitiesText('')
     setSystemPrompt('')
@@ -86,7 +84,7 @@ export function CreateAgentDialog({
 
     const body: CreateAgentBody = {
       name: trimmed,
-      avatar: avatar.trim() || '🤖',
+      avatar: '',
       description: description.trim(),
       capabilities: capabilitiesText
         .split(/[,，\s]+/)
@@ -122,17 +120,6 @@ export function CreateAgentDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-[80px_1fr] items-start gap-3">
-            <Label>头像</Label>
-            <Input
-              value={avatar}
-              onChange={(e) => setAvatar(e.target.value)}
-              placeholder="🤖"
-              maxLength={8}
-              className="w-20 text-center"
-            />
-          </div>
-
           <div className="grid grid-cols-[80px_1fr] items-start gap-3">
             <Label required>名称</Label>
             <Input

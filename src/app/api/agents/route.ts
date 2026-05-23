@@ -10,7 +10,7 @@ export async function GET() {
 
 const CreateBody = z.object({
   name: z.string().min(1).max(64),
-  avatar: z.string().min(1).max(8),
+  avatar: z.string().max(8).optional(),
   description: z.string().min(1).max(280),
   capabilities: z.array(z.string()).default([]),
   systemPrompt: z.string().min(1),
@@ -27,7 +27,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const agent = await createCustomAgent(parsed.data)
+    const agent = await createCustomAgent({
+      ...parsed.data,
+      avatar: parsed.data.avatar ?? '',
+    })
     return NextResponse.json({ agent }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

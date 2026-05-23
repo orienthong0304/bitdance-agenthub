@@ -4,6 +4,7 @@ import { Bot, Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Trash2
 import { useEffect, useState } from 'react'
 
 import { AgentLibrary } from '@/components/agent-library'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { ArtifactLibrary } from '@/components/artifact-library'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -174,11 +175,13 @@ export function Sidebar() {
                             isActive && 'bg-accent ring-2 ring-primary/50',
                           )}
                         >
-                          <Avatar className="size-8">
-                            <AvatarFallback className="text-sm">
-                              {firstAgent?.avatar ?? '?'}
-                            </AvatarFallback>
-                          </Avatar>
+                          {firstAgent ? (
+                            <AgentAvatar agent={firstAgent} size="md" />
+                          ) : (
+                            <Avatar className="size-8">
+                              <AvatarFallback className="text-sm">?</AvatarFallback>
+                            </Avatar>
+                          )}
                         </button>
                       )
                     }
@@ -196,11 +199,13 @@ export function Sidebar() {
                           onClick={() => setActive(c.id)}
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
-                          <Avatar className="size-9 shrink-0">
-                            <AvatarFallback className="text-sm">
-                              {firstAgent?.avatar ?? '?'}
-                            </AvatarFallback>
-                          </Avatar>
+                          {firstAgent ? (
+                            <AgentAvatar agent={firstAgent} size="lg" />
+                          ) : (
+                            <Avatar className="size-9 shrink-0">
+                              <AvatarFallback className="text-sm">?</AvatarFallback>
+                            </Avatar>
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-medium">{c.title}</div>
                             <div className="truncate text-xs text-muted-foreground">

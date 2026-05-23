@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Circle, Loader2, Network, XCircle } from 'lucide-react'
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { AgentAvatar } from '@/components/agent-avatar'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { DispatchState } from '@/stores/app-store'
@@ -60,14 +60,18 @@ export function DispatchPlanCard({ dispatch }: { dispatch: DispatchState }) {
                 )}
               >
                 <StatusIcon status={status} />
-                <Avatar
-                  className={cn(
-                    'size-5 shrink-0 transition-transform',
-                    status === 'running' && 'scale-110 ring-2 ring-amber-300 ring-offset-1',
-                  )}
-                >
-                  <AvatarFallback className="text-[10px]">{agent?.avatar ?? '?'}</AvatarFallback>
-                </Avatar>
+                {agent ? (
+                  <AgentAvatar
+                    agent={agent}
+                    size="xs"
+                    className={cn(
+                      'transition-transform',
+                      status === 'running' && 'scale-110 ring-2 ring-amber-300 ring-offset-1',
+                    )}
+                  />
+                ) : (
+                  <div className="size-5 shrink-0 rounded-full bg-muted" />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">{agent?.name ?? task.agentId}</span>

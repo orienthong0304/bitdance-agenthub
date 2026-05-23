@@ -2,6 +2,7 @@
 
 import { Loader2 } from 'lucide-react'
 
+import { AgentAvatar } from '@/components/agent-avatar'
 import { DispatchPlanCard } from '@/components/dispatch-plan-card'
 import { PartList } from '@/components/message-parts'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -15,21 +16,29 @@ export function MessageItem({ message }: { message: MessageRow }) {
 
   const isUser = message.role === 'user'
   const name = isUser ? '我' : agent?.name ?? 'Unknown'
-  const avatar = isUser ? '我' : agent?.avatar ?? '?'
 
   return (
     <div className={cn('flex gap-3 animate-in fade-in slide-in-from-bottom-1 duration-200', isUser && 'flex-row-reverse')}>
-      <Avatar
-        className={cn(
-          'size-8 shrink-0 transition-all',
-          isUser && 'bg-primary text-primary-foreground',
-          !isUser && message.status === 'streaming' && 'ring-2 ring-primary ring-offset-1',
-        )}
-      >
-        <AvatarFallback className={cn('text-sm', isUser && 'bg-primary text-primary-foreground')}>
-          {avatar}
-        </AvatarFallback>
-      </Avatar>
+      {isUser ? (
+        <Avatar className="size-8 shrink-0 bg-primary text-primary-foreground">
+          <AvatarFallback className="bg-primary text-sm text-primary-foreground">
+            我
+          </AvatarFallback>
+        </Avatar>
+      ) : agent ? (
+        <AgentAvatar
+          agent={agent}
+          size="md"
+          className={cn(
+            'transition-all',
+            message.status === 'streaming' && 'ring-2 ring-primary ring-offset-1',
+          )}
+        />
+      ) : (
+        <Avatar className="size-8 shrink-0">
+          <AvatarFallback className="text-sm">?</AvatarFallback>
+        </Avatar>
+      )}
 
       <div className={cn('flex max-w-[80%] min-w-0 flex-1 flex-col gap-1', isUser && 'items-end')}>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -1,10 +1,11 @@
 'use client'
 
-import { Check, ChevronRight, Copy, FileText, Image as ImageIcon, Layers, Loader2, XCircle } from 'lucide-react'
+import { Check, ChevronRight, FileText, Image as ImageIcon, Layers, Loader2, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { AttachmentChip } from '@/components/attachment-chip'
+import { CodeBlock } from '@/components/code-block'
 import { Markdown } from '@/components/markdown'
 import { fetchArtifact } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -110,47 +111,7 @@ function ThinkingPart({ content }: { content: string }) {
 
 // ─── Code ──────────────────────────────────────────────
 function CodePart({ language, content }: { language: string; content: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // 忽略
-    }
-  }
-
-  return (
-    <div className={cn(
-      'group relative overflow-hidden rounded-md border',
-      'border-zinc-200 bg-zinc-50 text-zinc-900',
-      'dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100',
-    )}>
-      <div className={cn(
-        'flex items-center justify-between border-b px-3 py-1.5 text-xs',
-        'border-zinc-200 dark:border-zinc-800',
-      )}>
-        <span className="font-mono text-zinc-500 dark:text-zinc-400">{language || 'text'}</span>
-        <button
-          type="button"
-          onClick={copy}
-          className={cn(
-            'flex items-center gap-1 rounded px-1.5 py-0.5 opacity-0 transition group-hover:opacity-100',
-            'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900',
-            'dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-          )}
-        >
-          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-          {copied ? '已复制' : '复制'}
-        </button>
-      </div>
-      <pre className="overflow-x-auto px-3 py-2 text-xs leading-relaxed">
-        <code>{content}</code>
-      </pre>
-    </div>
-  )
+  return <CodeBlock code={content} language={language} />
 }
 
 // ─── ToolUse + 内嵌 result ──────────────────────────────

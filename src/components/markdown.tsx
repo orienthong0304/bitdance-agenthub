@@ -1,8 +1,10 @@
 'use client'
 
+import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { CodeBlock } from '@/components/code-block'
 import { cn } from '@/lib/utils'
 
 interface MarkdownProps {
@@ -11,10 +13,8 @@ interface MarkdownProps {
 }
 
 /**
- * 受控的 Markdown 渲染器。
- *
- * 不依赖 @tailwindcss/typography，直接为各元素提供贴合聊天泡泡的样式。
- * 代码块仍走简洁深色风格，与 CodePart 视觉对齐。
+ * 受控的 Markdown 渲染器。fenced code block 交给 CodeBlock（shiki 双主题高亮），
+ * 其他元素直接用 Tailwind 贴合聊天泡泡。
  */
 export function Markdown({ children, className }: MarkdownProps) {
   return (
@@ -48,39 +48,27 @@ export function Markdown({ children, className }: MarkdownProps) {
             </blockquote>
           ),
           hr: () => <hr className="my-3 border-muted" />,
-          code: ({ className: codeClass, children, ...rest }) => {
+          code: ({ className: codeClass, children }) => {
             const isBlock = codeClass?.startsWith('language-')
             if (isBlock) {
-              return (
-                <code
-                  className={cn(codeClass, 'font-mono text-xs text-zinc-900 dark:text-zinc-100')}
-                  {...rest}
-                >
-                  {children}
-                </code>
-              )
+              const language = codeClass!.slice('language-'.length)
+              return <CodeBlock code={String(children).replace(/\n$/, '')} language={language} />
             }
             return (
-              <code
-                className="rounded bg-muted px-1 py-0.5 font-mono text-[12px]"
-                {...rest}
-              >
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[12px]">
                 {children}
               </code>
             )
           },
-          pre: ({ children }) => (
-            <pre
-              className={cn(
-                'my-2 overflow-x-auto rounded-md border px-3 py-2 text-xs leading-relaxed',
-                'border-zinc-200 bg-zinc-50 text-zinc-900',
-                'dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100',
-                '[&_code]:text-zinc-900 dark:[&_code]:text-zinc-100',
-              )}
-            >
-              {children}
-            </pre>
-          ),
+          pre: ({ children }) => {
+            // children 已经是 <CodeBlock />，pre 只透传，避免再套一层 <pre>。
+            if (isCodeBlockChild(children)) return <>{children}</>
+            return (
+              <pre className="my-2 overflow-x-auto rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs leading-relaxed text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100">
+                {children}
+              </pre>
+            )
+          },
           table: ({ children }) => (
             <div className="my-2 overflow-x-auto">
               <table className="w-full border-collapse text-xs">{children}</table>
@@ -100,4 +88,11 @@ export function Markdown({ children, className }: MarkdownProps) {
       </ReactMarkdown>
     </div>
   )
+}
+
+function isCodeBlockChild(node: ReactNode): boolean {
+  if (Array.isArray(node)) return node.some(isCodeBlockChild)
+  if (!isValidElement(node)) return false
+  const el = node as ReactElement<{ className?: string }>
+  return el.type === CodeBlock || el.props?.className?.startsWith('language-') === true
 }

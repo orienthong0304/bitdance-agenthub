@@ -370,6 +370,16 @@ export const useConversationList = () =>
 
 export const useAgentList = () => useAppStore(useShallow((s) => Object.values(s.agents)))
 
+/** 当前会话中正在跑的顶层 run（parentRunId 为空的，用于「中止」按钮）。 */
+export const useTopLevelRunningRuns = (conversationId: string) =>
+  useAppStore(
+    useShallow((s) => {
+      const runs = s.runsByConv[conversationId]
+      if (!runs) return []
+      return Object.values(runs).filter((r) => r.status === 'running' && !r.parentRunId)
+    }),
+  )
+
 export const useDispatchForMessage = (messageId: string) =>
   useAppStore((s) => {
     for (const id in s.dispatchesByRunId) {

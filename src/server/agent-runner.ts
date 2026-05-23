@@ -30,6 +30,8 @@ export interface RunArgs {
   overrideSystemPrompt?: string
   /** 覆盖工具集（Orchestrator aggregate 阶段不带 plan_tasks） */
   overrideToolNames?: string[]
+  /** 父 run 的 AbortSignal — 用于级联中止：parent abort → child abort */
+  parentSignal?: AbortSignal
 }
 
 export interface RunResult {
@@ -46,6 +48,16 @@ export const AgentRunner = {
   run(args: RunArgs): { runId: string; promise: Promise<RunResult> } {
     const runId = newRunId()
     const controller = new AbortController()
+
+    // 级联：父 run abort 时子 run 也 abort
+    if (args.parentSignal) {
+      if (args.parentSignal.aborted) {
+        controller.abort()
+      } else {
+        args.parentSignal.addEventListener('abort', () => controller.abort(), { once: true })
+      }
+    }
+
     activeRuns.set(runId, controller)
 
     const promise = executeRun(runId, controller.signal, args).finally(() => {
@@ -291,6 +303,7 @@ async function runChildTask(
     triggerMessageId: ctx.triggerMessageId,
     parentRunId: ctx.parentRunId,
     overridePrompt: subPrompt,
+    parentSignal: ctx.signal,
   })
 
   publish({

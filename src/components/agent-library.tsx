@@ -110,19 +110,19 @@ export function AgentLibrary() {
                     {a.modelId ? ` · ${a.modelId}` : ''}
                   </div>
                 </div>
-                {!a.isBuiltin && (
-                  <div className="flex shrink-0 self-center gap-1 opacity-0 transition group-hover:opacity-100">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openEdit(a)
-                      }}
-                      title="编辑 Agent"
-                      className="text-muted-foreground transition hover:text-foreground"
-                    >
-                      <Pencil className="size-3.5" />
-                    </button>
+                <div className="flex shrink-0 self-center gap-1 opacity-0 transition group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openEdit(a)
+                    }}
+                    title="编辑 Agent"
+                    className="text-muted-foreground transition hover:text-foreground"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                  {!a.isBuiltin && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -130,14 +130,12 @@ export function AgentLibrary() {
                         setDeleteTargetId(a.id)
                       }}
                       title="删除 Agent"
-                      className={cn(
-                        'text-muted-foreground transition hover:text-red-600',
-                      )}
+                      className={cn('text-muted-foreground transition hover:text-red-600')}
                     >
                       <Trash2 className="size-3.5" />
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))
           )}

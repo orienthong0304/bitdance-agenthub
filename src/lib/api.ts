@@ -36,6 +36,7 @@ export interface CreateAgentBody {
   modelId: string
   toolNames: string[]
   supportsVision?: boolean
+  apiKey?: string
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {
@@ -49,7 +50,10 @@ export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {
   return agent
 }
 
-export type UpdateAgentBody = Partial<Omit<CreateAgentBody, 'avatar'>>
+export type UpdateAgentBody = Partial<Omit<CreateAgentBody, 'avatar' | 'apiKey'>> & {
+  // 显式 null 表示清除自定义 key；undefined 表示不改
+  apiKey?: string | null
+}
 
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {
   const { agent } = await json<{ agent: AgentRow }>(

@@ -62,6 +62,8 @@ export function CreateAgentDialog({
     new Set(['write_artifact', 'read_artifact', 'read_attachment']),
   )
   const [supportsVision, setSupportsVision] = useState(true)
+  const [apiKey, setApiKey] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,6 +80,7 @@ export function CreateAgentDialog({
       setModelId(agent.modelId ?? PROVIDER_DEFAULTS[p].defaultModel)
       setToolNames(new Set(agent.toolNames))
       setSupportsVision(agent.supportsVision)
+      setApiKey(agent.apiKey ?? '')
     } else {
       setName('')
       setDescription('')
@@ -87,7 +90,9 @@ export function CreateAgentDialog({
       setModelId(PROVIDER_DEFAULTS.deepseek.defaultModel)
       setToolNames(new Set(['write_artifact', 'read_artifact', 'read_attachment']))
       setSupportsVision(true)
+      setApiKey('')
     }
+    setShowApiKey(false)
     setError(null)
   }, [open, agent])
 
@@ -132,6 +137,7 @@ export function CreateAgentDialog({
           modelId: modelId.trim(),
           toolNames: Array.from(toolNames),
           supportsVision,
+          apiKey: apiKey.trim() || null,
         }
         const updated = await updateAgent(agent.id, patch)
         upsertAgent(updated)
@@ -146,6 +152,7 @@ export function CreateAgentDialog({
           modelId: modelId.trim(),
           toolNames: Array.from(toolNames),
           supportsVision,
+          apiKey: apiKey.trim() || undefined,
         }
         const created = await createAgent(body)
         upsertAgent(created)
@@ -254,6 +261,43 @@ export function CreateAgentDialog({
                   <code className="font-mono text-xs">{t}</code>
                 </label>
               ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+            <Label>API Key</Label>
+            <div>
+              <div className="flex gap-2">
+                <Input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="留空则使用环境变量"
+                  className="flex-1 font-mono text-xs"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowApiKey((v) => !v)}
+                >
+                  {showApiKey ? '隐藏' : '显示'}
+                </Button>
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                填写后该 agent 优先用此 key；留空则 fallback 到{' '}
+                <code className="font-mono">
+                  {provider === 'deepseek'
+                    ? 'DEEPSEEK_API_KEY'
+                    : provider === 'volcano-ark'
+                      ? 'ARK_API_KEY'
+                      : provider === 'openai'
+                        ? 'OPENAI_API_KEY'
+                        : 'ANTHROPIC_API_KEY'}
+                </code>{' '}
+                环境变量
+              </div>
             </div>
           </div>
 

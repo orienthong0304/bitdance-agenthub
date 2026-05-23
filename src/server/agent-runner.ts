@@ -674,6 +674,7 @@ function buildAdapterInput(
             modelProvider: agent.modelProvider,
             modelId: agent.modelId,
             supportsVision: agent.supportsVision,
+            apiKey: agent.apiKey,
           }
         : undefined,
   }

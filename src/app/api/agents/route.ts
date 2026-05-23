@@ -18,6 +18,7 @@ const CreateBody = z.object({
   modelId: z.string().min(1),
   toolNames: z.array(z.string()).default([]),
   supportsVision: z.boolean().optional(),
+  apiKey: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {

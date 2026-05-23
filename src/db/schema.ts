@@ -21,6 +21,11 @@ export const agents = sqliteTable('agents', {
 
   modelProvider: text('model_provider').$type<ModelProvider>(),
   modelId: text('model_id'),
+  /**
+   * 该 agent 单独的 API key。优先级高于 env var。
+   * NULL 表示走 env（DEEPSEEK_API_KEY / OPENAI_API_KEY / ARK_API_KEY / ANTHROPIC_API_KEY）。
+   */
+  apiKey: text('api_key'),
 
   toolNames: text('tool_names', { mode: 'json' }).$type<string[]>().notNull(),
 

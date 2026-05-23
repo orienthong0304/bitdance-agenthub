@@ -40,9 +40,9 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
     if (!input.customConfig) {
       throw new Error('CustomAgentAdapter requires customConfig')
     }
-    const { systemPrompt, modelProvider, modelId, supportsVision } = input.customConfig
+    const { systemPrompt, modelProvider, modelId, supportsVision, apiKey } = input.customConfig
 
-    const client = buildClient(modelProvider)
+    const client = buildClient(modelProvider, apiKey)
 
     const toolDefs = toolRegistry.resolve(input.toolNames)
     const apiTools = toolDefs.map(toApiTool)
@@ -285,26 +285,28 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 // ─── 辅助 ────────────────────────────────────────────────
 function buildClient(
   provider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark',
+  overrideKey?: string | null,
 ): OpenAI {
+  // 优先用 agent 自带的 key，没有则 fallback env
   if (provider === 'deepseek') {
-    const apiKey = process.env.DEEPSEEK_API_KEY
-    if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set')
+    const apiKey = overrideKey || process.env.DEEPSEEK_API_KEY
+    if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set and agent has no apiKey')
     return new OpenAI({
       apiKey,
       baseURL: DEFAULT_DEEPSEEK_BASE_URL,
     })
   }
   if (provider === 'volcano-ark') {
-    const apiKey = process.env.ARK_API_KEY
-    if (!apiKey) throw new Error('ARK_API_KEY not set')
+    const apiKey = overrideKey || process.env.ARK_API_KEY
+    if (!apiKey) throw new Error('ARK_API_KEY not set and agent has no apiKey')
     return new OpenAI({
       apiKey,
       baseURL: DEFAULT_VOLCANO_ARK_BASE_URL,
     })
   }
   if (provider === 'openai') {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set')
+    const apiKey = overrideKey || process.env.OPENAI_API_KEY
+    if (!apiKey) throw new Error('OPENAI_API_KEY not set and agent has no apiKey')
     return new OpenAI({ apiKey })
   }
   throw new Error(`CustomAgentAdapter does not support provider "${provider}" yet`)

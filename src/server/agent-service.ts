@@ -21,6 +21,7 @@ export interface CreateAgentArgs {
   modelId: string
   toolNames: string[]
   supportsVision?: boolean
+  apiKey?: string | null
 }
 
 export async function createCustomAgent(args: CreateAgentArgs) {
@@ -37,6 +38,7 @@ export async function createCustomAgent(args: CreateAgentArgs) {
     adapterName: 'custom' as AdapterName,
     modelProvider: args.modelProvider,
     modelId: args.modelId,
+    apiKey: args.apiKey?.trim() || null,
     toolNames: args.toolNames,
     isBuiltin: false,
     isOrchestrator: false,
@@ -75,6 +77,8 @@ export interface UpdateAgentPatch {
   modelId?: string
   toolNames?: string[]
   supportsVision?: boolean
+  /** 传 null 显式清除自定义 key（fallback 回 env）；undefined 表示不动 */
+  apiKey?: string | null
 }
 
 export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch) {
@@ -82,7 +86,7 @@ export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch
     where: eq(schema.agents.id, agentId),
   })
   if (!agent) throw new Error(`Agent not found: ${agentId}`)
-  if (agent.isBuiltin) throw new Error('Built-in agents cannot be modified')
+  // 内建 agent 允许修改配置（API key / system prompt / model 等），但删除仍受保护
 
   const updates: Record<string, unknown> = {}
   if (patch.name !== undefined) updates.name = patch.name.trim()
@@ -93,6 +97,7 @@ export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch
   if (patch.modelId !== undefined) updates.modelId = patch.modelId
   if (patch.toolNames !== undefined) updates.toolNames = patch.toolNames
   if (patch.supportsVision !== undefined) updates.supportsVision = patch.supportsVision
+  if (patch.apiKey !== undefined) updates.apiKey = patch.apiKey?.trim() || null
 
   if (Object.keys(updates).length === 0) return agent
 

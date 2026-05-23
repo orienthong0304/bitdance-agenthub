@@ -28,6 +28,7 @@ interface AccumulatingToolCall {
 }
 
 const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
+const DEFAULT_VOLCANO_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 /** 防止单条 user message 塞太多图片（token 爆炸 + provider 通常有上限） */
 const MAX_IMAGES_PER_MESSAGE = 5
@@ -248,7 +249,7 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 
 // ─── 辅助 ────────────────────────────────────────────────
 function buildClient(
-  provider: 'anthropic' | 'openai' | 'deepseek',
+  provider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark',
 ): OpenAI {
   if (provider === 'deepseek') {
     const apiKey = process.env.DEEPSEEK_API_KEY
@@ -256,6 +257,14 @@ function buildClient(
     return new OpenAI({
       apiKey,
       baseURL: DEFAULT_DEEPSEEK_BASE_URL,
+    })
+  }
+  if (provider === 'volcano-ark') {
+    const apiKey = process.env.ARK_API_KEY
+    if (!apiKey) throw new Error('ARK_API_KEY not set')
+    return new OpenAI({
+      apiKey,
+      baseURL: DEFAULT_VOLCANO_ARK_BASE_URL,
     })
   }
   if (provider === 'openai') {

@@ -23,12 +23,13 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/app-store'
 
-type Provider = 'deepseek' | 'anthropic' | 'openai'
+type Provider = 'deepseek' | 'anthropic' | 'openai' | 'volcano-ark'
 
 const PROVIDER_DEFAULTS: Record<Provider, { label: string; defaultModel: string }> = {
   deepseek: { label: 'DeepSeek', defaultModel: 'deepseek-v4-flash' },
   anthropic: { label: 'Anthropic', defaultModel: 'claude-opus-4-7' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-4o' },
+  'volcano-ark': { label: '火山方舟 (豆包)', defaultModel: 'doubao-seed-2-0-lite-260428' },
 }
 
 const AVAILABLE_TOOLS = ['write_artifact', 'read_artifact', 'read_attachment'] as const

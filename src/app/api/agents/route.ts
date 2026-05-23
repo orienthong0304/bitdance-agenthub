@@ -14,7 +14,7 @@ const CreateBody = z.object({
   description: z.string().min(1).max(280),
   capabilities: z.array(z.string()).default([]),
   systemPrompt: z.string().min(1),
-  modelProvider: z.enum(['anthropic', 'openai', 'deepseek']),
+  modelProvider: z.enum(['anthropic', 'openai', 'deepseek', 'volcano-ark']),
   modelId: z.string().min(1),
   toolNames: z.array(z.string()).default([]),
   supportsVision: z.boolean().optional(),

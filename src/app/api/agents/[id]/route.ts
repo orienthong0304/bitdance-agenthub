@@ -13,7 +13,7 @@ const PatchBody = z
     description: z.string().min(1).max(280).optional(),
     capabilities: z.array(z.string()).optional(),
     systemPrompt: z.string().min(1).optional(),
-    modelProvider: z.enum(['anthropic', 'openai', 'deepseek']).optional(),
+    modelProvider: z.enum(['anthropic', 'openai', 'deepseek', 'volcano-ark']).optional(),
     modelId: z.string().min(1).optional(),
     toolNames: z.array(z.string()).optional(),
     supportsVision: z.boolean().optional(),

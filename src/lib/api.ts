@@ -32,7 +32,7 @@ export interface CreateAgentBody {
   description: string
   capabilities: string[]
   systemPrompt: string
-  modelProvider: 'anthropic' | 'openai' | 'deepseek'
+  modelProvider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
   modelId: string
   toolNames: string[]
   supportsVision?: boolean

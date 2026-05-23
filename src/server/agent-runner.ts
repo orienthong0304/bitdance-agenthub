@@ -535,6 +535,12 @@ async function finalize(
     })
     .where(and(eq(schema.messages.runId, runId), eq(schema.messages.status, 'streaming')))
 
+  // 失败 / 中止时把错误信息暴露给用户：如果该 run 已有 streaming message，把
+  // 错误作为新 text part 追加；否则新建一条 system message 显示错误。
+  if (status === 'failed' || status === 'aborted') {
+    await emitErrorVisualisation(runId, args, status, error, result.outputMessageIds)
+  }
+
   await db
     .update(schema.conversations)
     .set({ updatedAt: finishedAt })
@@ -556,6 +562,74 @@ async function finalize(
     artifactIds: result.artifactIds,
     outputMessageIds: result.outputMessageIds,
   }
+}
+
+async function emitErrorVisualisation(
+  runId: string,
+  args: RunArgs,
+  status: 'failed' | 'aborted',
+  error: string | undefined,
+  outputMessageIds: string[],
+): Promise<void> {
+  const errorText = status === 'aborted' ? '[已中止]' : `[失败] ${error ?? '未知错误'}`
+  const now = Date.now()
+
+  // 优先：把错误追加到该 run 最近的 agent message（如果存在）
+  const lastMessageId = outputMessageIds[outputMessageIds.length - 1]
+  if (lastMessageId) {
+    const msg = await db.query.messages.findFirst({
+      where: eq(schema.messages.id, lastMessageId),
+    })
+    if (msg) {
+      const parts: MessagePart[] = [...msg.parts, { type: 'text', content: errorText }]
+      await db.update(schema.messages).set({ parts }).where(eq(schema.messages.id, lastMessageId))
+      publish({
+        type: 'part.start',
+        conversationId: args.conversationId,
+        timestamp: now,
+        messageId: lastMessageId,
+        partIndex: parts.length - 1,
+        part: { type: 'text', content: errorText },
+      })
+      return
+    }
+  }
+
+  // 否则：新建一条 error message
+  const errorMessageId = `msg_err_${runId}`
+  await db.insert(schema.messages).values({
+    id: errorMessageId,
+    conversationId: args.conversationId,
+    role: 'agent',
+    agentId: args.agentId,
+    parts: [{ type: 'text', content: errorText }],
+    status: 'error',
+    mentionedAgentIds: [],
+    runId,
+    createdAt: now,
+  })
+  publish({
+    type: 'message.start',
+    conversationId: args.conversationId,
+    timestamp: now,
+    messageId: errorMessageId,
+    agentId: args.agentId,
+    runId,
+  })
+  publish({
+    type: 'part.start',
+    conversationId: args.conversationId,
+    timestamp: now,
+    messageId: errorMessageId,
+    partIndex: 0,
+    part: { type: 'text', content: errorText },
+  })
+  publish({
+    type: 'message.end',
+    conversationId: args.conversationId,
+    timestamp: now,
+    messageId: errorMessageId,
+  })
 }
 
 function finalizeOk(

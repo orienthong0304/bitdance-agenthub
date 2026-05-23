@@ -90,6 +90,8 @@ export function MessageItem({ message }: { message: MessageRow }) {
           className={cn(
             'min-w-0 rounded-lg border bg-card px-3 py-2',
             isUser && 'bg-primary/5 border-primary/20',
+            message.status === 'error' && 'border-red-300 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20',
+            message.status === 'aborted' && 'border-zinc-300 bg-zinc-50/60 dark:border-zinc-700 dark:bg-zinc-900/40',
           )}
         >
           {/* 被引用消息预览，点击跳转到原消息 */}

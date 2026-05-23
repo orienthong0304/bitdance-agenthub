@@ -89,11 +89,11 @@ export function Sidebar() {
         </Button>
       </div>
 
-      {/* Tab 切换 */}
+      {/* Tab 切换（两排垂直排列）*/}
       <div
         className={cn(
           'shrink-0 border-b',
-          collapsed ? 'flex flex-col items-center gap-1 px-1 py-2' : 'flex gap-1 px-3 py-2',
+          collapsed ? 'flex flex-col items-center gap-1 px-1 py-2' : 'flex flex-col gap-1 px-3 py-2',
         )}
       >
         <TabButton
@@ -286,10 +286,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition',
+        'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition',
         active
           ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent',
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
     >
       {icon}

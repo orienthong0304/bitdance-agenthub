@@ -1,10 +1,11 @@
 'use client'
 
 import { Check, ChevronRight, Copy, FileText, Image as ImageIcon, Layers, Loader2, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Markdown } from '@/components/markdown'
+import { fetchArtifact } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { MessagePart } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -216,14 +217,48 @@ function ToolUsePart({
 // ─── ArtifactRef ───────────────────────────────────────
 function ArtifactRefPart({ artifactId }: { artifactId: string }) {
   const artifact = useAppStore((s) => s.artifacts[artifactId])
+  const upsertArtifact = useAppStore((s) => s.upsertArtifact)
   const openPreview = useAppStore((s) => s.openArtifactPreview)
+  const [status, setStatus] = useState<'loading' | 'deleted'>('loading')
+
+  // Lazy load: store 里没有该 artifact 时，按需 fetch（404 即视为已删除）
+  useEffect(() => {
+    if (artifact) return
+    let cancelled = false
+    fetchArtifact(artifactId)
+      .then((row) => {
+        if (!cancelled) upsertArtifact(row)
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('deleted')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [artifactId, artifact, upsertArtifact])
+
+  if (status === 'deleted' && !artifact) {
+    return (
+      <Card className="border-dashed bg-muted/40">
+        <CardContent className="flex items-center gap-2 px-3 py-2">
+          <XCircle className="size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-muted-foreground line-through">
+              产物已删除
+            </div>
+            <div className="font-mono text-[10px] text-muted-foreground">{artifactId}</div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (!artifact) {
     return (
       <Card className="border-dashed">
         <CardContent className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-          <Layers className="size-4" />
-          <span>产物 {artifactId} 加载中</span>
+          <Loader2 className="size-4 animate-spin" />
+          <span>产物加载中…</span>
         </CardContent>
       </Card>
     )

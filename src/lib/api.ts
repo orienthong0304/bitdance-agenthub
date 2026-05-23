@@ -1,4 +1,15 @@
-import type { AgentRow, ConversationRow, MessageRow } from '@/db/schema'
+import type { AgentRow, ArtifactRow, ConversationRow, MessageRow } from '@/db/schema'
+
+export interface ArtifactListItem {
+  id: string
+  conversationId: string
+  conversationTitle: string | null
+  type: string
+  title: string
+  version: number
+  createdByAgentId: string
+  createdAt: number
+}
 
 async function json<T>(req: Promise<Response>): Promise<T> {
   const res = await req
@@ -94,4 +105,23 @@ export async function sendMessage(
 // ─── Runs ───────────────────────────────────────
 export async function abortRun(runId: string): Promise<void> {
   await json<{ ok: true }>(fetch(`/api/runs/${runId}/abort`, { method: 'POST' }))
+}
+
+// ─── Artifacts ─────────────────────────────────
+export async function fetchArtifacts(): Promise<ArtifactListItem[]> {
+  const { artifacts } = await json<{ artifacts: ArtifactListItem[] }>(fetch('/api/artifacts'))
+  return artifacts
+}
+
+export async function fetchArtifact(artifactId: string): Promise<ArtifactRow> {
+  const { artifact } = await json<{ artifact: ArtifactRow }>(
+    fetch(`/api/artifacts/${artifactId}`),
+  )
+  return artifact
+}
+
+export async function deleteArtifact(artifactId: string): Promise<void> {
+  await json<{ ok: true }>(
+    fetch(`/api/artifacts/${artifactId}`, { method: 'DELETE' }),
+  )
 }

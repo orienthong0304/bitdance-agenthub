@@ -54,6 +54,8 @@ interface AppState {
 
   openArtifactPreview(artifactId: string): void
   closeArtifactPreview(): void
+  upsertArtifact(artifact: ArtifactRow): void
+  removeArtifact(artifactId: string): void
 
   addLocalUserMessage(args: {
     tempId: string
@@ -129,6 +131,17 @@ export const useAppStore = create<AppState>()(
     closeArtifactPreview: () =>
       set((s) => {
         s.previewArtifactId = null
+      }),
+
+    upsertArtifact: (artifact) =>
+      set((s) => {
+        s.artifacts[artifact.id] = artifact
+      }),
+
+    removeArtifact: (artifactId) =>
+      set((s) => {
+        delete s.artifacts[artifactId]
+        if (s.previewArtifactId === artifactId) s.previewArtifactId = null
       }),
 
     addLocalUserMessage: ({ tempId, conversationId, content, mentionedAgentIds }) =>

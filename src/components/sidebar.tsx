@@ -1,8 +1,9 @@
 'use client'
 
-import { PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from 'lucide-react'
+import { Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { ArtifactLibrary } from '@/components/artifact-library'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,8 @@ import { deleteConversation as deleteConversationAPI, fetchAgents, fetchConversa
 import { cn } from '@/lib/utils'
 import { useAppStore, useConversationList } from '@/stores/app-store'
 
+type Mode = 'conversations' | 'artifacts'
+
 export function Sidebar() {
   const conversations = useConversationList()
   const activeId = useAppStore((s) => s.activeConversationId)
@@ -28,6 +31,7 @@ export function Sidebar() {
   const agents = useAppStore((s) => s.agents)
   const removeConversation = useAppStore((s) => s.removeConversation)
 
+  const [mode, setMode] = useState<Mode>('conversations')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -85,104 +89,137 @@ export function Sidebar() {
         </Button>
       </div>
 
-      {/* New conversation button */}
-      <div className={cn('shrink-0', collapsed ? 'flex justify-center py-2' : 'px-3 pt-3')}>
-        {collapsed ? (
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setDialogOpen(true)}
-            title="新建对话"
-          >
-            <Plus className="size-4" />
-          </Button>
-        ) : (
-          <Button
-            className="w-full justify-start gap-2"
-            variant="outline"
-            onClick={() => setDialogOpen(true)}
-          >
-            <Plus className="size-4" />
-            新建对话
-          </Button>
+      {/* Tab 切换 */}
+      <div
+        className={cn(
+          'shrink-0 border-b',
+          collapsed ? 'flex flex-col items-center gap-1 px-1 py-2' : 'flex gap-1 px-3 py-2',
         )}
+      >
+        <TabButton
+          mode={mode}
+          self="conversations"
+          collapsed={collapsed}
+          onClick={() => setMode('conversations')}
+          icon={<MessageSquare className="size-4" />}
+          label="对话"
+        />
+        <TabButton
+          mode={mode}
+          self="artifacts"
+          collapsed={collapsed}
+          onClick={() => setMode('artifacts')}
+          icon={<Layers className="size-4" />}
+          label="产物库"
+        />
       </div>
 
-      {/* Conversation list */}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-1 p-2">
-          {conversations.length === 0
-            ? !collapsed && (
-                <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-                  没有会话
-                </div>
-              )
-            : conversations.map((c) => {
-                const firstAgent = c.agentIds[0] ? agents[c.agentIds[0]] : null
-                const isActive = activeId === c.id
+      {/* 内容区按 mode 分发 */}
+      {mode === 'conversations' ? (
+        <>
+          {/* New conversation button */}
+          <div className={cn('shrink-0', collapsed ? 'flex justify-center py-2' : 'px-3 pt-3')}>
+            {collapsed ? (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => setDialogOpen(true)}
+                title="新建对话"
+              >
+                <Plus className="size-4" />
+              </Button>
+            ) : (
+              <Button
+                className="w-full justify-start gap-2"
+                variant="outline"
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus className="size-4" />
+                新建对话
+              </Button>
+            )}
+          </div>
 
-                if (collapsed) {
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setActive(c.id)}
-                      title={c.title}
-                      className={cn(
-                        'flex w-full justify-center rounded-md p-1.5 transition hover:bg-accent',
-                        isActive && 'bg-accent ring-2 ring-primary/50',
-                      )}
-                    >
-                      <Avatar className="size-8">
-                        <AvatarFallback className="text-sm">
-                          {firstAgent?.avatar ?? '?'}
-                        </AvatarFallback>
-                      </Avatar>
-                    </button>
+          {/* Conversation list */}
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-1 p-2">
+              {conversations.length === 0
+                ? !collapsed && (
+                    <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                      没有会话
+                    </div>
                   )
-                }
+                : conversations.map((c) => {
+                    const firstAgent = c.agentIds[0] ? agents[c.agentIds[0]] : null
+                    const isActive = activeId === c.id
 
-                return (
-                  <div
-                    key={c.id}
-                    className={cn(
-                      'group flex w-full items-center gap-3 rounded-md px-2 py-2 transition hover:bg-accent',
-                      isActive && 'bg-accent',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setActive(c.id)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    >
-                      <Avatar className="size-9 shrink-0">
-                        <AvatarFallback className="text-sm">
-                          {firstAgent?.avatar ?? '?'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{c.title}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {c.mode === 'single' ? '单聊' : '群聊'} · {c.agentIds.length} 位 Agent
-                        </div>
+                    if (collapsed) {
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setActive(c.id)}
+                          title={c.title}
+                          className={cn(
+                            'flex w-full justify-center rounded-md p-1.5 transition hover:bg-accent',
+                            isActive && 'bg-accent ring-2 ring-primary/50',
+                          )}
+                        >
+                          <Avatar className="size-8">
+                            <AvatarFallback className="text-sm">
+                              {firstAgent?.avatar ?? '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                        </button>
+                      )
+                    }
+
+                    return (
+                      <div
+                        key={c.id}
+                        className={cn(
+                          'group flex w-full items-center gap-3 rounded-md px-2 py-2 transition hover:bg-accent',
+                          isActive && 'bg-accent',
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setActive(c.id)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <Avatar className="size-9 shrink-0">
+                            <AvatarFallback className="text-sm">
+                              {firstAgent?.avatar ?? '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">{c.title}</div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {c.mode === 'single' ? '单聊' : '群聊'} · {c.agentIds.length} 位 Agent
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteTargetId(c.id)
+                          }}
+                          title="删除会话"
+                          className="opacity-0 transition group-hover:opacity-100 hover:text-red-600"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                       </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteTargetId(c.id)
-                      }}
-                      title="删除会话"
-                      className="opacity-0 transition group-hover:opacity-100 hover:text-red-600"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                )
-              })}
-        </div>
-      </ScrollArea>
+                    )
+                  })}
+            </div>
+          </ScrollArea>
+        </>
+      ) : (
+        // 产物库
+        !collapsed && <ArtifactLibrary />
+      )}
 
       <NewConversationDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
@@ -210,5 +247,53 @@ export function Sidebar() {
         </DialogContent>
       </Dialog>
     </aside>
+  )
+}
+
+function TabButton({
+  mode,
+  self,
+  collapsed,
+  onClick,
+  icon,
+  label,
+}: {
+  mode: Mode
+  self: Mode
+  collapsed: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}) {
+  const active = mode === self
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={label}
+        className={cn(
+          'flex size-9 items-center justify-center rounded-md transition',
+          active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+        )}
+      >
+        {icon}
+      </button>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition',
+        active
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:bg-accent',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }

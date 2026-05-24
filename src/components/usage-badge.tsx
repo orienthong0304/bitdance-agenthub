@@ -38,13 +38,33 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
         </div>
 
         <div className="space-y-1">
-          <Row label="新 Input" value={total.inputTokens} highlight />
-          <Row label="Output" value={total.outputTokens} highlight />
+          <RowWithHint
+            label="新 Input"
+            value={total.inputTokens}
+            highlight
+            tip="按正常 input 单价 (1×) 计费"
+          />
+          <RowWithHint
+            label="Output"
+            value={total.outputTokens}
+            highlight
+            tip="按 output 单价计费 (通常 4-5× input)"
+          />
           {total.cacheCreationTokens > 0 && (
-            <Row label="Cache 写入" value={total.cacheCreationTokens} dim />
+            <RowWithHint
+              label="Cache 写入"
+              value={total.cacheCreationTokens}
+              dim
+              tip="按 1.25× input 单价计费 (略贵)"
+            />
           )}
           {total.cacheReadTokens > 0 && (
-            <Row label="Cache 命中" value={total.cacheReadTokens} className="text-emerald-600" />
+            <RowWithHint
+              label="Cache 命中"
+              value={total.cacheReadTokens}
+              tip="按 0.1× input 单价计费 (便宜 90%)"
+              className="text-emerald-600"
+            />
           )}
           <div className="my-1 border-t" />
           <Row
@@ -54,9 +74,12 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
             hint="新+写入+命中"
           />
           <Row label="当前 ctx" value={total.lastInputTokens} dim hint="最近一次 prompt 大小" />
-          {/* Cache 命中率：cacheRead / (input + cacheRead)，只有有 cache 数据时显示 */}
+          {/* Cache 命中率：cacheRead / (input + cacheRead + cacheCreation) */}
           {total.cacheReadTokens > 0 && (
-            <div className="flex items-baseline justify-between gap-3 text-emerald-600">
+            <div
+              className="flex items-baseline justify-between gap-3 text-emerald-600"
+              title="按 input 数量算的命中率；实际省钱比略低（cache 读仍算 10% 价）"
+            >
               <span className="truncate">Cache 命中率</span>
               <span className="shrink-0 font-mono">
                 {Math.round(
@@ -65,11 +88,15 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
                 )}
                 %
                 <span className="ml-1 text-[10px] text-muted-foreground">
-                  (省 {formatTok(total.cacheReadTokens)} 输入)
+                  (省 ~{Math.round((total.cacheReadTokens * 90) / 100 / 1000)}k input 计费)
                 </span>
               </span>
             </div>
           )}
+        </div>
+
+        <div className="mt-2 border-t pt-2 text-[10px] text-muted-foreground">
+          所有 token 都计费，速率不同。详见各行 tooltip。
         </div>
 
         {Object.keys(total.byAgent).length > 1 && (
@@ -133,6 +160,28 @@ function Row({
         {hint && <span className="ml-1 text-[10px] text-muted-foreground">({hint})</span>}
         {highlight && value === 0 && <span className="ml-1 text-muted-foreground">—</span>}
       </span>
+    </div>
+  )
+}
+
+/** 带 tooltip 的版本，hover 显示计费速率说明 */
+function RowWithHint({
+  label,
+  value,
+  tip,
+  ...rest
+}: {
+  label: React.ReactNode
+  value: number
+  tip: string
+  highlight?: boolean
+  bold?: boolean
+  dim?: boolean
+  className?: string
+}) {
+  return (
+    <div title={tip} className="cursor-help">
+      <Row label={label} value={value} {...rest} />
     </div>
   )
 }

@@ -1,16 +1,32 @@
 'use client'
 
-import { AtSign, CornerUpLeft, Loader2 } from 'lucide-react'
+import { AtSign, CornerUpLeft, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentInfoPopover } from '@/components/agent-info-popover'
 import { DispatchPlanCard } from '@/components/dispatch-plan-card'
+import { EditMessageInput } from '@/components/edit-message-input'
 import { PartList } from '@/components/message-parts'
 import { QuotedMessage } from '@/components/quoted-message'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { editAndResendMessage, withdrawMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { MessageRow } from '@/db/schema'
-import { useAppStore, useDispatchForMessage } from '@/stores/app-store'
+import {
+  useAppStore,
+  useDispatchForMessage,
+  useLatestUserMessageId,
+} from '@/stores/app-store'
 
 export function MessageItem({ message }: { message: MessageRow }) {
   const agentsMap = useAppStore((s) => s.agents)
@@ -22,9 +38,26 @@ export function MessageItem({ message }: { message: MessageRow }) {
   const parentMessage = useAppStore((s) =>
     message.parentMessageId ? s.messages[message.parentMessageId] : null,
   )
+  const latestUserId = useLatestUserMessageId(message.conversationId)
+  const removeMessages = useAppStore((s) => s.removeMessages)
+  const removeArtifacts = useAppStore((s) => s.removeArtifacts)
+  const upsertMessage = useAppStore((s) => s.upsertMessage)
 
   const isUser = message.role === 'user'
   const name = isUser ? '我' : agent?.name ?? 'Unknown'
+  const isLatestUser = isUser && latestUserId === message.id
+
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false)
+
+  // 原 message.parts 中的 text 部分（用于 inline edit 的初始值）
+  const initialText = isUser
+    ? message.parts
+        .filter((p) => p.type === 'text')
+        .map((p) => (p.type === 'text' ? p.content : ''))
+        .join('\n')
+    : ''
 
   const mentionedAgents = message.mentionedAgentIds
     .map((id) => agentsMap[id])
@@ -37,6 +70,45 @@ export function MessageItem({ message }: { message: MessageRow }) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
     highlightMessage(parentMessage.id)
+  }
+
+  const handleWithdraw = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const { deletedMessageIds, deletedArtifactIds } = await withdrawMessage(
+        message.id,
+        message.conversationId,
+      )
+      removeMessages(message.conversationId, deletedMessageIds)
+      if (deletedArtifactIds.length > 0) removeArtifacts(deletedArtifactIds)
+      setConfirmWithdraw(false)
+    } catch (err) {
+      console.error('[MessageItem] withdraw failed', err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleEditCommit = async (next: string) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const result = await editAndResendMessage(
+        message.id,
+        message.conversationId,
+        next,
+      )
+      // 先删旧的，再 upsert 新的：避免「最后一条 user」selector 在中间态找不到目标
+      removeMessages(message.conversationId, result.deletedMessageIds)
+      if (result.deletedArtifactIds.length > 0) removeArtifacts(result.deletedArtifactIds)
+      upsertMessage(result.newMessage)
+      setEditing(false)
+    } catch (err) {
+      console.error('[MessageItem] edit failed', err)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -77,14 +149,39 @@ export function MessageItem({ message }: { message: MessageRow }) {
             <Loader2 className="size-3 animate-spin text-muted-foreground/70" />
           )}
           {/* 引用按钮 — hover 时显示 */}
-          <button
-            type="button"
-            onClick={() => setReplyTarget(message.conversationId, message.id)}
-            className="opacity-0 transition group-hover:opacity-100 hover:text-foreground"
-            title="引用回复"
-          >
-            <CornerUpLeft className="size-3" />
-          </button>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setReplyTarget(message.conversationId, message.id)}
+              className="opacity-0 transition group-hover:opacity-100 hover:text-foreground"
+              title="引用回复"
+            >
+              <CornerUpLeft className="size-3" />
+            </button>
+          )}
+          {/* 最新一条 user 消息：编辑 / 撤回 */}
+          {isLatestUser && !editing && (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                disabled={busy}
+                className="opacity-0 transition group-hover:opacity-100 hover:text-foreground disabled:opacity-30"
+                title="编辑文字并重发（@ 和附件保持不变）"
+              >
+                <Pencil className="size-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmWithdraw(true)}
+                disabled={busy}
+                className="opacity-0 transition group-hover:opacity-100 hover:text-red-600 disabled:opacity-30"
+                title="撤回此消息及之后的回复"
+              >
+                <Trash2 className="size-3" />
+              </button>
+            </>
+          )}
         </div>
 
         <div
@@ -93,43 +190,84 @@ export function MessageItem({ message }: { message: MessageRow }) {
             isUser && 'bg-primary/5 border-primary/20',
             message.status === 'error' && 'border-red-300 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20',
             message.status === 'aborted' && 'border-zinc-300 bg-zinc-50/60 dark:border-zinc-700 dark:bg-zinc-900/40',
+            editing && 'w-full max-w-xl',
           )}
         >
-          {/* 被引用消息预览，点击跳转到原消息 */}
-          {parentMessage && (
-            <div className="mb-2">
-              <QuotedMessage
-                message={parentMessage}
-                variant="preview"
-                onClick={jumpToParent}
-              />
-            </div>
-          )}
+          {/* 编辑模式：textarea 取代 parts */}
+          {editing ? (
+            <EditMessageInput
+              key={message.id}
+              initial={initialText}
+              submitting={busy}
+              onCommit={(next) => void handleEditCommit(next)}
+              onCancel={() => setEditing(false)}
+            />
+          ) : (
+            <>
+              {/* 被引用消息预览，点击跳转到原消息 */}
+              {parentMessage && (
+                <div className="mb-2">
+                  <QuotedMessage
+                    message={parentMessage}
+                    variant="preview"
+                    onClick={jumpToParent}
+                  />
+                </div>
+              )}
 
-          {/* @ 提及指示 */}
-          {mentionedAgents.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-border/50 pb-2">
-              <AtSign className="size-3 text-muted-foreground" />
-              {mentionedAgents.map((a) => (
-                <span
-                  key={a.id}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-1 pr-1.5 text-[10px] text-primary"
-                >
-                  <AgentAvatar agent={a} size="xs" />
-                  <span>{a.name}</span>
-                </span>
-              ))}
-            </div>
-          )}
+              {/* @ 提及指示 */}
+              {mentionedAgents.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-border/50 pb-2">
+                  <AtSign className="size-3 text-muted-foreground" />
+                  {mentionedAgents.map((a) => (
+                    <span
+                      key={a.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-1 pr-1.5 text-[10px] text-primary"
+                    >
+                      <AgentAvatar agent={a} size="xs" />
+                      <span>{a.name}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
 
-          <PartList parts={message.parts} />
-          {dispatch && (
-            <div className="mt-3">
-              <DispatchPlanCard dispatch={dispatch} />
-            </div>
+              <PartList parts={message.parts} />
+              {dispatch && (
+                <div className="mt-3">
+                  <DispatchPlanCard dispatch={dispatch} />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      <Dialog
+        open={confirmWithdraw}
+        onOpenChange={(open) => !busy && setConfirmWithdraw(open)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>撤回这条消息？</DialogTitle>
+            <DialogDescription>
+              你发送的这条消息以及其后所有 Agent 的回复和产物会被一并删除，无法恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmWithdraw(false)} disabled={busy}>
+              取消
+            </Button>
+            <Button
+              variant="default"
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => void handleWithdraw()}
+              disabled={busy}
+            >
+              {busy ? '撤回中…' : '撤回'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

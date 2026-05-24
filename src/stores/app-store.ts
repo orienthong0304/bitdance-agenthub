@@ -58,14 +58,20 @@ interface AppState {
   removeAgent(agentId: string): void
 
   setMessagesForConversation(conversationId: string, list: MessageRow[]): void
+  /** 单条 message upsert（编辑后重发场景：服务端写完 user message，前端要自己塞进 store）。 */
+  upsertMessage(message: MessageRow): void
   setActiveConversation(id: string | null): void
 
   openArtifactPreview(artifactId: string): void
   closeArtifactPreview(): void
   upsertArtifact(artifact: ArtifactRow): void
   removeArtifact(artifactId: string): void
+  removeArtifacts(artifactIds: string[]): void
 
   setReplyTarget(conversationId: string, messageId: string | null): void
+
+  /** 批量删除消息（撤回 / 编辑场景）。同时清理 messageIdsByConv 对应桶 + replyTarget。 */
+  removeMessages(conversationId: string, messageIds: string[]): void
 
   addPendingAttachment(conversationId: string, attachment: AttachmentRow): void
   removePendingAttachment(conversationId: string, attachmentId: string): void
@@ -151,6 +157,13 @@ export const useAppStore = create<AppState>()(
         for (const m of list) s.messages[m.id] = m
       }),
 
+    upsertMessage: (message) =>
+      set((s) => {
+        s.messages[message.id] = message
+        const bucket = (s.messageIdsByConv[message.conversationId] ??= [])
+        if (!bucket.includes(message.id)) bucket.push(message.id)
+      }),
+
     setActiveConversation: (id) =>
       set((s) => {
         s.activeConversationId = id
@@ -175,6 +188,31 @@ export const useAppStore = create<AppState>()(
       set((s) => {
         delete s.artifacts[artifactId]
         if (s.previewArtifactId === artifactId) s.previewArtifactId = null
+      }),
+
+    removeArtifacts: (artifactIds) =>
+      set((s) => {
+        for (const id of artifactIds) {
+          delete s.artifacts[id]
+          if (s.previewArtifactId === id) s.previewArtifactId = null
+        }
+      }),
+
+    removeMessages: (conversationId, messageIds) =>
+      set((s) => {
+        const toRemove = new Set(messageIds)
+        for (const id of toRemove) delete s.messages[id]
+
+        const bucket = s.messageIdsByConv[conversationId]
+        if (bucket) {
+          s.messageIdsByConv[conversationId] = bucket.filter((id) => !toRemove.has(id))
+        }
+
+        // 清理可能指向被删消息的 replyTarget
+        const replyId = s.replyTargetByConv[conversationId]
+        if (replyId && toRemove.has(replyId)) {
+          delete s.replyTargetByConv[conversationId]
+        }
       }),
 
     setReplyTarget: (conversationId, messageId) =>
@@ -484,6 +522,18 @@ export const useDispatchForMessage = (messageId: string) =>
     for (const id in s.dispatchesByRunId) {
       const d = s.dispatchesByRunId[id]
       if (d.messageId === messageId) return d
+    }
+    return null
+  })
+
+/** 返回该会话最后一条 user 消息的 id（用于撤回 / 编辑入口判断）。 */
+export const useLatestUserMessageId = (conversationId: string): string | null =>
+  useAppStore((s) => {
+    const ids = s.messageIdsByConv[conversationId]
+    if (!ids) return null
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const m = s.messages[ids[i]]
+      if (m && m.role === 'user') return m.id
     }
     return null
   })

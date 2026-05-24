@@ -167,6 +167,44 @@ export async function abortRun(runId: string): Promise<void> {
   await json<{ ok: true }>(fetch(`/api/runs/${runId}/abort`, { method: 'POST' }))
 }
 
+// ─── Messages: withdraw / edit ──────────────────
+export interface WithdrawResult {
+  deletedMessageIds: string[]
+  deletedArtifactIds: string[]
+}
+
+export async function withdrawMessage(
+  messageId: string,
+  conversationId: string,
+): Promise<WithdrawResult> {
+  return json<WithdrawResult>(
+    fetch(`/api/messages/${messageId}/withdraw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId }),
+    }),
+  )
+}
+
+export interface EditAndResendResult extends WithdrawResult {
+  newMessage: MessageRow
+  runIds: string[]
+}
+
+export async function editAndResendMessage(
+  messageId: string,
+  conversationId: string,
+  content: string,
+): Promise<EditAndResendResult> {
+  return json<EditAndResendResult>(
+    fetch(`/api/messages/${messageId}/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, content }),
+    }),
+  )
+}
+
 // ─── Artifacts ─────────────────────────────────
 export async function fetchArtifacts(): Promise<ArtifactListItem[]> {
   const { artifacts } = await json<{ artifacts: ArtifactListItem[] }>(fetch('/api/artifacts'))

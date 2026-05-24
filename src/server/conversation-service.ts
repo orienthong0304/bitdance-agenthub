@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import type { MessagePart } from '@/shared/types'
@@ -299,4 +299,157 @@ function decideResponders(
 // ─── 中止 run ────────────────────────────────────────────
 export function abortRun(runId: string): boolean {
   return AgentRunner.abort(runId)
+}
+
+// ─── 撤回 / 编辑最后一条 user 消息 ──────────────────────
+export interface WithdrawResult {
+  deletedMessageIds: string[]
+  deletedArtifactIds: string[]
+}
+
+/**
+ * 撤回会话中**最后一条** user 消息，及其触发的所有下游 agent message + artifact。
+ *
+ * 处理逻辑：
+ *  1. 校验 messageId 是会话最后一条 user 消息
+ *  2. abort 所有运行中 run（fire-and-forget）
+ *  3. wait 500ms 让 AgentRunner.finalize 跑完（避免 emitErrorVisualisation 后插的死消息漏删）
+ *  4. 时间窗删除：DELETE messages / artifacts / agent_runs WHERE created_at/started_at >= userMsg.createdAt
+ */
+export async function withdrawLatestUserMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<WithdrawResult> {
+  const msg = await db.query.messages.findFirst({
+    where: and(
+      eq(schema.messages.id, messageId),
+      eq(schema.messages.conversationId, conversationId),
+    ),
+  })
+  if (!msg) throw new Error(`Message not found: ${messageId}`)
+  if (msg.role !== 'user') throw new Error('Only user messages can be withdrawn')
+
+  // 校验是会话最后一条 user message（防误操作 / 防过期请求）
+  const latestUser = await db.query.messages.findFirst({
+    where: and(
+      eq(schema.messages.conversationId, conversationId),
+      eq(schema.messages.role, 'user'),
+    ),
+    orderBy: [desc(schema.messages.createdAt)],
+  })
+  if (!latestUser || latestUser.id !== messageId) {
+    throw new Error('Only the latest user message can be withdrawn')
+  }
+
+  // 先收集 running run 调 abort（fire-and-forget）
+  const runsToAbort = await db.query.agentRuns.findMany({
+    where: and(
+      eq(schema.agentRuns.conversationId, conversationId),
+      gte(schema.agentRuns.startedAt, msg.createdAt),
+      eq(schema.agentRuns.status, 'running'),
+    ),
+  })
+  for (const r of runsToAbort) AgentRunner.abort(r.id)
+
+  // 让 finalize 跑完，把 emitErrorVisualisation 的 msg_err_* 也落进时间窗
+  if (runsToAbort.length > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+
+  // 重新扫一遍待删的 ids（含 wait 期间补写入的死消息）
+  const messagesToDelete = await db.query.messages.findMany({
+    where: and(
+      eq(schema.messages.conversationId, conversationId),
+      gte(schema.messages.createdAt, msg.createdAt),
+    ),
+  })
+  const messageIds = messagesToDelete.map((m) => m.id)
+
+  // 从 parts 提取 artifact_ref 拿到要删的 artifact id
+  const artifactIds = new Set<string>()
+  for (const m of messagesToDelete) {
+    for (const p of m.parts) {
+      if (p.type === 'artifact_ref') artifactIds.add(p.artifactId)
+    }
+  }
+
+  const runsToDelete = await db.query.agentRuns.findMany({
+    where: and(
+      eq(schema.agentRuns.conversationId, conversationId),
+      gte(schema.agentRuns.startedAt, msg.createdAt),
+    ),
+  })
+  const runIds = runsToDelete.map((r) => r.id)
+
+  db.transaction((tx) => {
+    if (messageIds.length > 0) {
+      tx.delete(schema.messages).where(inArray(schema.messages.id, messageIds)).run()
+    }
+    if (artifactIds.size > 0) {
+      tx.delete(schema.artifacts)
+        .where(inArray(schema.artifacts.id, [...artifactIds]))
+        .run()
+    }
+    if (runIds.length > 0) {
+      tx.delete(schema.agentRuns).where(inArray(schema.agentRuns.id, runIds)).run()
+    }
+  })
+
+  return { deletedMessageIds: messageIds, deletedArtifactIds: [...artifactIds] }
+}
+
+export interface EditAndResendResult extends WithdrawResult {
+  newMessage: typeof schema.messages.$inferSelect
+  runIds: string[]
+}
+
+/**
+ * 编辑最后一条 user 消息：先撤回，再用新内容重新 sendMessage（保留原 mentions / parent / attachments）。
+ */
+export async function editAndResendLatestUserMessage(
+  conversationId: string,
+  messageId: string,
+  newContent: string,
+): Promise<EditAndResendResult> {
+  const trimmed = newContent.trim()
+  if (!trimmed) throw new Error('Content cannot be empty')
+
+  const original = await db.query.messages.findFirst({
+    where: and(
+      eq(schema.messages.id, messageId),
+      eq(schema.messages.conversationId, conversationId),
+    ),
+  })
+  if (!original) throw new Error(`Message not found: ${messageId}`)
+  if (original.role !== 'user') throw new Error('Only user messages can be edited')
+
+  // 从原 message 提取附件 id（image_attachment + file_attachment）
+  const attachmentIds: string[] = []
+  for (const p of original.parts) {
+    if (p.type === 'image_attachment' || p.type === 'file_attachment') {
+      attachmentIds.push(p.attachmentId)
+    }
+  }
+
+  const withdrawn = await withdrawLatestUserMessage(conversationId, messageId)
+
+  const sent = await sendMessage({
+    conversationId,
+    content: trimmed,
+    mentionedAgentIds: original.mentionedAgentIds,
+    parentMessageId: original.parentMessageId ?? undefined,
+    attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+  })
+
+  // 把新写入的 user message row 完整读出来给前端（SSE 不推 user 消息，前端要自己 upsert）
+  const newMessage = await db.query.messages.findFirst({
+    where: eq(schema.messages.id, sent.messageId),
+  })
+  if (!newMessage) throw new Error('New message disappeared after insert')
+
+  return {
+    ...withdrawn,
+    newMessage,
+    runIds: sent.runIds,
+  }
 }

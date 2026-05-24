@@ -237,6 +237,29 @@ app/page.tsx
 
 ---
 
+## 用户消息的撤回 / 编辑
+
+`MessageItem` 在最后一条 user 消息上挂两个 hover 按钮：
+
+| 按钮 | 行为 |
+|---|---|
+| ✏️（Pencil） | 切到 inline 编辑模式：bubble 内 `<EditMessageInput>` 替代 `<PartList>`。Enter 保存并重发 / Esc 取消 / Shift+Enter 换行 |
+| ⚡（Undo2） | 直接撤回，无 confirm dialog（撤回是可重做的：再发一遍即可） |
+
+**「最后一条」判定**：`useLatestUserMessageId(conversationId)` selector 倒序扫 `messageIdsByConv[convId]`，O(后置消息数) 通常常数级。MessageItem 用 `latestUserId === message.id` 判断。
+
+**API 调用**：
+- 撤回：`POST /api/messages/[id]/withdraw` → service 物理删除 message + 触发的所有 agent message + artifact + agent_runs（详见 Spec 03）
+- 编辑：`POST /api/messages/[id]/edit` → service 先撤回再用新 content 调 `sendMessage`（保留原 mentionedAgentIds / parentMessageId / attachmentIds —— inline 编辑不允许改 @ 和附件）
+
+**store 同步**：API 返回 `{ deletedMessageIds, deletedArtifactIds, [newMessageId, runIds] }`。前端 `removeMessages(convId, ids)` + `removeArtifacts(ids)` 批量删本地状态。新触发的 run + message 走正常 SSE 流入 store，无需特殊处理。
+
+**Race 条件**：撤回时如果有 agent 还在 streaming，service 先 `AgentRunner.abort()`（fire-and-forget）再 wait 500ms 让 finalize 把 `[已中止]` part / msg_err_* 死消息插完，最后用时间窗 `created_at >= userMsg.createdAt` 一并删除（含 wait 期间补写的死消息）。详见 `conversation-service.withdrawLatestUserMessage`。
+
+**为什么不通过 SSE 广播「message.delete」事件**：本地单用户场景，没有第二个客户端需要同步；加事件类型涉及 spec 02 修改 + reducer case，与现状的「同步操作直接 update store」相比代价不值。
+
+---
+
 ## CSS / 样式
 
 - Tailwind v4 + shadcn/ui（base-ui 底座，「base-nova」preset）

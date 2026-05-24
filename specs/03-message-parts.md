@@ -240,3 +240,13 @@ LLM 下一轮 turn 需要 history（assistant 的旧消息回传 messages 数组
 - Spec 04：artifact_ref 引用的 Artifact 实体
 - Spec 07：tool_use / tool_result 与工具系统
 - Spec 09：前端 PartList 渲染、reducer case
+
+---
+
+## 撤回 / 编辑：物理删除
+
+用户在 IM 入口撤回或编辑最后一条 user 消息时（详见 Spec 09），后端 service 走**物理 DELETE**：从 messages / artifacts / agent_runs 表移除对应行。**不是软删除**，被撤回的内容在 DB 中不留行。
+
+- 同时删 message.parts 里的 `artifact_ref` 引用的 artifact（用户预期是「重来」，上一轮产物不保留）
+- 不发布 StreamEvent 广播（这是同步操作，本地单用户场景，前端直接 update store）
+- DB 层面没有「撤回」状态字段，无法事后审计被撤回的内容；这是有意的：减少状态空间

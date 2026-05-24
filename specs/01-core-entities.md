@@ -1,6 +1,6 @@
 # Spec 01 — 核心实体
 
-> 本 spec 定义 AgentHub 的 7 个核心实体。所有其他 spec 引用这里的类型。**修改此文档需先讨论。**
+> 本 spec 定义 AgentHub 的 8 个核心实体。所有其他 spec 引用这里的类型。**修改此文档需先讨论。**
 
 ---
 
@@ -20,23 +20,27 @@ interface Agent {
   adapterName: AdapterName      // 'claude-code' | 'codex' | 'custom' | 'mock'
 
   // 仅 adapterName === 'custom' 时使用
-  modelProvider?: 'anthropic' | 'openai' | 'deepseek'
+  modelProvider?: ModelProvider
   modelId?: string              // 厂商内部 model id
+  apiKey?: string               // per-agent 自定义 key；NULL 走 env var（详见 Spec 10）
 
   toolNames: string[]           // 该 Agent 可调用的工具，引用 Spec 07
 
-  isBuiltin: boolean            // 内置（不可改不可删）
-  isOrchestrator: boolean       // 标记为协调者；可同时多个但同会话只允许 1 个
+  isBuiltin: boolean            // 内置（不可删；可改）
+  isOrchestrator: boolean       // 标记为协调者；同会话最多 1 个
+  supportsVision: boolean       // 决定是否把图片附件以 multimodal 投递（详见 Spec 05）
 
   createdAt: number             // unix ms
 }
 
 type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
+type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
 ```
 
 **约束**：
-- `isOrchestrator: true` 的 Agent 必须 `toolNames.includes('dispatch_to_agent')`
+- `isOrchestrator: true` 的 Agent 必须 `toolNames.includes('plan_tasks')`（早期 spec 用过 `dispatch_to_agent` 命名，已统一为 `plan_tasks`，详见 Spec 07）
 - `adapterName === 'custom'` 时 `modelProvider` 和 `modelId` 必填
+- `isBuiltin: true` 的 Agent 不可删除但可修改配置（详见 Spec 10）
 - 删除 Agent 不级联删除使用它的 Conversation；前端应展示「已停用 Agent」灰态
 
 ---
@@ -72,13 +76,13 @@ interface Conversation {
 
 ```typescript
 interface Message {
-  id: string                    // msg_<nanoid>
+  id: string                    // msg_<nanoid> / msg_err_<nanoid>
   conversationId: string
 
   role: 'user' | 'agent' | 'system'
   agentId?: string              // role === 'agent' 时必填
 
-  parts: MessagePart[]          // 详见 Spec 03
+  parts: MessagePart[]          // 详见 Spec 03（含 image_attachment / file_attachment 引用）
 
   status: 'streaming' | 'complete' | 'error' | 'aborted'
   parentMessageId?: string      // 回复 / 引用关系
@@ -93,6 +97,7 @@ interface Message {
 - `status === 'streaming'` 期间 `parts` 可能不完整，前端必须处理增量
 - 用户消息没有 `runId`，但群聊里用户消息会触发 1 个或多个 `AgentRun`
 - `parentMessageId` 仅用于「引用回复」UI，不影响上下文构建逻辑
+- 错误降级消息的 id 以 `msg_err_` 前缀生成（由 `AgentRunner.emitErrorVisualisation`，用于在对话里显示 run 失败）
 
 ---
 
@@ -124,7 +129,7 @@ type ArtifactType = 'web_app' | 'code_file' | 'diff' | 'document' | 'image'
 - `code_file` 的 content 仅记 workspace 内相对路径，文件本体在 workspace 磁盘
 
 **约束**：
-- 「修改一个 artifact」 = 创建新 Artifact 记录，`parentArtifactId` 指向旧版本，`version` 递增
+- 「修改一个 artifact」 = 创建新 Artifact 记录，`parentArtifactId` 指向旧版本，`version` 递增（**当前未实装写入新版本的工具/UI 路径**，详见 Spec 04 「版本链 TODO」）
 - 删除 Conversation 级联删除其下所有 Artifact
 
 ---
@@ -159,8 +164,8 @@ Agent 可调用的能力。Tool 是声明 + 实现的组合，存储在代码中
 interface ToolDef {
   name: string                  // 全局唯一，如 'write_artifact'
   description: string           // LLM 看到的描述，影响调用决策
-  parameters: JSONSchema        // 标准 JSON Schema
-  handler: (args: any, ctx: ToolContext) => Promise<ToolResult>
+  parameters: Record<string, unknown>  // 标准 JSON Schema
+  handler: (args: unknown, ctx: ToolContext) => Promise<ToolResult>
 }
 
 interface ToolContext {
@@ -172,16 +177,15 @@ interface ToolContext {
 }
 
 type ToolResult =
-  | { ok: true, value: any }
+  | { ok: true, value: unknown }
   | { ok: false, error: string }
 ```
 
 **内置工具清单**详见 Spec 07。
 
 **约束**：
-- Tool handler 必须能在 5s 内返回（超时由 ToolExecutor 强制中止）
 - Tool 实现必须 honor `ctx.abortSignal`
-- `bash` 的命令在执行前必须通过黑名单校验（详见 CLAUDE.md §5.2）
+- `bash` 的命令在执行前必须通过黑名单校验（详见 CLAUDE.md §5.2；bash 工具目前 **TODO**，详见 Spec 07）
 
 ---
 
@@ -194,7 +198,7 @@ interface AgentRun {
   id: string                    // run_<nanoid>
   conversationId: string
   agentId: string
-  triggerMessageId: string      // 由哪条消息触发
+  triggerMessageId?: string     // 由哪条消息触发；错误降级 run 可能没有 trigger
 
   status: 'queued' | 'running' | 'complete' | 'failed' | 'aborted'
   error?: string
@@ -214,18 +218,46 @@ interface AgentRun {
 
 ---
 
+## 8. Attachment
+
+会话文件库的一条记录。用户上传的图片 / 文件，message.parts 通过 `image_attachment` / `file_attachment` part 引用，agent 通过 `read_attachment` 工具读取（详见 Spec 07）。
+
+```typescript
+interface Attachment {
+  id: string                    // att_<nanoid>
+  conversationId: string        // 不跨会话共享
+  kind: 'image' | 'file'
+  fileName: string              // 原始文件名
+  filePath: string              // 相对 workspace.rootPath
+  size: number                  // 字节
+  mimeType: string
+
+  createdAt: number
+}
+```
+
+**约束**：
+- 物理文件存于 `workspace.rootPath/attachments/<id>-<fileName>`
+- 删除 Conversation 级联删除 attachments 行（物理文件随 workspace 目录一起被删）
+- 单会话累计上限：100 MB / 1000 文件（与 workspace 共享配额）
+- 单个 attachment 可被同会话内多条 message 引用，删除 attachment 不删除引用它的 message.parts（前端 lazy fetch 时显示「附件已删除」墓碑）
+
+---
+
 ## ID 命名规范
 
 | 实体 | 前缀 |
 |---|---|
 | Agent | `ag_` |
 | Conversation | `conv_` |
-| Message | `msg_` |
+| Message | `msg_` / `msg_err_` |
 | Artifact | `art_` |
 | Workspace | `ws_` |
 | AgentRun | `run_` |
+| Attachment | `att_` |
+| ToolCall（内存中） | `call_` |
 
-ID 用 `nanoid(12)`。
+ID 用 `nanoid(12)`，URL-safe alphabet。详见 `src/server/ids.ts`。
 
 ---
 
@@ -235,14 +267,17 @@ ID 用 `nanoid(12)`。
 Conversation ─1:1─ Workspace
      │
      ├─1:N─ Message ─0:N─ artifact_ref part ──┐
-     │         │                              │
-     │         └─N:1─ Agent                   ▼
+     │         │            ─0:N─ image/file_attachment part ──┐
+     │         │                              │                │
+     │         └─N:1─ Agent                   ▼                │
      │                                    Artifact ─N:1─ Artifact (parent version)
+     │                                        │                │
+     ├─1:N─ AgentRun                          │                │
+     │         │                              │                │
+     │         ├─N:1─ Agent                   │                ▼
+     │         └─0:N─ AgentRun (parent)       │            Attachment
      │                                        │
-     └─1:N─ AgentRun                          │
-              │                               │
-              ├─N:1─ Agent                    │
-              └─0:N─ AgentRun (parent)        │
-                                              │
-              created_by ───────────────────────
+     │         created_by ────────────────────┘
+     │
+     └─1:N─ Attachment
 ```

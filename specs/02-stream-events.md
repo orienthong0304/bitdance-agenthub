@@ -123,6 +123,33 @@ run.end           (r1, 'complete')
 
 ---
 
+## artifact_ref part 的注入路径
+
+`artifact_ref` part **不由 Adapter 直接 emit**，由 AgentRunner 在接到 `artifact.create` 后注入到当前 message 的 parts 末尾。完整流程：
+
+```
+1. Adapter: yield tool.call(callId, 'write_artifact', args)
+2. Adapter 内部 toolRegistry.execute → tool handler 写入 artifacts 表，返回 { artifactId, ... }
+3. Adapter: yield tool.result(callId, { artifactId, ... }, isError=false)
+4. Adapter: 检测 result.value.artifactId 非空 → 从 DB 拉完整 artifact 行
+            yield artifact.create({ artifact: <row> })
+
+5. AgentRunner 消费事件流，接到 artifact.create:
+   - 找到当前 message（最近一条该 runId 下的 streaming message）
+   - 给 message.parts 末尾 push 一个 { type: 'artifact_ref', artifactId }
+   - 补发一个 part.start 事件让前端 reducer 同步
+
+6. 前端 reducer 接 part.start → 在 messages[id].parts[nextIndex] 写入 artifact_ref part
+```
+
+**为什么不让 Adapter 直接 emit `part.start(artifact_ref)`**：保持「Adapter 只翻译事件，不操心 message.parts 结构」的边界。Adapter 知道「我创建了一个 artifact」，但不应关心「这条 message 的下一个 partIndex 是几」。AgentRunner 是唯一持有 message 流的角色，所以它来注入。
+
+**前端无差别处理**：part.start 事件不区分是 Adapter emit 的还是 Runner 补的，reducer 都按 partIndex 写入。详见 Spec 09。
+
+代码位置：`src/server/agent-runner.ts` 内 `consumeStream` 的 `artifact.create` 分支。
+
+---
+
 ## 持久化 vs 透传
 
 | 事件 | 是否落库 | 备注 |

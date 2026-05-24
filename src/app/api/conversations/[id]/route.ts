@@ -6,6 +6,7 @@ import {
   deleteConversation,
   renameConversation,
   setConversationApprovalMode,
+  togglePinConversation,
 } from '@/server/conversation-service'
 
 interface RouteContext {
@@ -28,13 +29,15 @@ const PatchBody = z
     addAgentIds: z.array(z.string()).min(1).optional(),
     title: z.string().min(1).max(100).optional(),
     fsWriteApprovalMode: z.enum(['auto', 'review']).optional(),
+    togglePin: z.literal(true).optional(),
   })
   .refine(
     (d) =>
       d.addAgentIds !== undefined ||
       d.title !== undefined ||
-      d.fsWriteApprovalMode !== undefined,
-    { message: 'At least one of addAgentIds / title / fsWriteApprovalMode is required' },
+      d.fsWriteApprovalMode !== undefined ||
+      d.togglePin !== undefined,
+    { message: 'At least one of addAgentIds / title / fsWriteApprovalMode / togglePin is required' },
   )
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
@@ -58,6 +61,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     }
     if (parsed.data.fsWriteApprovalMode !== undefined) {
       conversation = await setConversationApprovalMode(id, parsed.data.fsWriteApprovalMode)
+    }
+    if (parsed.data.togglePin) {
+      conversation = await togglePinConversation(id)
     }
     return NextResponse.json({ conversation })
   } catch (err) {

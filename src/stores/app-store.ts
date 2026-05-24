@@ -54,6 +54,9 @@ interface AppState {
   // ─── Agent fs_write 审批等待队列（按 conversationId 分桶）─
   pendingWritesByConv: Record<string, PendingWrite[]>
 
+  // ─── 未读计数（流式响应到达时，非 active 会话 +1；切到该会话清零）
+  unreadByConv: Record<string, number>
+
   // ─── 流连接状态 ────────────────────────────────────
   streamConnected: boolean
 
@@ -131,6 +134,7 @@ export const useAppStore = create<AppState>()(
     replyTargetByConv: {},
     pendingAttachmentsByConv: {},
     pendingWritesByConv: {},
+    unreadByConv: {},
     highlightedMessageId: null,
     streamConnected: false,
 
@@ -191,6 +195,8 @@ export const useAppStore = create<AppState>()(
     setActiveConversation: (id) =>
       set((s) => {
         s.activeConversationId = id
+        // 切到该会话即视为已读
+        if (id) delete s.unreadByConv[id]
       }),
 
     openArtifactPreview: (artifactId) =>
@@ -447,6 +453,10 @@ export const useAppStore = create<AppState>()(
             if (!s.messageIdsByConv[event.conversationId].includes(event.messageId)) {
               s.messageIdsByConv[event.conversationId].push(event.messageId)
             }
+            // 非 active 会话有新 agent 消息 → 未读 +1
+            if (s.activeConversationId !== event.conversationId) {
+              s.unreadByConv[event.conversationId] = (s.unreadByConv[event.conversationId] ?? 0) + 1
+            }
             return
           }
 
@@ -603,7 +613,13 @@ export const useActiveConversation = () =>
 export const useConversationList = () =>
   useAppStore(
     useShallow((s) =>
-      Object.values(s.conversations).sort((a, b) => b.updatedAt - a.updatedAt),
+      Object.values(s.conversations).sort((a, b) => {
+        // 置顶在前：相互按 pinnedAt 倒序；未置顶按 updatedAt 倒序
+        if (a.pinnedAt && !b.pinnedAt) return -1
+        if (!a.pinnedAt && b.pinnedAt) return 1
+        if (a.pinnedAt && b.pinnedAt) return b.pinnedAt - a.pinnedAt
+        return b.updatedAt - a.updatedAt
+      }),
     ),
   )
 
@@ -643,6 +659,18 @@ export const useLatestUserMessageId = (conversationId: string): string | null =>
     return null
   })
 
+/** 返回该会话最后一条 agent 消息的 id（用于「重新生成」入口判断）。 */
+export const useLatestAgentMessageId = (conversationId: string): string | null =>
+  useAppStore((s) => {
+    const ids = s.messageIdsByConv[conversationId]
+    if (!ids) return null
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const m = s.messages[ids[i]]
+      if (m && m.role === 'agent') return m.id
+    }
+    return null
+  })
+
 /** 该会话当前打开的文件 tab 列表。 */
 export const useOpenFiles = (conversationId: string): string[] =>
   useAppStore(useShallow((s) => s.openFilesByConv[conversationId] ?? []))
@@ -654,6 +682,10 @@ export const useActiveTab = (conversationId: string): string =>
 /** 该会话当前所有待审批的 fs_write（review 模式下 agent 想改文件，等用户决定）。 */
 export const usePendingWrites = (conversationId: string | null): PendingWrite[] =>
   useAppStore(useShallow((s) => (conversationId ? s.pendingWritesByConv[conversationId] ?? [] : [])))
+
+/** 该会话的未读消息数。0 = 无未读。 */
+export const useUnreadCount = (conversationId: string): number =>
+  useAppStore((s) => s.unreadByConv[conversationId] ?? 0)
 
 /** 累计该会话所有 run 的 token 用量 + 上次 run 的 input prompt 长度（用于 ctx 仪表）+ per-agent 拆分。 */
 export interface ConversationUsageTotal {

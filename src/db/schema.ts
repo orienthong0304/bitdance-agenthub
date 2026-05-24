@@ -62,6 +62,8 @@ export const conversations = sqliteTable(
       .notNull()
       .default(sql`'[]'`),
     archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+    /** 置顶时间戳；NULL 表示未置顶。排序时 pinned 永远在前，相互按 pinnedAt desc。 */
+    pinnedAt: integer('pinned_at'),
 
     /**
      * Agent 通过 fs_write 改文件时的审批策略：

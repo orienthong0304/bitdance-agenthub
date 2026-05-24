@@ -146,6 +146,17 @@ export async function renameConversation(
   return conversation
 }
 
+export async function togglePinConversation(conversationId: string): Promise<ConversationWithMeta> {
+  const { conversation } = await json<{ conversation: ConversationWithMeta }>(
+    fetch(`/api/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ togglePin: true }),
+    }),
+  )
+  return conversation
+}
+
 export async function setFsWriteApprovalMode(
   conversationId: string,
   mode: 'auto' | 'review',
@@ -254,6 +265,21 @@ export async function withdrawMessage(
 export interface EditAndResendResult extends WithdrawResult {
   newMessage: MessageRow
   runIds: string[]
+}
+
+export interface RegenerateResult extends WithdrawResult {
+  triggerMessageId: string
+  runIds: string[]
+}
+
+export async function regenerateLastResponse(conversationId: string): Promise<RegenerateResult> {
+  return json<RegenerateResult>(
+    fetch(`/api/conversations/${conversationId}/regenerate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId }),
+    }),
+  )
 }
 
 export async function editAndResendMessage(

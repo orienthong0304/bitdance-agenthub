@@ -1,7 +1,7 @@
 import { accessSync, constants, mkdirSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 
-import { and, desc, eq, gte, inArray } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import type { ConversationWithMeta } from '@/db/schema'
@@ -118,6 +118,7 @@ export async function createConversation(args: CreateConversationArgs): Promise<
     pinnedMessageIds: [],
     bookmarkedMessageIds: [],
     archived: false,
+    pinnedAt: null,
     fsWriteApprovalMode: 'review',
     createdAt: now,
     updatedAt: now,
@@ -147,8 +148,12 @@ async function withWorkspaceMeta(
 
 // ─── 列出会话 ────────────────────────────────────────────
 export async function listConversations(): Promise<ConversationWithMeta[]> {
+  // pinnedAt desc nulls last + updatedAt desc：置顶在前，相互按 pinnedAt 倒序；未置顶按活跃时间
   const convs = await db.query.conversations.findMany({
-    orderBy: [desc(schema.conversations.updatedAt)],
+    orderBy: [
+      desc(schema.conversations.pinnedAt),
+      desc(schema.conversations.updatedAt),
+    ],
   })
   if (convs.length === 0) return []
 
@@ -169,6 +174,24 @@ export async function listConversations(): Promise<ConversationWithMeta[]> {
       workspaceBoundPath: ws?.boundPath ?? null,
     }
   })
+}
+
+// ─── 置顶 / 取消置顶 ──────────────────────────────────────
+export async function togglePinConversation(
+  conversationId: string,
+): Promise<ConversationWithMeta> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, conversationId),
+  })
+  if (!conv) throw new Error(`Conversation not found: ${conversationId}`)
+
+  const nextPinnedAt = conv.pinnedAt ? null : Date.now()
+  await db
+    .update(schema.conversations)
+    .set({ pinnedAt: nextPinnedAt })
+    .where(eq(schema.conversations.id, conversationId))
+
+  return withWorkspaceMeta({ ...conv, pinnedAt: nextPinnedAt })
 }
 
 // ─── 列出会话消息 ────────────────────────────────────────
@@ -533,6 +556,110 @@ export async function withdrawLatestUserMessage(
 export interface EditAndResendResult extends WithdrawResult {
   newMessage: typeof schema.messages.$inferSelect
   runIds: string[]
+}
+
+// ─── 重新生成最后一次 agent 响应 ──────────────────────────
+/**
+ * 删除最后一条 user 消息之后的所有 agent message + agent_runs + artifact_ref，
+ * 然后以同一条 user 消息为触发，重启 AgentRunner（responders 重新决定）。
+ *
+ * 用 case：用户对最后一个 agent 回答不满意，点「重新生成」让 agent 再答一次。
+ */
+export interface RegenerateResult extends WithdrawResult {
+  triggerMessageId: string
+  runIds: string[]
+}
+export async function regenerateLatestResponse(
+  conversationId: string,
+): Promise<RegenerateResult> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, conversationId),
+  })
+  if (!conv) throw new Error(`Conversation not found: ${conversationId}`)
+
+  // 取最后一条 user message —— 我们要保留它，删它之后的所有
+  const latestUser = await db.query.messages.findFirst({
+    where: and(
+      eq(schema.messages.conversationId, conversationId),
+      eq(schema.messages.role, 'user'),
+    ),
+    orderBy: [desc(schema.messages.createdAt)],
+  })
+  if (!latestUser) throw new Error('No user message to regenerate from')
+
+  // abort 任何还在跑的 run（不一定有）
+  const runsToAbort = await db.query.agentRuns.findMany({
+    where: and(
+      eq(schema.agentRuns.conversationId, conversationId),
+      gt(schema.agentRuns.startedAt, latestUser.createdAt),
+      eq(schema.agentRuns.status, 'running'),
+    ),
+  })
+  for (const r of runsToAbort) AgentRunner.abort(r.id)
+  if (runsToAbort.length > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+
+  // 删除 latestUser 之后的所有 message（保留 latestUser 本身）
+  const messagesToDelete = await db.query.messages.findMany({
+    where: and(
+      eq(schema.messages.conversationId, conversationId),
+      gt(schema.messages.createdAt, latestUser.createdAt),
+    ),
+  })
+  const messageIds = messagesToDelete.map((m) => m.id)
+
+  const artifactIds = new Set<string>()
+  for (const m of messagesToDelete) {
+    for (const p of m.parts) {
+      if (p.type === 'artifact_ref') artifactIds.add(p.artifactId)
+    }
+  }
+
+  const runsToDelete = await db.query.agentRuns.findMany({
+    where: and(
+      eq(schema.agentRuns.conversationId, conversationId),
+      gt(schema.agentRuns.startedAt, latestUser.createdAt),
+    ),
+  })
+  const runIds = runsToDelete.map((r) => r.id)
+
+  db.transaction((tx) => {
+    if (messageIds.length > 0) {
+      tx.delete(schema.messages).where(inArray(schema.messages.id, messageIds)).run()
+    }
+    if (artifactIds.size > 0) {
+      tx.delete(schema.artifacts)
+        .where(inArray(schema.artifacts.id, [...artifactIds]))
+        .run()
+    }
+    if (runIds.length > 0) {
+      tx.delete(schema.agentRuns).where(inArray(schema.agentRuns.id, runIds)).run()
+    }
+  })
+
+  // 重新决定 responders（沿用 sendMessage 的 decideResponders）
+  const agentsInConv = await db.query.agents.findMany({
+    where: (a, { inArray: inArr }) => inArr(a.id, conv.agentIds),
+  })
+  const responders = decideResponders(conv, latestUser.mentionedAgentIds, agentsInConv)
+
+  const newRunIds: string[] = []
+  for (const agentId of responders) {
+    const { runId } = AgentRunner.run({
+      agentId,
+      conversationId,
+      triggerMessageId: latestUser.id,
+    })
+    newRunIds.push(runId)
+  }
+
+  return {
+    deletedMessageIds: messageIds,
+    deletedArtifactIds: [...artifactIds],
+    triggerMessageId: latestUser.id,
+    runIds: newRunIds,
+  }
 }
 
 /**

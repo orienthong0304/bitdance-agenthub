@@ -1,6 +1,6 @@
 'use client'
 
-import { AtSign, CornerUpLeft, Loader2, Pencil, Star, Trash2 } from 'lucide-react'
+import { AtSign, CornerUpLeft, Loader2, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -19,12 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { editAndResendMessage, withdrawMessage } from '@/lib/api'
+import { editAndResendMessage, regenerateLastResponse, withdrawMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { MessageRow } from '@/db/schema'
 import {
   useAppStore,
   useDispatchForMessage,
+  useLatestAgentMessageId,
   useLatestUserMessageId,
 } from '@/stores/app-store'
 
@@ -42,6 +43,7 @@ export function MessageItem({ message }: { message: MessageRow }) {
     message.parentMessageId ? s.messages[message.parentMessageId] : null,
   )
   const latestUserId = useLatestUserMessageId(message.conversationId)
+  const latestAgentId = useLatestAgentMessageId(message.conversationId)
   const removeMessages = useAppStore((s) => s.removeMessages)
   const removeArtifacts = useAppStore((s) => s.removeArtifacts)
   const upsertMessage = useAppStore((s) => s.upsertMessage)
@@ -49,6 +51,7 @@ export function MessageItem({ message }: { message: MessageRow }) {
   const isUser = message.role === 'user'
   const name = isUser ? '我' : agent?.name ?? 'Unknown'
   const isLatestUser = isUser && latestUserId === message.id
+  const isLatestAgent = !isUser && latestAgentId === message.id
 
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -109,6 +112,21 @@ export function MessageItem({ message }: { message: MessageRow }) {
       setEditing(false)
     } catch (err) {
       console.error('[MessageItem] edit failed', err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRegenerate = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const result = await regenerateLastResponse(message.conversationId)
+      removeMessages(message.conversationId, result.deletedMessageIds)
+      if (result.deletedArtifactIds.length > 0) removeArtifacts(result.deletedArtifactIds)
+      // 新 run 的事件会通过 SSE 流回来，store reducer 会插入新 message
+    } catch (err) {
+      console.error('[MessageItem] regenerate failed', err)
     } finally {
       setBusy(false)
     }
@@ -202,6 +220,18 @@ export function MessageItem({ message }: { message: MessageRow }) {
                 <Trash2 className="size-3" />
               </button>
             </>
+          )}
+          {/* 最新一条 agent 消息：重新生成 */}
+          {isLatestAgent && message.status !== 'streaming' && (
+            <button
+              type="button"
+              onClick={() => void handleRegenerate()}
+              disabled={busy}
+              className="opacity-0 transition group-hover:opacity-100 hover:text-foreground disabled:opacity-30"
+              title="重新生成（删除当前回答，重新让 agent 回答最后一条提问）"
+            >
+              <RotateCcw className={cn('size-3', busy && 'animate-spin')} />
+            </button>
           )}
         </div>
 

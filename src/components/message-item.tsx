@@ -117,7 +117,6 @@ export function MessageItem({ message }: { message: MessageRow }) {
       className={cn(
         'group flex items-start gap-3 rounded-lg animate-in fade-in slide-in-from-bottom-1',
         isUser && 'flex-row-reverse',
-        isHighlighted && 'message-glow',
       )}
     >
       {isUser ? (
@@ -205,6 +204,7 @@ export function MessageItem({ message }: { message: MessageRow }) {
             message.status === 'error' && 'border-red-300 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20',
             message.status === 'aborted' && 'border-zinc-300 bg-zinc-50/60 dark:border-zinc-700 dark:bg-zinc-900/40',
             editing && 'w-full max-w-xl',
+            isHighlighted && 'message-glow',
           )}
         >
           {/* 编辑模式：textarea 取代 parts */}

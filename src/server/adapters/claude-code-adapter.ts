@@ -86,7 +86,8 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       },
       tools: { type: 'preset', preset: 'claude_code' },
       includePartialMessages: true,
-      settingSources: [], // 隔离 mode：不读用户 ~/.claude/settings 和外部 CLAUDE.md
+      // 'project' = 只读绑定目录里的 CLAUDE.md（项目级上下文），不读用户全局 ~/.claude 设定（避免污染）
+      settingSources: ['project'],
       permissionMode: 'default', // 自己 canUseTool 接管
       env: buildSdkEnv(input.apiKey, input.apiBaseUrl),
       canUseTool: (toolName, toolInput) =>

@@ -283,6 +283,16 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 }
 
 // ─── 辅助 ────────────────────────────────────────────────
+
+/**
+ * OpenAI SDK 默认 maxRetries=2，对 408 / 429 / >= 500 / APIConnectionError 自动指数退避重试。
+ * 这里显式声明同样的 2 次重试，让 spec 05 §「错误处理」承诺的「网络/速率限制重试」在代码层
+ * 可见且可调（未来按 provider 调整时只动这一个常量）。
+ *
+ * 注意：重试只对「初始连接」生效；stream 一旦开始 emit chunks 就不会再重试。
+ */
+const MAX_API_RETRIES = 2
+
 function buildClient(
   provider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark',
   overrideKey?: string | null,
@@ -294,6 +304,7 @@ function buildClient(
     return new OpenAI({
       apiKey,
       baseURL: DEFAULT_DEEPSEEK_BASE_URL,
+      maxRetries: MAX_API_RETRIES,
     })
   }
   if (provider === 'volcano-ark') {
@@ -302,12 +313,13 @@ function buildClient(
     return new OpenAI({
       apiKey,
       baseURL: DEFAULT_VOLCANO_ARK_BASE_URL,
+      maxRetries: MAX_API_RETRIES,
     })
   }
   if (provider === 'openai') {
     const apiKey = overrideKey || process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error('OPENAI_API_KEY not set and agent has no apiKey')
-    return new OpenAI({ apiKey })
+    return new OpenAI({ apiKey, maxRetries: MAX_API_RETRIES })
   }
   throw new Error(`CustomAgentAdapter does not support provider "${provider}" yet`)
 }

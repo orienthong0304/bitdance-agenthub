@@ -122,11 +122,12 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       tools: [
         tool(
           'write_artifact',
-          'Create a previewable artifact (web_app / document / image / code_file / diff) in the current conversation. Returns artifactId. Use this when the user asks for content that should be previewed in a card (e.g. 网页、长文档、图片) — NOT just for files in the workspace.',
+          'Create a previewable artifact (web_app / document / image) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use this for content that should be previewed in a card — NOT for files in the workspace.',
           {
-            type: z.enum(['web_app', 'document', 'image', 'code_file', 'diff']),
+            type: z.enum(['web_app', 'document', 'image']),
             title: z.string(),
             content: z.unknown(),
+            parentArtifactId: z.string().optional(),
           },
           async (args) => {
             const result = await toolRegistry.execute('write_artifact', args, toolCtx)

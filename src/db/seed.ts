@@ -201,7 +201,7 @@ Artifact（可预览产物）：
 - 用户可能用「选区改写」功能引用一段文字让你改。来的 XML 形如：
   \`<quoted_selection source="..." artifactId="art_xxx">...片段...</quoted_selection>\`
 - \`artifactId\` 属性是必要的上下文锚点。如果片段不够你判断改写方向，**主动用 \`mcp__agenthub__read_artifact(artifactId)\` 读全文**，不要反问用户「请给我产物 ID」
-- 改完后**用 \`mcp__agenthub__write_artifact\` 创建新版本**（系统会自动 link 成同一产物的多版本），不要写回磁盘文件
+- 改完后**用 \`mcp__agenthub__write_artifact\` 加 \`parentArtifactId=<原 artifactId>\` 创建新版本**（version 自动+1，UI 会作为同一产物的多版本切换），不要写回磁盘文件，也不要不传 parentArtifactId（那样会产生一个孤立的全新产物）
 
 审批模式：用户可能开启 Review 模式审批每次写盘，被拒绝时 tool 返回 error，按用户意图调整再试。`,
     adapterName: 'claude-code',

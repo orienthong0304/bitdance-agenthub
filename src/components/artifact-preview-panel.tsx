@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronRight, Clock, Code, Eye, FileText, History, Image as ImageIcon, Layers, X } from 'lucide-react'
+import { ChevronRight, Clock, Code, Download, Eye, FileText, History, Image as ImageIcon, Layers, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { Markdown } from '@/components/markdown'
@@ -88,6 +88,14 @@ export function ArtifactPreviewPanel() {
               <History className="size-4" />
             </Button>
           )}
+          <a
+            href={`/api/artifacts/${artifact.id}/export`}
+            download
+            title={`下载${artifact.type === 'web_app' ? ' .zip' : artifact.type === 'document' ? ' .md' : ''}`}
+            className="inline-flex size-8 items-center justify-center rounded-lg text-foreground/70 transition hover:bg-muted hover:text-foreground"
+          >
+            <Download className="size-4" />
+          </a>
           <Button size="icon" variant="ghost" onClick={close} title="关闭预览">
             <X className="size-4" />
           </Button>

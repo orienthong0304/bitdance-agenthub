@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, FilePenLine, FolderOpen, FolderTree, Layers, MessagesSquare, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, FilePenLine, FolderOpen, FolderTree, Layers, Menu, MessagesSquare, UserPlus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { AddAgentDialog } from '@/components/add-agent-dialog'
@@ -35,6 +35,7 @@ export function ChatPanel() {
   const closeArtifactPreview = useAppStore((s) => s.closeArtifactPreview)
   const closeFile = useAppStore((s) => s.closeFile)
   const setActiveTab = useAppStore((s) => s.setActiveTab)
+  const setMobileSidebarOpen = useAppStore((s) => s.setMobileSidebarOpen)
   const [addOpen, setAddOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(false)
 
@@ -77,6 +78,16 @@ export function ChatPanel() {
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
+          {/* 移动端汉堡按钮：打开 sidebar 抽屉 */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setMobileSidebarOpen(true)}
+            title="打开会话列表"
+            className="md:hidden"
+          >
+            <Menu className="size-4" />
+          </Button>
           <div className="flex shrink-0 -space-x-2">
             {participantAgents.map((a) => (
               <AgentInfoPopover

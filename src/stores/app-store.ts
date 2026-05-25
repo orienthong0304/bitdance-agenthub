@@ -57,6 +57,9 @@ interface AppState {
   // ─── 未读计数（流式响应到达时，非 active 会话 +1；切到该会话清零）
   unreadByConv: Record<string, number>
 
+  // ─── 移动端 sidebar 抽屉开关 ──
+  mobileSidebarOpen: boolean
+
   // ─── 流连接状态 ────────────────────────────────────
   streamConnected: boolean
 
@@ -75,6 +78,8 @@ interface AppState {
   /** 单条 message upsert（编辑后重发场景：服务端写完 user message，前端要自己塞进 store）。 */
   upsertMessage(message: MessageRow): void
   setActiveConversation(id: string | null): void
+
+  setMobileSidebarOpen(open: boolean): void
 
   openArtifactPreview(artifactId: string): void
   closeArtifactPreview(): void
@@ -135,6 +140,7 @@ export const useAppStore = create<AppState>()(
     pendingAttachmentsByConv: {},
     pendingWritesByConv: {},
     unreadByConv: {},
+    mobileSidebarOpen: false,
     highlightedMessageId: null,
     streamConnected: false,
 
@@ -197,6 +203,13 @@ export const useAppStore = create<AppState>()(
         s.activeConversationId = id
         // 切到该会话即视为已读
         if (id) delete s.unreadByConv[id]
+        // 切会话时自动收起移动 sidebar
+        if (id) s.mobileSidebarOpen = false
+      }),
+
+    setMobileSidebarOpen: (open) =>
+      set((s) => {
+        s.mobileSidebarOpen = open
       }),
 
     openArtifactPreview: (artifactId) =>

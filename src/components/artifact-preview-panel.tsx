@@ -1,12 +1,13 @@
 'use client'
 
-import { ChevronRight, Code, Eye, FileText, Image as ImageIcon, Layers, X } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronRight, Clock, Code, Eye, FileText, History, Image as ImageIcon, Layers, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { Markdown } from '@/components/markdown'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ArtifactRow } from '@/db/schema'
+import { fetchArtifactVersions } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { ArtifactContent } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -15,16 +16,56 @@ import { useAppStore } from '@/stores/app-store'
  * ArtifactPreviewPanel — 右侧滑入的产物预览面板。
  *
  * 由 store.previewArtifactId 控制显隐。按 artifact.type 分发到不同 view。
+ * 顶部支持多版本切换：从同一个 root 派生的所有 artifact 通过 /versions API 查回。
  */
 export function ArtifactPreviewPanel() {
   const id = useAppStore((s) => s.previewArtifactId)
   const artifact = useAppStore((s) => (id ? s.artifacts[id] : null))
+  const upsertArtifact = useAppStore((s) => s.upsertArtifact)
   const close = useAppStore((s) => s.closeArtifactPreview)
+  const openPreview = useAppStore((s) => s.openArtifactPreview)
+
+  const [versions, setVersions] = useState<ArtifactRow[] | null>(null)
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [showVersions, setShowVersions] = useState(false)
+
+  // 切到新 artifact 时拉它的版本链
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    setVersionsLoading(true)
+    fetchArtifactVersions(id)
+      .then((list) => {
+        if (cancelled) return
+        setVersions(list)
+        // 把新发现的兄弟版本灌到 store，方便下次切换不重拉
+        for (const v of list) upsertArtifact(v)
+      })
+      .catch((err) => {
+        if (!cancelled) console.warn('[ArtifactPreviewPanel] versions fetch failed', err)
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, upsertArtifact])
+
+  const switchVersion = useCallback(
+    (targetId: string) => {
+      if (targetId !== id) openPreview(targetId)
+    },
+    [id, openPreview],
+  )
 
   if (!id || !artifact) return null
 
+  const versionCount = versions?.length ?? 0
+  const hasMultiple = versionCount > 1
+
   return (
-    <aside className="flex w-1/2 min-w-[420px] shrink-0 flex-col border-l bg-card">
+    <aside className="flex w-1/2 min-w-[420px] shrink-0 flex-col border-l bg-card max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
       <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <TypeIcon type={artifact.type} />
@@ -32,13 +73,67 @@ export function ArtifactPreviewPanel() {
             <div className="truncate text-sm font-medium">{artifact.title}</div>
             <div className="text-xs text-muted-foreground">
               {artifact.type} · v{artifact.version}
+              {hasMultiple && ` / ${versionCount}`}
             </div>
           </div>
         </div>
-        <Button size="icon" variant="ghost" onClick={close} title="关闭预览">
-          <X className="size-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {hasMultiple && (
+            <Button
+              size="icon"
+              variant={showVersions ? 'default' : 'ghost'}
+              onClick={() => setShowVersions((v) => !v)}
+              title={`版本历史 (${versionCount} 个)`}
+            >
+              <History className="size-4" />
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" onClick={close} title="关闭预览">
+            <X className="size-4" />
+          </Button>
+        </div>
       </header>
+
+      {/* 版本切换条：展开时显示所有版本，点击切换 */}
+      {showVersions && versions && versions.length > 0 && (
+        <div className="shrink-0 border-b bg-muted/20 px-3 py-2">
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            版本历史
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {versions.map((v) => {
+              const isCurrent = v.id === id
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => switchVersion(v.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition',
+                    isCurrent
+                      ? 'border-primary bg-primary/10 text-foreground'
+                      : 'border-transparent hover:border-foreground/20 hover:bg-accent',
+                  )}
+                  title={`v${v.version} · ${new Date(v.createdAt).toLocaleString('zh-CN')}`}
+                >
+                  <span className="font-mono">v{v.version}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <Clock className="size-2.5" />
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {new Date(v.createdAt).toLocaleTimeString('zh-CN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {versionsLoading && (
+            <div className="mt-1 text-[10px] text-muted-foreground">加载中…</div>
+          )}
+        </div>
+      )}
 
       <ArtifactView artifact={artifact} />
     </aside>

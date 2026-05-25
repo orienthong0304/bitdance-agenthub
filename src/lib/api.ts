@@ -394,6 +394,13 @@ export async function fetchArtifact(artifactId: string): Promise<ArtifactRow> {
   return artifact
 }
 
+export async function fetchArtifactVersions(artifactId: string): Promise<ArtifactRow[]> {
+  const { versions } = await json<{ versions: ArtifactRow[] }>(
+    fetch(`/api/artifacts/${artifactId}/versions`),
+  )
+  return versions
+}
+
 export async function deleteArtifact(artifactId: string): Promise<void> {
   await json<{ ok: true }>(
     fetch(`/api/artifacts/${artifactId}`, { method: 'DELETE' }),

@@ -34,6 +34,8 @@ import { useAppStore, useConversationList, useUnreadCount } from '@/stores/app-s
 type Mode = 'conversations' | 'artifacts' | 'agents' | 'analytics'
 
 export function Sidebar() {
+  const mobileOpen = useAppStore((s) => s.mobileSidebarOpen)
+  const setMobileSidebarOpen = useAppStore((s) => s.setMobileSidebarOpen)
   const conversations = useConversationList()
   const activeId = useAppStore((s) => s.activeConversationId)
   const setActive = useAppStore((s) => s.setActiveConversation)
@@ -88,12 +90,23 @@ export function Sidebar() {
   }
 
   return (
-    <aside
-      className={cn(
-        'flex shrink-0 flex-col overflow-hidden border-r bg-card transition-[width] duration-200',
-        collapsed ? 'w-14' : 'w-72',
+    <>
+      {/* 移动端遮罩 —— sidebar 抽屉打开时点击关闭 */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
       )}
-    >
+      <aside
+        className={cn(
+          'flex shrink-0 flex-col overflow-hidden border-r bg-card transition-[width,transform] duration-200',
+          collapsed ? 'w-14' : 'w-72',
+          // 移动端：固定定位抽屉，默认 -translate-x-full 隐藏；打开时滑入
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-72',
+          mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
+        )}
+      >
       {/* Header */}
       <div
         className={cn(
@@ -301,6 +314,7 @@ export function Sidebar() {
         </DialogContent>
       </Dialog>
     </aside>
+    </>
   )
 }
 

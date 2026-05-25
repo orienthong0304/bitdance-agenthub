@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
 import type { AgentRunRow, AgentRow, ArtifactRow, AttachmentRow, ConversationRow, ConversationWithMeta, MessageRow } from '@/db/schema'
-import type { DispatchPlanItem, MessagePart, PendingWrite, StreamEvent } from '@/shared/types'
+import type { DispatchPlanItem, MessagePart, PendingQuestion, PendingWrite, StreamEvent } from '@/shared/types'
 
 enableMapSet()
 
@@ -64,6 +64,9 @@ interface AppState {
   // ─── Agent fs_write 审批等待队列（按 conversationId 分桶）─
   pendingWritesByConv: Record<string, PendingWrite[]>
 
+  // ─── Agent ask_user 结构化问答等待队列（按 conversationId 分桶）─
+  pendingQuestionsByConv: Record<string, PendingQuestion[]>
+
   // ─── 未读计数（流式响应到达时，非 active 会话 +1；切到该会话清零）
   unreadByConv: Record<string, number>
 
@@ -117,6 +120,8 @@ interface AppState {
 
   setPendingWritesForConversation(conversationId: string, list: PendingWrite[]): void
 
+  setPendingQuestionsForConversation(conversationId: string, list: PendingQuestion[]): void
+
   /** 高亮指定消息 1.5 秒（点击「引用」预览时的跳转反馈） */
   highlightedMessageId: string | null
   highlightMessage(messageId: string): void
@@ -151,6 +156,7 @@ export const useAppStore = create<AppState>()(
     replyTargetByConv: {},
     pendingAttachmentsByConv: {},
     pendingWritesByConv: {},
+    pendingQuestionsByConv: {},
     unreadByConv: {},
     mobileSidebarOpen: false,
     pendingQuoteForInput: null,
@@ -350,6 +356,12 @@ export const useAppStore = create<AppState>()(
       set((s) => {
         if (list.length === 0) delete s.pendingWritesByConv[conversationId]
         else s.pendingWritesByConv[conversationId] = list
+      }),
+
+    setPendingQuestionsForConversation: (conversationId, list) =>
+      set((s) => {
+        if (list.length === 0) delete s.pendingQuestionsByConv[conversationId]
+        else s.pendingQuestionsByConv[conversationId] = list
       }),
 
     highlightMessage: (messageId) => {
@@ -619,6 +631,22 @@ export const useAppStore = create<AppState>()(
             return
           }
 
+          case 'ask_user.pending': {
+            const list = s.pendingQuestionsByConv[event.conversationId] ?? []
+            if (list.some((q) => q.id === event.pendingQuestion.id)) return
+            s.pendingQuestionsByConv[event.conversationId] = [...list, event.pendingQuestion]
+            return
+          }
+
+          case 'ask_user.resolved': {
+            const list = s.pendingQuestionsByConv[event.conversationId]
+            if (!list) return
+            const next = list.filter((q) => q.id !== event.pendingId)
+            if (next.length === 0) delete s.pendingQuestionsByConv[event.conversationId]
+            else s.pendingQuestionsByConv[event.conversationId] = next
+            return
+          }
+
           default:
             return
         }
@@ -713,6 +741,14 @@ export const useActiveTab = (conversationId: string): string =>
 /** 该会话当前所有待审批的 fs_write（review 模式下 agent 想改文件，等用户决定）。 */
 export const usePendingWrites = (conversationId: string | null): PendingWrite[] =>
   useAppStore(useShallow((s) => (conversationId ? s.pendingWritesByConv[conversationId] ?? [] : [])))
+
+/** 该会话当前所有待回答的 ask_user（agent 通过结构化问答让用户选）。 */
+export const usePendingQuestions = (conversationId: string | null): PendingQuestion[] =>
+  useAppStore(
+    useShallow((s) =>
+      conversationId ? s.pendingQuestionsByConv[conversationId] ?? [] : [],
+    ),
+  )
 
 /** 该会话的未读消息数。0 = 无未读。 */
 export const useUnreadCount = (conversationId: string): number =>

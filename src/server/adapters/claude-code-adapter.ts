@@ -169,6 +169,38 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
             }
           },
         ),
+        tool(
+          'ask_user',
+          'Ask the user one or more structured multiple-choice questions with 2-4 options. Use only when there is a clear set of choices — for open-ended questions, just ask in text. Returns answers keyed by question text.',
+          {
+            questions: z.array(
+              z.object({
+                question: z.string(),
+                header: z.string(),
+                multiSelect: z.boolean().optional(),
+                options: z.array(
+                  z.object({
+                    label: z.string(),
+                    description: z.string().optional(),
+                    preview: z.string().optional(),
+                  }),
+                ),
+              }),
+            ),
+          },
+          async (args) => {
+            const result = await toolRegistry.execute('ask_user', args, toolCtx)
+            if (!result.ok) {
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
+                isError: true,
+              }
+            }
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify(result.value) }],
+            }
+          },
+        ),
       ],
     })
 
@@ -186,8 +218,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
         append: input.systemPrompt,
       },
       tools: { type: 'preset', preset: 'claude_code' },
-      // AskUserQuestion 是 CLI 端的交互式选项问答，我们没渲染选项 UI；
-      // 禁用后 agent 会自动 fallback 到在消息文本里直接问，效果一样
+      // 禁用 SDK 内置 AskUserQuestion —— 我们用统一的 mcp__agenthub__ask_user 提供等价 UI
       disallowedTools: ['AskUserQuestion'],
       mcpServers: { agenthub: agenthubMcpServer },
       includePartialMessages: true,

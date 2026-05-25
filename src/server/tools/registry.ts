@@ -1,3 +1,4 @@
+import { askUserTool } from './ask-user'
 import { bashTool } from './bash'
 import { fsReadTool } from './fs-read'
 import { fsWriteTool } from './fs-write'
@@ -63,6 +64,7 @@ function buildRegistry(): ToolRegistry {
   reg.register(fsReadTool)
   reg.register(fsWriteTool)
   reg.register(bashTool)
+  reg.register(askUserTool)
   return reg
 }
 

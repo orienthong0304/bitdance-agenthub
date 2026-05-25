@@ -107,6 +107,41 @@ export interface PendingWrite {
   createdAt: number
 }
 
+/**
+ * Agent 调 ask_user 工具想结构化问用户问题；前端弹 dialog 让用户选项，
+ * 选完后通过 attachResolver 唤醒 await，工具 handler 返回 answers。
+ * Schema 对齐 Anthropic SDK 的 AskUserQuestion（1-4 questions × 2-4 options），
+ * 让 CustomAgent / ClaudeCodeAdapter 共用同一 UI。
+ */
+export interface AskUserOption {
+  label: string
+  description?: string
+  /** 可选的预览内容（mockup / code snippet 等），UI 显示在右侧或下方 */
+  preview?: string
+}
+export interface AskUserQuestionItem {
+  /** 完整问题文本 */
+  question: string
+  /** 短标签（chip） */
+  header: string
+  options: AskUserOption[]
+  /** 默认 false。true 时允许多选；答案在 answers 里逗号分隔。 */
+  multiSelect?: boolean
+}
+export interface PendingQuestion {
+  id: string                  // pq_<nanoid>
+  conversationId: string
+  agentId: string
+  runId: string
+  questions: AskUserQuestionItem[]
+  createdAt: number
+}
+/** 单条问题的答案：选中的 label 列表 + 可选自由文本（点「其他」时填）。 */
+export interface AskUserAnswer {
+  selectedLabels: string[]
+  freeformNote?: string
+}
+
 // ─── StreamEvent 联合 ─────────────────────────────────────
 interface BaseEvent {
   conversationId: string
@@ -133,6 +168,8 @@ export type StreamEvent = BaseEvent &
     | { type: 'dispatch.end'; childRunId: string; taskId: string; status: 'complete' | 'failed' }
     | { type: 'fs_write.pending'; pendingWrite: PendingWrite }
     | { type: 'fs_write.resolved'; pendingId: string; applied: boolean }
+    | { type: 'ask_user.pending'; pendingQuestion: PendingQuestion }
+    | { type: 'ask_user.resolved'; pendingId: string; answered: boolean }
     | { type: 'heartbeat' }
   )
 

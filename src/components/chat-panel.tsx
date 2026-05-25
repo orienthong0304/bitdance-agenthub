@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { AddAgentDialog } from '@/components/add-agent-dialog'
 import { AgentInfoPopover } from '@/components/agent-info-popover'
+import { AskUserQuestionDialog } from '@/components/ask-user-question-dialog'
 import { ConversationOutline } from '@/components/conversation-outline'
 import { FileLibraryDialog } from '@/components/file-library-dialog'
 import { FileTab } from '@/components/file-tab'
@@ -234,6 +235,8 @@ export function ChatPanel() {
         onOpenChange={setFilesOpen}
         conversationId={conv.id}
       />
+
+      <AskUserQuestionDialog conversationId={conv.id} />
     </main>
   )
 }

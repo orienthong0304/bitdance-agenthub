@@ -6,7 +6,7 @@ import type {
   ConversationWithMeta,
   MessageRow,
 } from '@/db/schema'
-import type { PendingWrite } from '@/shared/types'
+import type { AskUserAnswer, PendingQuestion, PendingWrite } from '@/shared/types'
 
 export interface ArtifactListItem {
   id: string
@@ -201,6 +201,28 @@ export async function rejectPendingWrite(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'reject' }),
+    }),
+  )
+}
+
+// ─── Pending questions (ask_user) ───────────────
+export async function fetchPendingQuestions(conversationId: string): Promise<PendingQuestion[]> {
+  const { pendingQuestions } = await json<{ pendingQuestions: PendingQuestion[] }>(
+    fetch(`/api/conversations/${conversationId}/pending-questions`),
+  )
+  return pendingQuestions
+}
+
+export async function submitQuestionAnswers(
+  conversationId: string,
+  questionId: string,
+  answers: Record<string, AskUserAnswer>,
+): Promise<void> {
+  await json<{ ok: true }>(
+    fetch(`/api/conversations/${conversationId}/pending-questions/${questionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers }),
     }),
   )
 }

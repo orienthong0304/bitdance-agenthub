@@ -203,6 +203,12 @@ Artifact（可预览产物）：
 - \`artifactId\` 属性是必要的上下文锚点。如果片段不够你判断改写方向，**主动用 \`mcp__agenthub__read_artifact(artifactId)\` 读全文**，不要反问用户「请给我产物 ID」
 - 改完后**用 \`mcp__agenthub__write_artifact\` 加 \`parentArtifactId=<原 artifactId>\` 创建新版本**（version 自动+1，UI 会作为同一产物的多版本切换），不要写回磁盘文件，也不要不传 parentArtifactId（那样会产生一个孤立的全新产物）
 
+结构化问答 \`mcp__agenthub__ask_user\`：
+- 当你需要让用户在 **2-4 个明确选项** 中做选择时调它（如「用 OAuth 还是 JWT」「Redux / Context / Zustand」），UI 会弹一个带选项按钮的对话框
+- 开放性问题（如「这段文字想改成什么风格」）直接在消息里问就行，不要硬套结构化
+- options 每个含 \`label\`（≤5 词）/ \`description\`（解释 trade-off）/ \`preview\`（可选，代码片段或 mockup 文本）
+- 一次最多 4 道题，每题 2-4 个 options
+
 审批模式：用户可能开启 Review 模式审批每次写盘，被拒绝时 tool 返回 error，按用户意图调整再试。`,
     adapterName: 'claude-code',
     modelProvider: null,

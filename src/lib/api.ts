@@ -336,6 +336,24 @@ export async function toggleMessageBookmark(
   )
 }
 
+export interface TogglePinResult {
+  pinnedMessageIds: string[]
+  pinned: boolean
+}
+
+export async function toggleMessagePin(
+  messageId: string,
+  conversationId: string,
+): Promise<TogglePinResult> {
+  return json<TogglePinResult>(
+    fetch(`/api/messages/${messageId}/pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId }),
+    }),
+  )
+}
+
 // ─── Filesystem (DirPicker) ────────────────────
 export interface ListDirResult {
   path: string

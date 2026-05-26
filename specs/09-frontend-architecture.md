@@ -133,6 +133,7 @@ replaceLocalMessageId(tempId, realId)          // 把 messages 表和 messageIds
 | Hook | 返回 |
 |---|---|
 | `useMessagesForConversation(convId)` | 该会话的 `MessageRow[]`，按时间序 |
+| `usePinnedMessagesForConversation(convId)` | 该会话 `pinnedMessageIds` 顺序的 `MessageRow[]`（pin 时间序）；驱动 `PinnedMessagesBar` |
 | `useActiveConversation()` | 当前会话或 null |
 | `useConversationList()` | 全部会话按 `updatedAt` 降序 |
 | `useAgentList()` | 全部 agent |
@@ -196,7 +197,7 @@ app/page.tsx
     │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分）
     │   ├── tab bar（openFiles 非空时显示）: 「对话」+ 每个打开的文件 / diff tab
     │   ├── 主体（按 activeTab 切换）:
-    │   │   ├── activeTab === 'chat': <MessageList> + <PendingWritesPanel> + <MessageInput>
+    │   │   ├── activeTab === 'chat': <PinnedMessagesBar> + <MessageList> + <PendingWritesPanel> + <MessageInput>
     │   │   │   ├── <MessageItem>     ── 每条消息
     │   │   │   │   ├── <AgentInfoPopover />
     │   │   │   │   ├── <QuotedMessage />     ── 引用预览

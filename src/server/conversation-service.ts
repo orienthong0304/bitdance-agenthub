@@ -5,6 +5,7 @@ import { and, desc, eq, gt, gte, inArray } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import type { ConversationWithMeta } from '@/db/schema'
+import { PIN_LIMIT_PER_CONVERSATION } from '@/shared/constants'
 import type { MessagePart } from '@/shared/types'
 
 import { AgentRunner } from './agent-runner'
@@ -309,6 +310,47 @@ export async function toggleBookmarkedMessage(
     .where(eq(schema.conversations.id, conversationId))
 
   return { bookmarkedMessageIds: next, bookmarked: !isBookmarked }
+}
+
+// ─── Pin 消息（注入 LLM 长期上下文）────────────────────────
+/**
+ * Toggle 一条消息在 conversation.pinnedMessageIds 中的存在。
+ * 被 pin 的消息会在 agent-runner 拼 system prompt 时注入 <pinned_messages> 块（见 agent-runner.ts:819）。
+ *
+ * 与 toggleBookmarkedMessage 的差异：
+ *  - 这里有 PIN_LIMIT_PER_CONVERSATION 上限（书签是纯 UI 没上限）
+ *  - 不更新 conversations.updated_at（pin 不算「会话活跃」，不应顶到 sidebar 列表前）
+ */
+export async function togglePinnedMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<{ pinnedMessageIds: string[]; pinned: boolean }> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, conversationId),
+  })
+  if (!conv) throw new Error(`Conversation not found: ${conversationId}`)
+
+  const msg = await db.query.messages.findFirst({
+    where: and(
+      eq(schema.messages.id, messageId),
+      eq(schema.messages.conversationId, conversationId),
+    ),
+  })
+  if (!msg) throw new Error(`Message not found in conversation: ${messageId}`)
+
+  const current = conv.pinnedMessageIds ?? []
+  const isPinned = current.includes(messageId)
+  if (!isPinned && current.length >= PIN_LIMIT_PER_CONVERSATION) {
+    throw new Error('PIN_LIMIT_EXCEEDED')
+  }
+  const next = isPinned ? current.filter((id) => id !== messageId) : [...current, messageId]
+
+  await db
+    .update(schema.conversations)
+    .set({ pinnedMessageIds: next })
+    .where(eq(schema.conversations.id, conversationId))
+
+  return { pinnedMessageIds: next, pinned: !isPinned }
 }
 
 // ─── 添加 Agent 到现有会话 ──────────────────────────────

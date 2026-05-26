@@ -1,6 +1,6 @@
 'use client'
 
-import { AtSign, CornerUpLeft, Loader2, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react'
+import { AtSign, CornerUpLeft, Loader2, Pencil, Pin, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -19,9 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { editAndResendMessage, regenerateLastResponse, withdrawMessage } from '@/lib/api'
+import { editAndResendMessage, regenerateLastResponse, toggleMessagePin, withdrawMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { MessageRow } from '@/db/schema'
+import { PIN_LIMIT_PER_CONVERSATION } from '@/shared/constants'
 import {
   useAppStore,
   useDispatchForMessage,
@@ -39,6 +40,13 @@ export function MessageItem({ message }: { message: MessageRow }) {
   const isBookmarked = useAppStore((s) =>
     s.conversations[message.conversationId]?.bookmarkedMessageIds?.includes(message.id) ?? false,
   )
+  const isPinned = useAppStore((s) =>
+    s.conversations[message.conversationId]?.pinnedMessageIds?.includes(message.id) ?? false,
+  )
+  const pinnedCount = useAppStore(
+    (s) => s.conversations[message.conversationId]?.pinnedMessageIds?.length ?? 0,
+  )
+  const setPinnedMessageIds = useAppStore((s) => s.setPinnedMessageIds)
   const parentMessage = useAppStore((s) =>
     message.parentMessageId ? s.messages[message.parentMessageId] : null,
   )
@@ -132,6 +140,20 @@ export function MessageItem({ message }: { message: MessageRow }) {
     }
   }
 
+  const handleTogglePin = async () => {
+    // 未 pin 且已达上限 → 按钮 disabled 拦截，这里不会触发；服务端兜底
+    if (busy) return
+    setBusy(true)
+    try {
+      const result = await toggleMessagePin(message.id, message.conversationId)
+      setPinnedMessageIds(message.conversationId, result.pinnedMessageIds)
+    } catch (err) {
+      console.error('[MessageItem] toggle pin failed', err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div
       id={`message-${message.id}`}
@@ -170,6 +192,11 @@ export function MessageItem({ message }: { message: MessageRow }) {
               <Star className="size-3 fill-amber-400" />
             </span>
           )}
+          {isPinned && (
+            <span className="text-primary" title="已 pin（注入 LLM 长期上下文）">
+              <Pin className="size-3 fill-primary" />
+            </span>
+          )}
           {message.status === 'streaming' && (
             <Loader2 className="size-3 animate-spin text-muted-foreground/70" />
           )}
@@ -196,6 +223,29 @@ export function MessageItem({ message }: { message: MessageRow }) {
               title="引用回复"
             >
               <CornerUpLeft className="size-3" />
+            </button>
+          )}
+          {/* Pin / Unpin 按钮 — hover 显示；达上限时未 pin 按钮 disabled */}
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => void handleTogglePin()}
+              disabled={busy || (!isPinned && pinnedCount >= PIN_LIMIT_PER_CONVERSATION)}
+              className={cn(
+                'transition disabled:opacity-30',
+                isPinned
+                  ? 'text-primary opacity-100 hover:text-primary/80'
+                  : 'opacity-0 group-hover:opacity-100 hover:text-foreground',
+              )}
+              title={
+                isPinned
+                  ? '取消 pin（不再注入 LLM 上下文）'
+                  : pinnedCount >= PIN_LIMIT_PER_CONVERSATION
+                    ? `已达 ${PIN_LIMIT_PER_CONVERSATION} 条上限，请先取消其它 pin`
+                    : 'Pin 此消息（注入 LLM 长期上下文）'
+              }
+            >
+              <Pin className={cn('size-3', isPinned && 'fill-primary')} />
             </button>
           )}
           {/* 最新一条 user 消息：编辑 / 撤回 */}

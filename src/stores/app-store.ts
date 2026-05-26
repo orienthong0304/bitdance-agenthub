@@ -111,6 +111,8 @@ interface AppState {
 
   setBookmarkedMessageIds(conversationId: string, ids: string[]): void
 
+  setPinnedMessageIds(conversationId: string, ids: string[]): void
+
   /** 批量删除消息（撤回 / 编辑场景）。同时清理 messageIdsByConv 对应桶 + replyTarget。 */
   removeMessages(conversationId: string, messageIds: string[]): void
 
@@ -329,6 +331,12 @@ export const useAppStore = create<AppState>()(
       set((s) => {
         const conv = s.conversations[conversationId]
         if (conv) conv.bookmarkedMessageIds = ids
+      }),
+
+    setPinnedMessageIds: (conversationId, ids) =>
+      set((s) => {
+        const conv = s.conversations[conversationId]
+        if (conv) conv.pinnedMessageIds = ids
       }),
 
     addPendingAttachment: (conversationId, attachment) =>
@@ -664,6 +672,15 @@ export const useMessagesForConversation = (conversationId: string) =>
     useShallow((s) =>
       (s.messageIdsByConv[conversationId] ?? []).map((id) => s.messages[id]).filter(Boolean),
     ),
+  )
+
+/** 当前会话 pin 的消息（按 pinnedMessageIds 数组顺序，即用户 pin 的时间顺序）。 */
+export const usePinnedMessagesForConversation = (conversationId: string) =>
+  useAppStore(
+    useShallow((s) => {
+      const ids = s.conversations[conversationId]?.pinnedMessageIds ?? []
+      return ids.map((id) => s.messages[id]).filter(Boolean)
+    }),
   )
 
 export const useActiveConversation = () =>

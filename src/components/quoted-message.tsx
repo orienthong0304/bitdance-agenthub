@@ -28,7 +28,7 @@ export function QuotedMessage({
   const agentsMap = useAppStore((s) => s.agents)
   const agent = message.agentId ? agentsMap[message.agentId] : null
 
-  const summary = extractSummary(message.parts)
+  const summary = extractMessageSummary(message.parts)
   const speakerName = message.role === 'user' ? '用户' : agent?.name ?? 'Unknown'
 
   return (
@@ -66,7 +66,8 @@ export function QuotedMessage({
   )
 }
 
-function extractSummary(parts: MessagePart[]): string {
+/** 提取消息的单行预览（≤80 字符），用于 QuotedMessage / PinnedMessagesBar 等。 */
+export function extractMessageSummary(parts: MessagePart[]): string {
   for (const p of parts) {
     if (p.type === 'text' && p.content) return p.content.slice(0, 80)
   }

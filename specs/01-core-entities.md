@@ -76,6 +76,7 @@ interface Conversation {
 - 单聊 `agentIds.length === 1`，群聊 `>= 2`
 - 群聊里 `isOrchestrator: true` 的 Agent 最多 1 个
 - 创建 Conversation 时自动创建关联的 Workspace（1:1）
+- `pinnedMessageIds` 上限 **5 条**（常量 `PIN_LIMIT_PER_CONVERSATION` 定义在 `src/shared/constants.ts`，service 在超出时抛 `PIN_LIMIT_EXCEEDED`）。被 pin 的消息由 `agent-runner` 在拼 system prompt 时注入 `<pinned_messages>` 块。前端 UI 入口见 spec 09 `PinnedMessagesBar` 与 `MessageItem` 的 📌 按钮
 
 ---
 

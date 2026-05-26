@@ -71,6 +71,7 @@ INDEX idx_conv_updated ON (updated_at)
 - `mode='single'` 时 `agent_ids.length === 1`，`group` 时 `>= 2`
 - 群聊里 `is_orchestrator=1` 的 agent 最多 1 个（service 层 enforce）
 - `fs_write_approval_mode`：详见 Spec 07「fs_write 审批模式」。人手编辑文件不走审批，只控制 agent
+- `pinned_message_ids` 上限 5（`PIN_LIMIT_PER_CONVERSATION`，service 层 enforce）；toggle 时**不**更新 `updated_at`（pin 不算「会话活跃」）。UI 入口见 Spec 09
 
 **索引说明**：`idx_conv_updated` 用于侧边栏「按最近活跃排序」列表。
 

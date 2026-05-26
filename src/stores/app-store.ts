@@ -504,16 +504,20 @@ export const useAppStore = create<AppState>()(
             if (!s.messageIdsByConv[event.conversationId].includes(event.messageId)) {
               s.messageIdsByConv[event.conversationId].push(event.messageId)
             }
-            // 非 active 会话有新 agent 消息 → 未读 +1
-            if (s.activeConversationId !== event.conversationId) {
-              s.unreadByConv[event.conversationId] = (s.unreadByConv[event.conversationId] ?? 0) + 1
-            }
+            // 未读 +1 不在 message.start 触发：claude-code-adapter 整个 run 只发一次 message.start
+            // 且发生时用户通常仍在该会话（被 activeConversationId === conv 抑制），导致后续切走再也不计未读。
+            // 改在 message.end 触发，两个 adapter 都能可靠 +1，且每个 msg 仅 +1 一次。
             return
           }
 
           case 'message.end': {
             const msg = s.messages[event.messageId]
             if (msg) msg.status = 'complete'
+            // agent 消息完成时 +1 未读；用户当前在该会话则不计入。
+            if (s.activeConversationId !== event.conversationId) {
+              s.unreadByConv[event.conversationId] =
+                (s.unreadByConv[event.conversationId] ?? 0) + 1
+            }
             return
           }
 

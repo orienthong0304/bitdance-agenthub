@@ -85,7 +85,7 @@ interface AppState {
 | `run.end` | 更新 run 的 `status` / `finishedAt` / `error` |
 | `run.usage` | 更新 run 的 `usage` 字段（input/output/cache tokens）；派生 hook `useConversationUsageTotal` 据此聚合 |
 | `message.start` | 在 `messages[messageId]` 创建空 parts 的 streaming agent 消息，挂入 `messageIdsByConv` |
-| `message.end` | `messages[messageId].status = 'complete'` |
+| `message.end` | `messages[messageId].status = 'complete'`；若用户不在该会话（`activeConversationId !== conversationId`）则 `unreadByConv[conversationId] +1`。**不在 message.start 计未读**——claude-code-adapter 整 run 只发一次 message.start，那时用户通常仍在该会话被抑制，后续切走再无 +1 机会 |
 | `part.start` | `messages[messageId].parts[partIndex] = event.part`（按 index 插入，不 push） |
 | `part.delta` | 按 delta type 追加：`text.append` / `thinking.append` / `code.append`（其它类型 part 不增量） |
 | `part.end` | 无变更（前端用 `message.end` 收尾，不需要 part 级别 end） |

@@ -20,6 +20,22 @@ import { isPathSafe } from '@/server/workspace-utils'
 
 const DRIVES_SENTINEL = '__drives__'
 
+// Windows 已知隐藏 / 系统目录名（大小写不敏感）。Node fs.statSync 不暴露 hidden attribute；
+// 引入第三方包代价大，命名硬编码已覆盖 95% 噪音目录，详见 specs/11-platform.md。
+const WINDOWS_HIDDEN_NAMES = new Set(
+  [
+    'AppData',
+    '$Recycle.Bin',
+    'System Volume Information',
+    'Recovery',
+    'PerfLogs',
+    'Config.Msi',
+    'MSOCache',
+    'OneDriveTemp',
+    'ProgramData',
+  ].map((n) => n.toLowerCase()),
+)
+
 function listAvailableDrives(): string[] {
   if (process.platform !== 'win32') return ['/']
   const drives: string[] = []
@@ -81,8 +97,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Cannot read directory: ${msg}` }, { status: 403 })
   }
 
+  const isWin = process.platform === 'win32'
   const entries = raw
     .filter((e) => !e.name.startsWith('.'))
+    .filter((e) => !isWin || !WINDOWS_HIDDEN_NAMES.has(e.name.toLowerCase()))
     .map((e) => ({ name: e.name, isDirectory: e.isDirectory() }))
     .filter((e) => e.isDirectory) // 只暴露目录
     .sort((a, b) => a.name.localeCompare(b.name))

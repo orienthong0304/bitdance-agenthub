@@ -361,6 +361,13 @@ export interface ListDirResult {
   entries: Array<{ name: string; isDirectory: boolean; path?: string }>
 }
 
+export type ServerPlatform = 'posix' | 'windows'
+
+export async function getServerPlatform(): Promise<ServerPlatform> {
+  const res = await json<{ platform: ServerPlatform }>(fetch('/api/platform'))
+  return res.platform
+}
+
 export async function listDirectory(targetPath?: string): Promise<ListDirResult> {
   const qs = targetPath ? `?path=${encodeURIComponent(targetPath)}` : ''
   return json<ListDirResult>(fetch(`/api/fs/listdir${qs}`))

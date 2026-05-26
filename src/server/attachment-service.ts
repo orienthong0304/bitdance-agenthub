@@ -6,6 +6,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { db, schema } from '@/db/client'
 import type { AttachmentRow } from '@/db/schema'
 import { newAttachmentId } from '@/server/ids'
+import { isPathWithin } from '@/server/workspace-utils'
 
 /**
  * 会话文件库。
@@ -42,7 +43,7 @@ export async function uploadAttachment(args: UploadFileArgs): Promise<Attachment
 
   // 沙箱检查：解析后必须仍在 workspace 内
   const resolved = path.resolve(absPath)
-  if (!resolved.startsWith(path.resolve(workspace.rootPath) + path.sep)) {
+  if (!isPathWithin(resolved, workspace.rootPath)) {
     throw new Error('Path traversal detected')
   }
 
@@ -90,7 +91,7 @@ export async function getAttachmentAbsolutePath(attachmentId: string): Promise<s
   if (!workspace) return null
   const abs = path.join(workspace.rootPath, row.filePath)
   const resolved = path.resolve(abs)
-  if (!resolved.startsWith(path.resolve(workspace.rootPath) + path.sep)) return null
+  if (!isPathWithin(resolved, workspace.rootPath)) return null
   return existsSync(resolved) ? resolved : null
 }
 

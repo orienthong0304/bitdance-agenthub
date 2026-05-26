@@ -53,7 +53,14 @@ export async function createConversation(args: CreateConversationArgs): Promise<
   let workspaceMode: 'sandbox' | 'local' = 'sandbox'
   let resolvedBoundPath: string | null = null
   if (args.boundPath && args.boundPath.trim()) {
-    const candidate = path.resolve(args.boundPath.trim())
+    const raw = args.boundPath.trim()
+    // Windows 上必须显式给盘符或 UNC；否则 `/tmp` 会被 path.resolve 当成 `C:\tmp`，不符用户意图
+    if (process.platform === 'win32' && !/^([A-Za-z]:[\\/]|\\\\)/.test(raw)) {
+      throw new Error(
+        `boundPath must start with a drive letter (e.g. D:\\projects\\foo) on Windows: ${raw}`,
+      )
+    }
+    const candidate = path.resolve(raw)
     if (!path.isAbsolute(candidate)) {
       throw new Error('boundPath must be absolute')
     }

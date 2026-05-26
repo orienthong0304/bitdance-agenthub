@@ -158,22 +158,117 @@ function buildSdkEnv(...) {
 
 ---
 
-## 不在本 spec 范围内（留给 Phase 2 / 3）
+## 沙箱路径校验（isPathSafe）
 
-- 沙箱路径黑名单（`isPathSafe` 的 Windows 系统目录、AppData 凭证目录）——属 spec 「workspace 沙箱」范畴，将在 `01-core-entities.md` 或独立 spec 中扩展
-- UI 文案的 placeholder 平台感知
-- 编码细节（除 `[Console]::OutputEncoding` 之外的回退路径，如 iconv-lite）
-- workspace 清理的 EBUSY 重试
+`src/server/workspace-utils.ts` 的 `isPathSafe(absPath)` 拒绝几类敏感目录。Windows 与 POSIX 走分支。
+
+### 路径比较
+
+**Windows 上路径比较必须大小写不敏感**。`C:\Users\Foo` 与 `c:\users\foo` 在 NTFS / ReFS 上是同一路径。封装为 helper：
+
+```typescript
+// 子路径包含判断；Windows 大小写不敏感，POSIX 大小写敏感
+export function isPathWithin(child: string, parent: string): boolean {
+  const norm = (p: string) =>
+    process.platform === 'win32'
+      ? path.resolve(p).toLowerCase()
+      : path.resolve(p)
+  const c = norm(child)
+  const p = norm(parent)
+  return c === p || c.startsWith(p + path.sep)
+}
+```
+
+`resolveSafePath` 与 `attachment-service` 的 traversal 检查统一走此 helper。
+
+### 系统根（systemRoots）
+
+| 平台 | 路径 | 说明 |
+|---|---|---|
+| POSIX | `/etc`, `/System`, `/usr`, `/bin`, `/sbin`, `/var`, `/private`, `/Library/Keychains` | macOS / Linux 系统 |
+| Windows | 每个可用盘符的 `\Windows`、`\Program Files`、`\Program Files (x86)`、`\$Recycle.Bin`、`\System Volume Information`、`\Recovery`；以及 `\ProgramData`（只在系统盘） | 多盘符均拦 |
+
+**UNC 设备路径**（`\\?\`、`\\.\`）一律拒绝（绕过 Windows 路径规范化容易越狱）。
+
+**普通 UNC 网络路径**（`\\server\share\...`）暂拒——文件系统语义不可靠（offline、ACL）。后续有需求再开放。
+
+Drives 列表通过 `statSync('A:\\')` … `statSync('Z:\\')` 探测可用盘符（同 `/api/fs/listdir` 的 drives sentinel），模块级缓存避免重复 IO。
+
+### 敏感子路径（sensitiveSegments）
+
+相对 `homedir()` 的路径片段，命中即拒。
+
+| 平台 | 片段 |
+|---|---|
+| 跨平台 | `.ssh`, `.aws`, `.gcloud`, `.kube`, `.gnupg`, `.docker`, `.azure` |
+| POSIX | `.config/gh`, `Library/Keychains`, `Library/Application Support/Code/User` |
+| Windows | `AppData\Roaming\Microsoft\Credentials`, `AppData\Local\Microsoft\Credentials`, `AppData\Roaming\Microsoft\Protect`, `AppData\Roaming\gh`, `AppData\Roaming\Claude` |
+
+注：`AppData` 本身不一律拒，只挡明确凭证子目录；用户可能合法工作在 `AppData\Local\Programs\...` 下。
 
 ---
 
-## 验证清单（Phase 1 合并前）
+## boundPath 输入校验（conversation-service）
 
+用户在「新建对话」绑定本地目录时，`conversation-service` 的 `createConversation` 校验：
+
+- 必须 `path.isAbsolute(input)` 为 true
+- **Windows 上额外**：原始输入字符串必须匹配 `^[A-Za-z]:[\\/]` 或 `^\\\\` 开头。否则 `/foo`、`/tmp` 这类 POSIX 风格输入会被 Node `path.resolve` 当作「当前盘符根 + 路径」（如 `C:\foo`），与用户意图不符
+- 路径存在、是目录、可读写
+- 通过 `isPathSafe`
+
+---
+
+## DirPicker 隐藏目录过滤
+
+`/api/fs/listdir` 列出的子目录：
+
+- 跨平台：以 `.` 开头的目录（dotfile / dotdir）过滤
+- Windows 额外过滤已知隐藏 / 系统目录名（大小写不敏感）：`AppData`、`$Recycle.Bin`、`System Volume Information`、`Recovery`、`PerfLogs`、`Config.Msi`、`MSOCache`、`OneDriveTemp`、`ProgramData`
+
+**Why 不读 Windows hidden attribute**：Node `fs.statSync` 不暴露此 attribute；引入第三方包（如 `winattr`）违反 CLAUDE.md §4.3「不为将来可能用到加抽象」，且这些已知名能覆盖 95% 噪音目录。
+
+---
+
+## UI placeholder 平台感知
+
+`new-conversation-dialog.tsx` 的 boundPath 输入框 placeholder 按服务器平台显示：
+
+- POSIX: `/Users/me/projects/foo`
+- Windows: `D:\projects\foo`
+
+服务器平台通过 `GET /api/platform` 一次性获取（返回 `{ platform: 'posix' | 'windows' }`），前端 useEffect 缓存。
+
+**Why 不用 `navigator.userAgent`**：用户可能从 Mac 浏览器访问 Windows 上跑的 AgentHub，浏览器侧推断会与实际 host 不一致；服务器才是 bash 工具实际跑的地方。
+
+---
+
+## 不在本 spec 范围内（留给 Phase 3）
+
+- 编码细节（除 `[Console]::OutputEncoding` 之外的回退路径，如 iconv-lite）
+- workspace 清理的 EBUSY 重试
+- symlink / reparse point 循环防护
+- Long path（>260）支持
+
+---
+
+## 验证清单（Phase 1 + Phase 2 合并前）
+
+**Phase 1**：
 - [ ] macOS：现有 bash 工具调用行为不变（回归 `ls`、`git status`、`npm test`）
 - [ ] Windows：新建 sandbox 会话，bash 工具能跑 `Get-ChildItem`、`git --version`、`echo 中文`（输出非乱码）
 - [ ] Windows：bash 工具拒绝 `Remove-Item -Recurse -Force C:\`、`format C:`、`iex (iwr ...)`
 - [ ] Windows：bash 工具 30s 超时后用 `taskkill /F /T` 清进程树，无孤儿 `node.exe`
 - [ ] Windows：Claude Code agent 启动正常（SDK 找到 `~/.claude` 即 `%USERPROFILE%\.claude`）
+
+**Phase 2**：
+- [ ] Windows：DirPicker 看不到 `AppData`、`$Recycle.Bin`、`System Volume Information` 等隐藏目录
+- [ ] Windows：尝试绑定 `D:\Windows` 被拒（系统根）
+- [ ] Windows：尝试绑定 `C:\Users\me\.ssh` 被拒（敏感子路径）
+- [ ] Windows：绑定 `D:\projects\xxx` 成功，bash 工具能在该目录运行
+- [ ] Windows：输入框 placeholder 显示 `D:\projects\foo` 而非 `/Users/me/projects/foo`
+- [ ] Windows：路径大小写不敏感（`C:\Users\Foo` 与 `c:\users\foo` 互通）
+- [ ] Windows：boundPath 输入 `/tmp` 被拒（POSIX 风格在 Windows 上无意义）
 
 ---
 

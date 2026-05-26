@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertTriangle, FolderSearch } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { DirPickerDialog } from '@/components/dir-picker-dialog'
@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { createConversation } from '@/lib/api'
+import { createConversation, getServerPlatform, type ServerPlatform } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAgentList, useAppStore } from '@/stores/app-store'
 
@@ -38,6 +38,17 @@ export function NewConversationDialog({
   const [boundPath, setBoundPath] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [platform, setPlatform] = useState<ServerPlatform | null>(null)
+
+  // 拉一次服务器平台，决定 boundPath placeholder 文案；失败不阻塞 UI（fallback posix）
+  useEffect(() => {
+    getServerPlatform()
+      .then((p) => setPlatform(p))
+      .catch(() => setPlatform('posix'))
+  }, [])
+
+  const boundPathPlaceholder =
+    platform === 'windows' ? 'D:\\projects\\foo' : '/Users/me/projects/foo'
 
   const mode: 'single' | 'group' = selected.size > 1 ? 'group' : 'single'
 
@@ -174,7 +185,7 @@ export function NewConversationDialog({
                     <Input
                       value={boundPath}
                       onChange={(e) => setBoundPath(e.target.value)}
-                      placeholder="/Users/me/projects/foo"
+                      placeholder={boundPathPlaceholder}
                       className="flex-1 font-mono text-xs"
                     />
                     <Button

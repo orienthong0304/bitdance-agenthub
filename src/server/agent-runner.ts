@@ -1,8 +1,10 @@
 import { and, desc, eq, inArray } from 'drizzle-orm'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 import { db, schema } from '@/db/client'
 import type { AgentRow, ArtifactRow, MessageRow, WorkspaceRow } from '@/db/schema'
 import type { DispatchPlanItem, MessagePart, StreamEvent } from '@/shared/types'
+import { estimateTokens, getModelLimits } from '@/shared/model-registry'
 
 import { agentRegistry } from './adapters/registry'
 import type { AdapterAttachment, AdapterInput } from './adapters/types'
@@ -698,16 +700,22 @@ async function buildAdapterInput(
   }
 
   // 跨 run 对话历史（仅 CustomAgentAdapter 消费；ClaudeCode 走 SDK session resume）。
+  // 按模型 contextWindow 算出 historyBudget = totalContext - outputReserve - (system+currentUser 估算) - 安全 margin。
   // 失败回退到空数组，让 agent 退化到「无历史」模式而不是整个 run 崩。详见 specs/13-conversation-context.md。
-  const history =
-    agent.adapterName === 'custom'
-      ? await buildHistoryFor(agent.id, args.conversationId, {
-          excludeMessageId: args.triggerMessageId,
-        }).catch((err) => {
-          console.warn('[agent-runner] buildHistoryFor failed; continuing without history', err)
-          return []
-        })
-      : []
+  let history: ChatCompletionMessageParam[] = []
+  if (agent.adapterName === 'custom') {
+    const limits = getModelLimits(agent.modelProvider, agent.modelId)
+    const promptEstimate =
+      estimateTokens(systemPromptWithWorkspace) + estimateTokens(prompt) + 512 /* margin */
+    const historyBudget = Math.max(0, limits.contextWindow - limits.outputReserve - promptEstimate)
+    history = await buildHistoryFor(agent.id, args.conversationId, {
+      excludeMessageId: args.triggerMessageId,
+      tokenBudget: historyBudget,
+    }).catch((err) => {
+      console.warn('[agent-runner] buildHistoryFor failed; continuing without history', err)
+      return []
+    })
+  }
 
   return {
     agentId: agent.id,

@@ -4,6 +4,7 @@ import { Coins } from 'lucide-react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { getModelLimits } from '@/shared/model-registry'
 import { useAppStore, useConversationUsageTotal } from '@/stores/app-store'
 
 /**
@@ -17,8 +18,22 @@ import { useAppStore, useConversationUsageTotal } from '@/stores/app-store'
 export function UsageBadge({ conversationId }: { conversationId: string }) {
   const total = useConversationUsageTotal(conversationId)
   const agents = useAppStore((s) => s.agents)
+  const conv = useAppStore((s) => s.conversations[conversationId])
 
   if (total.runCount === 0) return null
+
+  // 取本会话内 contextWindow 最大的 agent 作为可见上限。详见 specs/13-conversation-context.md。
+  const contextWindow = (() => {
+    if (!conv) return 0
+    let maxCtx = 0
+    for (const aid of conv.agentIds) {
+      const a = agents[aid]
+      if (!a) continue
+      const limits = getModelLimits(a.modelProvider, a.modelId)
+      if (limits.contextWindow > maxCtx) maxCtx = limits.contextWindow
+    }
+    return maxCtx
+  })()
 
   return (
     <Popover>
@@ -67,13 +82,16 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
             />
           )}
           <div className="my-1 border-t" />
-          <Row
-            label="实际 Prompt"
+          <Row label="实际 Prompt"
             value={total.inputTokens + total.cacheCreationTokens + total.cacheReadTokens}
             bold
             hint="新+写入+命中"
           />
-          <Row label="当前 ctx" value={total.lastInputTokens} dim hint="最近一次 prompt 大小" />
+          {contextWindow > 0 ? (
+            <ContextRow used={total.lastInputTokens} ceiling={contextWindow} />
+          ) : (
+            <Row label="当前 ctx" value={total.lastInputTokens} dim hint="最近一次 prompt 大小" />
+          )}
           {/* Cache 命中率：cacheRead / (input + cacheRead + cacheCreation) */}
           {total.cacheReadTokens > 0 && (
             <div
@@ -96,7 +114,7 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
         </div>
 
         <div className="mt-2 border-t pt-2 text-[10px] text-muted-foreground">
-          所有 token 都计费，速率不同。详见各行 tooltip。
+          所有 token 都计费，速率不同。详见各行 tooltip。Pin 消息可避免被预算自动截断。
         </div>
 
         {Object.keys(total.byAgent).length > 1 && (
@@ -191,4 +209,31 @@ function formatTok(n: number): string {
   if (n < 1000) return `${n}`
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 1)}k`
   return `${(n / 1_000_000).toFixed(2)}M`
+}
+
+/** 当前 ctx 行的特殊版本：展示「used / ceiling (pct%)」+ 进度条 + 颜色。 */
+function ContextRow({ used, ceiling }: { used: number; ceiling: number }) {
+  const hasData = used > 0
+  const pct = hasData ? Math.min(100, (used / ceiling) * 100) : 0
+  const tone = pct < 50 ? 'normal' : pct < 80 ? 'warn' : 'danger'
+  const toneColor =
+    tone === 'danger' ? 'text-red-600 dark:text-red-400'
+      : tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
+        : 'text-muted-foreground'
+  const barColor = tone === 'danger' ? 'bg-red-500' : tone === 'warn' ? 'bg-amber-500' : 'bg-primary/60'
+
+  return (
+    <div className="space-y-1" title="最近一次 prompt 大小 / 模型 contextWindow 上限">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={cn('truncate', toneColor)}>当前 ctx</span>
+        <span className={cn('shrink-0 font-mono', toneColor)}>
+          {hasData ? formatTok(used) : '—'} / {formatTok(ceiling)}
+          {hasData && ` (${pct.toFixed(0)}%)`}
+        </span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-border/60">
+        <div className={cn('h-full transition-all', barColor)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
 }

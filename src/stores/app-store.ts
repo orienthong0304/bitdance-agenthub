@@ -793,9 +793,17 @@ export interface ConversationUsageTotal {
 }
 
 export const useConversationUsageTotal = (conversationId: string | null): ConversationUsageTotal => {
-  // 选原始 runs map（immer 保证未变更时 ref 稳定）。再用 useMemo 派生统计，避免在 store
-  // selector 里返回新对象引用导致 useShallow 死循环。
+  // 三个数据源：
+  //   runs map —— streaming 时实时填，含 lastInputTokens / model / agentId（最准）
+  //   messages map —— 从 DB 加载（刷新页面后唯一可用）
+  //   agents map —— 取 model 兜底（messages 不存 model）
+  // 用 useMemo 派生统计，避免在 store selector 里返回新对象引用导致 useShallow 死循环。
   const runs = useAppStore((s) => (conversationId ? s.runsByConv[conversationId] : undefined))
+  const messageIds = useAppStore((s) =>
+    conversationId ? s.messageIdsByConv[conversationId] : undefined,
+  )
+  const messages = useAppStore((s) => s.messages)
+  const agents = useAppStore((s) => s.agents)
   return useMemo(() => {
     const result: ConversationUsageTotal = {
       inputTokens: 0,
@@ -808,28 +816,60 @@ export const useConversationUsageTotal = (conversationId: string | null): Conver
       byModel: {},
       runCount: 0,
     }
-    if (!runs) return result
-    let latestRunWithUsage = -1
-    let latestInput = 0
-    for (const run of Object.values(runs)) {
-      const u = run.usage
-      if (!u) continue
-      result.inputTokens += u.inputTokens
-      result.outputTokens += u.outputTokens
-      result.cacheCreationTokens += u.cacheCreationTokens
-      result.cacheReadTokens += u.cacheReadTokens
-      result.runCount++
-      const sub = u.inputTokens + u.outputTokens
-      result.byAgent[run.agentId] = (result.byAgent[run.agentId] ?? 0) + sub
-      if (u.model) result.byModel[u.model] = (result.byModel[u.model] ?? 0) + sub
-      if (run.startedAt > latestRunWithUsage) {
-        latestRunWithUsage = run.startedAt
-        latestInput = u.lastInputTokens ?? u.inputTokens
+    // 优先用 runs（实时性 + model 字段最准）；空则从 messages 兜底（刷新页面后唯一可用的源）
+    let hasRunUsage = false
+    if (runs) {
+      let latestRunWithUsage = -1
+      for (const run of Object.values(runs)) {
+        const u = run.usage
+        if (!u) continue
+        hasRunUsage = true
+        result.inputTokens += u.inputTokens
+        result.outputTokens += u.outputTokens
+        result.cacheCreationTokens += u.cacheCreationTokens
+        result.cacheReadTokens += u.cacheReadTokens
+        result.runCount++
+        const sub = u.inputTokens + u.outputTokens
+        result.byAgent[run.agentId] = (result.byAgent[run.agentId] ?? 0) + sub
+        if (u.model) result.byModel[u.model] = (result.byModel[u.model] ?? 0) + sub
+        if (run.startedAt > latestRunWithUsage) {
+          latestRunWithUsage = run.startedAt
+          result.lastInputTokens = u.lastInputTokens ?? u.inputTokens
+        }
       }
     }
+
+    if (!hasRunUsage && messageIds) {
+      // 走 messages 兜底：按 run_id 去重统计 runCount；按 message 累加 token；
+      // model 通过 agent.modelId 推断（messages 不存 model，跑过的模型若已切换无法准确还原）
+      const seenRuns = new Set<string>()
+      let latestMsgCreatedAt = -1
+      for (const mid of messageIds) {
+        const m = messages[mid]
+        if (!m || !m.usage || m.role !== 'agent') continue
+        const u = m.usage
+        result.inputTokens += u.inputTokens
+        result.outputTokens += u.outputTokens
+        result.cacheReadTokens += u.cacheReadTokens
+        if (m.runId && !seenRuns.has(m.runId)) {
+          seenRuns.add(m.runId)
+          result.runCount++
+        }
+        const sub = u.inputTokens + u.outputTokens
+        if (m.agentId) {
+          result.byAgent[m.agentId] = (result.byAgent[m.agentId] ?? 0) + sub
+          const modelId = agents[m.agentId]?.modelId
+          if (modelId) result.byModel[modelId] = (result.byModel[modelId] ?? 0) + sub
+        }
+        if (m.createdAt > latestMsgCreatedAt) {
+          latestMsgCreatedAt = m.createdAt
+          result.lastInputTokens = u.inputTokens
+        }
+      }
+    }
+
     result.totalTokens =
       result.inputTokens + result.outputTokens + result.cacheCreationTokens + result.cacheReadTokens
-    result.lastInputTokens = latestInput
     return result
-  }, [runs])
+  }, [runs, messageIds, messages, agents])
 }

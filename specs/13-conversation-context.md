@@ -198,20 +198,76 @@ const history = await buildHistoryFor(agent.id, args.conversationId, {
 
 ---
 
+## Token 预算
+
+`buildHistoryFor` 的 `tokenBudget` 选项（单位：tokens）控制 history 的总 token 上限，**不含** system prompt / current user / output reserve。AgentRunner 算预算：
+
+```typescript
+const limits = getModelLimits(agent.modelProvider, agent.modelId)  // src/shared/model-registry.ts
+const promptEstimate = estimateTokens(systemPrompt) + estimateTokens(currentUser) + 512  // safety margin
+const historyBudget = Math.max(0, limits.contextWindow - limits.outputReserve - promptEstimate)
+```
+
+### 截断算法
+
+序列化全部 N 条候选消息（每条 → 1 个 user message OR 1 个 assistant + K 个 tool messages），按 chronological order 排好。每个序列化组算出 token 数（粗粒度：4 字符 ≈ 1 token，外加每条 message 4 token metadata margin）。
+
+如果总 token 超 budget，**从老到新**遍历，跳过 pinned 项，丢非 pinned 项直到符合预算。pinned 永远保留（即便总数仍超 budget——用户的 pin 是显式契约）。
+
+### 模型上下文窗口表
+
+`src/shared/model-registry.ts:KNOWN_MODELS` 列出常见 modelId 的精确 contextWindow + outputReserve。不在表里的 modelId 走 provider fallback：
+
+| Provider | Fallback contextWindow |
+|---|---|
+| anthropic | 200K |
+| openai | 128K |
+| deepseek | 64K |
+| volcano-ark | 32K |
+
+Provider 也未知（ClaudeCode adapter 没 modelProvider 字段）→ 兜底 200K。
+
+reasoning 模型（DeepSeek R1 / OpenAI o1 等）`outputReserve` 加大到 16K-32K，因为 thinking 内容也吃输出 token。
+
+### Token 估算
+
+`estimateTokens(s) = ceil(s.length / 4)`。中英混合实测误差 10-20% 量级，对预算决策足够。Phase D 不引入 tiktoken / @anthropic/tokenizer 等真正 tokenizer 包（依赖大、性能开销大、对粗粒度截断收益小）。
+
+---
+
+## UI：用量在 UsageBadge popover 里展示
+
+聊天 header 的 `UsageBadge`（`src/components/usage-badge.tsx`）原本就在显示「Σ N.Nk tok」累计；点开 popover 看 input/output/cache 拆分 + per-agent / per-model 拆分。Phase D 把「上下文容量」这件事并进同一个 popover：
+
+- 「当前 ctx」行从单 token 数升级为「used / ceiling (pct%)」+ 进度条；颜色分档 <50% 灰 / 50-80% 黄 / >80% 红
+- popover 底部那条「所有 token 都计费」提示后追加一句「Pin 消息可避免被预算自动截断」
+
+**Why 不做底部独立指示器**：早期 Phase D 加过一个聊天底部的 `ContextUsageIndicator` 一行 UI，跟 UsageBadge 信息高度重叠 + 数据源不稳定（runsByConv 只在 streaming 时填，刷新后无数据时只能显占位），用户反馈视觉占位但没增量价值，已删。
+
+数据来源：
+- `lastInputTokens`：`useConversationUsageTotal` 给出的最近一次 streaming run 的 input token 数（只在当前 session streaming 过的 conversation 才有；旧会话刷新后为 0，此时 popover 隐藏整个 badge）
+- `contextWindow`：会话内所有 agent 中 contextWindow 的最大值
+
+**未显示场景**：`useConversationUsageTotal.runCount === 0` 时整个 badge 隐藏（沿用原行为）。
+
+---
+
 ## 故意不做的事
 
 | 项目 | 不做的理由 |
 |---|---|
-| **token 预算计算** | Phase D 才做。用 4 字符 ≈ 1 token 估算 + 倒序累加。当前简单 maxTurns=20 够用 |
 | **多模态 image 重传** | 老 user message 里的 image_attachment 现在只放占位文本，不重新读 base64。99% 场景用户已经在新 prompt 里复述过 |
 | **thinking part 回传** | 一律丢。OpenAI 不支持回传 reasoning，DeepSeek 等模型回传也无意义 |
 | **artifact 全文注入** | 永远只放 `[产物: title (id=art_xxx)]` 占位，agent 用 `read_artifact` 按需取 |
 | **跨 conversation 记忆** | 不做。每个 conversation 是独立 sandbox |
+| **精确 tokenizer**（tiktoken / @anthropic/tokenizer） | 粗粒度 4 字符≈1 token 估算误差 10-20%，对预算决策够用；引入真 tokenizer 增加 ~MB 级依赖 + 启动开销，性价比低 |
+| **省流 / 全量 模式开关** | 让用户判断「该开省流还是全量」是错误的抽象——真实需求是「成本透明 + 自动稳定」。Phase D 的用量指示器 + 自动预算已经覆盖；用户主动管理走 pin / unpin 细粒度 |
 
 ---
 
-## 验证清单（Phase A + B 合并前）
+## 验证清单（Phase A + B + D 合并前）
 
+**Phase A + B**：
 - [ ] 单聊：连续两轮对话，第二轮 agent 能正确引用第一轮的内容
 - [ ] 单聊：agent 上一轮用过 bash 工具，下一轮 agent 看到自己的 tool_calls 历史，不会重复运行同样的命令
 - [ ] 单聊：把消息 pin 之后，即使发了 25+ 条新消息，pinned 那条仍在 history 里
@@ -219,6 +275,12 @@ const history = await buildHistoryFor(agent.id, args.conversationId, {
 - [ ] 单聊：artifact_ref 折叠为占位文本，agent 没把整个产物吐出来
 - [ ] 群聊：不报错（即便 worker 现在没有跨 agent 视野，至少不能 crash）
 - [ ] Claude Code agent：行为不变（不消费 history）
+
+**Phase D**：
+- [ ] 跑 20+ 轮对话后，最新对话不会因为超 contextWindow 报 LLM API 错
+- [ ] 用量指示器显示「上下文 X / Y」与「上轮 Z」，数据非 0 时可见
+- [ ] 用量超 50% 字体转黄，超 80% 转红
+- [ ] 一个超长老消息被 pin 之后，即便和它在同一会话里跑了 5K-token 级别的新对话，它仍在 history 里（pin 不被 budget 截断）
 
 ---
 

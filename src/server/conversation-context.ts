@@ -3,6 +3,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 
 import { db, schema } from '@/db/client'
 import type { ArtifactRow, MessageRow } from '@/db/schema'
+import { estimateTokens } from '@/shared/model-registry'
 import type { MessagePart } from '@/shared/types'
 
 /**
@@ -19,6 +20,12 @@ export interface BuildHistoryOptions {
   includePinned?: boolean
   /** 当前触发消息 id；它不应进入历史（避免重复）。 */
   excludeMessageId?: string
+  /**
+   * history 的 token 预算上限（仅本字段，不含 system / currentUser）。
+   * undefined 表示不做 token 截断，只按 maxTurns 截。详见 spec 13 「Token 预算」节。
+   * pinned 永远不被截断（即便整体超 budget）。
+   */
+  tokenBudget?: number
 }
 
 const DEFAULT_MAX_TURNS = 20
@@ -31,6 +38,7 @@ export async function buildHistoryFor(
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS
   const includePinned = options.includePinned ?? true
   const excludeMessageId = options.excludeMessageId
+  const tokenBudget = options.tokenBudget
 
   // 拉最近 N 条 complete 消息（按时间逆序取，下面再翻回正序）
   const recentWhere = excludeMessageId
@@ -53,6 +61,7 @@ export async function buildHistoryFor(
 
   // pinned 消息：可能在最近 N 条之外，单独拉
   let pinned: MessageRow[] = []
+  let pinnedIdSet = new Set<string>()
   if (includePinned) {
     const conv = await db.query.conversations.findFirst({
       where: eq(schema.conversations.id, conversationId),
@@ -68,6 +77,7 @@ export async function buildHistoryFor(
             eq(schema.messages.status, 'complete'),
           ),
         )
+      pinnedIdSet = new Set(pinned.map((p) => p.id))
     }
   }
 
@@ -81,12 +91,60 @@ export async function buildHistoryFor(
   const artifactIds = collectArtifactIds(merged)
   const artifactTitles = await loadArtifactTitles(artifactIds)
 
-  const out: ChatCompletionMessageParam[] = []
+  // 先序列化全量，再按 token 预算从老往新丢非 pinned 项
+  const items: Array<{
+    msgId: string
+    isPinned: boolean
+    serialized: ChatCompletionMessageParam[]
+    tokens: number
+  }> = []
   for (const msg of merged) {
     const serialized = serializeMessage(msg, agentId, artifactTitles)
-    if (serialized) out.push(...serialized)
+    if (!serialized) continue
+    const tokens = serialized.reduce((sum, m) => sum + estimateChatMessageTokens(m), 0)
+    items.push({ msgId: msg.id, isPinned: pinnedIdSet.has(msg.id), serialized, tokens })
+  }
+
+  if (tokenBudget !== undefined && tokenBudget > 0) {
+    let total = items.reduce((s, it) => s + it.tokens, 0)
+    // 超预算时，从老到新（按 items 顺序）丢非 pinned，直到符合预算
+    for (let i = 0; i < items.length && total > tokenBudget; i++) {
+      if (items[i].isPinned) continue
+      total -= items[i].tokens
+      items[i].tokens = -1 // 标记丢弃；保留 isPinned/order 但稍后过滤
+    }
+  }
+
+  const out: ChatCompletionMessageParam[] = []
+  for (const it of items) {
+    if (it.tokens < 0) continue
+    out.push(...it.serialized)
   }
   return out
+}
+
+// ─── token 估算（粗粒度，4 字符≈1 token） ─────────────────
+
+function estimateChatMessageTokens(m: ChatCompletionMessageParam): number {
+  let s = ''
+  if (typeof m.content === 'string') {
+    s += m.content
+  } else if (Array.isArray(m.content)) {
+    for (const part of m.content) {
+      if (part.type === 'text') s += part.text
+      // multimodal image_url 不在 Phase A 历史里出现（spec 13），跳过估算
+    }
+  }
+  if ('tool_calls' in m && m.tool_calls) {
+    for (const tc of m.tool_calls) {
+      // OpenAI ChatCompletion tool_calls union 含 function / custom 两种；function 形态走 .function.name/arguments
+      if (tc.type === 'function') {
+        s += tc.function.name + tc.function.arguments
+      }
+    }
+  }
+  // 每条 message 至少有 role / metadata 开销，加 4 token 兜底
+  return estimateTokens(s) + 4
 }
 
 // ─── 序列化核心 ─────────────────────────────────────────

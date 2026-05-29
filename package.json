@@ -18,7 +18,12 @@
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
     "electron:prebuild": "node scripts/electron-prebuild.mjs",
     "electron:dev": "concurrently -k -n NEXT,TSC,ELECTRON -c blue,yellow,magenta \"pnpm dev\" \"pnpm electron:tsc:watch\" \"wait-on -d 200 tcp:127.0.0.1:3000 file:./dist-electron/main.js && node scripts/electron-dev.mjs\"",
-    "electron:build": "pnpm build && pnpm electron:prebuild && pnpm electron:tsc && electron-builder"
+    "electron:build": "pnpm build && pnpm electron:prebuild && pnpm electron:tsc && electron-builder",
+    "mobile:dev": "pnpm --filter @agenthub/mobile dev",
+    "mobile:build": "pnpm --filter @agenthub/mobile build",
+    "mobile:sync": "pnpm --filter @agenthub/mobile cap:sync",
+    "mobile:open:ios": "pnpm --filter @agenthub/mobile cap:open:ios",
+    "mobile:open:android": "pnpm --filter @agenthub/mobile cap:open:android"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.147",

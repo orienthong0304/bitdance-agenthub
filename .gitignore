@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -48,6 +49,9 @@ next-env.d.ts
 # Electron build outputs
 /dist-electron/
 /release/
+
+# Mobile app build outputs
+/apps/mobile/dist/
 
 # IDE
 .vscode/

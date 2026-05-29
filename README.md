@@ -65,7 +65,8 @@ Claude Code Agent 通过 SDK MCP server 同样可以用这套工具。
 - 全局分析 Tab：今日 / 本周 / 全部 + 按模型 / agent / 会话 排行
 
 ### 移动端
-- ≤ md 自动转抽屉 sidebar + 全宽 panels（响应式 Web 端，未做 native）
+- 现有响应式 Web 端仅做小屏适配：≤ md 自动转抽屉 sidebar + 全宽 panels
+- 手机 App 规划：Capacitor 伴随客户端，通过 Tailscale / LAN 连接桌面 AgentHub host，用于观察状态、审批修改和对话反馈，详见 Spec 14
 
 ---
 
@@ -173,6 +174,7 @@ Sidebar 顶部齿轮 → 「API 设置」，填 Anthropic / OpenAI / DeepSeek / 
 | `10-agent-builder.md` | 自建 Agent 流程 |
 | `11-platform.md` | 平台抽象（POSIX / Windows shell、命令黑名单、路径校验、子进程清理） |
 | `12-desktop-electron.md` | 桌面版（Electron 打包 DMG / EXE） |
+| `14-mobile-remote.md` | 移动端伴随 App（Capacitor / Tailscale / 远程审批） |
 
 AI 协作约定见 `CLAUDE.md`。
 
@@ -201,7 +203,7 @@ DB 文件位于 `.agenthub-data/agenthub.db`。Workspace 默认在 `.agenthub-da
 - [ ] Codex adapter（OpenAI codex CLI 集成；目前可用 `gpt-5-codex` 模型 + CustomAgent 走 OpenAI 协议替代）
 - [ ] Pin LLM 上下文的 UI 入口（schema 字段 `pinnedMessageIds` 已有，agent-runner 已读，缺前端入口；当前 ☆ 是纯导航书签，独立于 LLM Pin）
 - [ ] sandbox 模式的总量配额对 Claude Code SDK 失效（SDK 自己写盘绕过我们的 quota）
-- [ ] 移动端 native（P2，已说不做；桌面端已 Electron 打包，详见 Spec 12）
+- [ ] 移动端伴随 App（Capacitor 客户端 + Tailscale/LAN 配对通信，详见 Spec 14）
 - [ ] 测试覆盖
 
 ---

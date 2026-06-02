@@ -215,8 +215,16 @@ export const useAppStore = create<AppState>()(
 
     setMessagesForConversation: (conversationId, list) =>
       set((s) => {
-        s.messageIdsByConv[conversationId] = list.map((m) => m.id)
-        for (const m of list) s.messages[m.id] = m
+        const nextIds = list.map((m) => m.id)
+        if (!areStringArraysEqual(s.messageIdsByConv[conversationId], nextIds)) {
+          s.messageIdsByConv[conversationId] = nextIds
+        }
+        for (const m of list) {
+          const existing = s.messages[m.id]
+          if (!existing || !areMessagesEquivalent(existing, m)) {
+            s.messages[m.id] = m
+          }
+        }
       }),
 
     upsertMessage: (message) =>
@@ -683,6 +691,100 @@ export const useAppStore = create<AppState>()(
 // ─── 派生 hooks ──────────────────────────────────────
 // 用 useShallow 防止派生数组每次新引用导致无限渲染（Zustand 5 标准做法）。
 import { useShallow } from 'zustand/react/shallow'
+function areMessagesEquivalent(a: MessageRow, b: MessageRow): boolean {
+  if (a === b) return true
+  return (
+    a.id === b.id &&
+    a.conversationId === b.conversationId &&
+    a.role === b.role &&
+    a.agentId === b.agentId &&
+    a.status === b.status &&
+    a.parentMessageId === b.parentMessageId &&
+    a.runId === b.runId &&
+    a.createdAt === b.createdAt &&
+    areStringArraysEqual(a.mentionedAgentIds, b.mentionedAgentIds) &&
+    areMessageUsageEqual(a.usage, b.usage) &&
+    areMessagePartsEqual(a.parts, b.parts)
+  )
+}
+
+function areStringArraysEqual(a: readonly string[] | undefined, b: readonly string[]): boolean {
+  if (!a || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function areMessageUsageEqual(a: MessageRow['usage'], b: MessageRow['usage']): boolean {
+  if (a === b) return true
+  if (!a || !b) return a === b
+  return (
+    a.inputTokens === b.inputTokens &&
+    a.outputTokens === b.outputTokens &&
+    a.cacheReadTokens === b.cacheReadTokens
+  )
+}
+
+function areMessagePartsEqual(a: readonly MessagePart[], b: readonly MessagePart[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (!areMessagePartsEquivalent(a[i], b[i])) return false
+  }
+  return true
+}
+
+function areMessagePartsEquivalent(a: MessagePart, b: MessagePart): boolean {
+  if (a === b) return true
+  if (a.type !== b.type) return false
+  switch (a.type) {
+    case 'text':
+      return b.type === 'text' && a.content === b.content
+    case 'thinking':
+      return b.type === 'thinking' && a.content === b.content
+    case 'code':
+      return b.type === 'code' && a.language === b.language && a.content === b.content
+    case 'tool_use':
+      return (
+        b.type === 'tool_use' &&
+        a.callId === b.callId &&
+        a.toolName === b.toolName &&
+        areUnknownValuesEquivalent(a.args, b.args)
+      )
+    case 'tool_result':
+      return (
+        b.type === 'tool_result' &&
+        a.callId === b.callId &&
+        a.isError === b.isError &&
+        areUnknownValuesEquivalent(a.result, b.result)
+      )
+    case 'artifact_ref':
+      return b.type === 'artifact_ref' && a.artifactId === b.artifactId
+    case 'image_attachment':
+    case 'file_attachment':
+      return (
+        (b.type === 'image_attachment' || b.type === 'file_attachment') &&
+        a.type === b.type &&
+        a.attachmentId === b.attachmentId &&
+        a.fileName === b.fileName &&
+        a.size === b.size &&
+        a.mimeType === b.mimeType
+      )
+  }
+}
+
+function areUnknownValuesEquivalent(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== typeof b) return false
+  if (a === null || b === null || typeof a !== 'object') return false
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 import { useMemo } from 'react'
 
 export const useMessagesForConversation = (conversationId: string) =>

@@ -143,6 +143,8 @@ replaceLocalMessageId(tempId, realId)          // 把 messages 表和 messageIds
 
 **性能注意**：`useMessagesForConversation` 是 hot path，每个 SSE delta 都会触发 selector 重算。useShallow 比较的是数组中每个元素引用 —— 因为 immer 只改动了变化的消息行，其余引用不变，shallow 比较成功 → 不渲染。
 
+**MessageList 滚动语义**：首次打开 / 刷新已有会话时，消息渲染完成后滚到最新消息；streaming 期间仅当用户仍贴近底部时自动跟随。用户主动向上查看历史时，不强制拉回底部。滚动目标必须是 `ScrollArea` viewport，不能是内部内容 div；滚动写入需要 `requestAnimationFrame` / 节流，避免每个 SSE delta 都同步触发布局计算。
+
 ---
 
 ## SSE 连接管理

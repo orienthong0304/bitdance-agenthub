@@ -1,7 +1,7 @@
 'use client'
 
 import { AtSign, CornerUpLeft, Loader2, Pencil, Pin, RotateCcw, Star, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentInfoPopover } from '@/components/agent-info-popover'
@@ -30,7 +30,7 @@ import {
   useLatestUserMessageId,
 } from '@/stores/app-store'
 
-export function MessageItem({ message }: { message: MessageRow }) {
+function MessageItemImpl({ message }: { message: MessageRow }) {
   const agentsMap = useAppStore((s) => s.agents)
   const agent = message.agentId ? agentsMap[message.agentId] : null
   const dispatch = useDispatchForMessage(message.id)
@@ -376,6 +376,9 @@ export function MessageItem({ message }: { message: MessageRow }) {
     </div>
   )
 }
+
+export const MessageItem = memo(MessageItemImpl)
+MessageItem.displayName = 'MessageItem'
 
 function formatTime(ts: number): string {
   const d = new Date(ts)

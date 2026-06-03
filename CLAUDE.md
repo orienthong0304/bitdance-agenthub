@@ -39,7 +39,7 @@
 | ORM | Drizzle | 不用 Prisma |
 | DB | SQLite（`better-sqlite3` 驱动） | 不引入 Postgres/MySQL |
 | 流式传输 | SSE（一条全局连接） | 不用 WebSocket |
-| AI SDK | `@anthropic-ai/sdk`、`@anthropic-ai/claude-agent-sdk`、`openai` | 通过适配器层屏蔽差异 |
+| AI SDK | `@anthropic-ai/sdk`、`@anthropic-ai/claude-agent-sdk`、`openai`；CodexAdapter 实装时引入 `@openai/codex-sdk`（当前未安装） | 通过适配器层屏蔽差异 |
 | 包管理 | pnpm | 不用 npm/yarn（lockfile 唯一） |
 | Node 版本 | ≥ 20 | 用 `node --experimental-strip-types` 跑 TS 脚本时需要 |
 

@@ -153,6 +153,9 @@ const DDL: string[] = [
     ark_api_key TEXT,
     companion_mode TEXT NOT NULL DEFAULT 'off',
     mobile_device_token TEXT,
+    deployment_publish_enabled INTEGER NOT NULL DEFAULT 0,
+    deployment_publish_dir TEXT,
+    deployment_public_base_url TEXT,
     updated_at INTEGER NOT NULL
   )`,
 ]
@@ -164,6 +167,9 @@ function ensureSchema(sqlite: Database.Database): void {
   }
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN companion_mode TEXT NOT NULL DEFAULT 'off'`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN mobile_device_token TEXT`)
+  safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_enabled INTEGER NOT NULL DEFAULT 0`)
+  safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_dir TEXT`)
+  safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_public_base_url TEXT`)
 }
 
 function safeAlter(sqlite: Database.Database, stmt: string): void {

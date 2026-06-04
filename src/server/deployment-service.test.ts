@@ -11,6 +11,7 @@ import {
   buildDeploymentContainerZip,
   buildDeploymentSourceZip,
   createLocalStaticDeployment,
+  publishDeploymentToStaticDirectory,
   readDeploymentAsset,
 } from './deployment-service'
 
@@ -159,6 +160,74 @@ describe('deployment-service', () => {
     expect(await containerZip.file('Dockerfile')?.async('string')).toContain('FROM nginx')
     expect(await containerZip.file('nginx.conf')?.async('string')).toContain('try_files')
     expect(await containerZip.file('app/index.html')?.async('string')).toContain('body { color: red; }')
+  })
+
+  it('publishes public deployment files to a configured static directory', () => {
+    const dataDir = tempDataDir()
+    const publishDir = tempDataDir()
+    createLocalStaticDeployment({
+      id: 'dep_publish123',
+      artifactId: 'art_publish123',
+      title: 'Published Demo',
+      version: 1,
+      content: webAppContent,
+      dataDir,
+    })
+
+    const result = publishDeploymentToStaticDirectory(
+      'dep_publish123',
+      {
+        publishDir,
+        publicBaseUrl: 'https://example.com/apps',
+      },
+      { dataDir },
+    )
+
+    expect(result).toEqual({
+      publicUrl: 'https://example.com/apps/dep_publish123/',
+      publishPath: path.join(publishDir, 'dep_publish123'),
+      localPreviewPath: '/deployments/dep_publish123',
+      publishTargetType: 'static_directory',
+    })
+    expect(readFileSync(path.join(publishDir, 'dep_publish123', 'index.html'), 'utf8'))
+      .toContain('<main id="app">hello</main>')
+    expect(existsSync(path.join(publishDir, 'dep_publish123', '.agenthub'))).toBe(false)
+  })
+
+  it('rejects unsafe publish target settings', () => {
+    const dataDir = tempDataDir()
+    createLocalStaticDeployment({
+      id: 'dep_publish456',
+      artifactId: 'art_publish456',
+      title: 'Published Demo',
+      version: 1,
+      content: webAppContent,
+      dataDir,
+    })
+
+    expect(() =>
+      publishDeploymentToStaticDirectory(
+        'dep_publish456',
+        { publishDir: 'relative/out', publicBaseUrl: 'https://example.com' },
+        { dataDir },
+      ),
+    ).toThrow('must be an absolute path')
+
+    expect(() =>
+      publishDeploymentToStaticDirectory(
+        'dep_publish456',
+        { publishDir: path.parse(path.resolve(dataDir)).root, publicBaseUrl: 'https://example.com' },
+        { dataDir },
+      ),
+    ).toThrow('must not be the filesystem root')
+
+    expect(() =>
+      publishDeploymentToStaticDirectory(
+        'dep_publish456',
+        { publishDir: tempDataDir(), publicBaseUrl: 'file:///tmp/site' },
+        { dataDir },
+      ),
+    ).toThrow('must use http or https')
   })
 })
 

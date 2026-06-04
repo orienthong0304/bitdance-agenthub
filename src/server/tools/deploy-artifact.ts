@@ -3,8 +3,12 @@ import { z } from 'zod'
 
 import { db, schema } from '@/db/client'
 import { artifactPreviewPath } from '@/lib/artifact-preview'
-import { createLocalStaticDeployment } from '@/server/deployment-service'
+import {
+  createLocalStaticDeployment,
+  publishDeploymentToStaticDirectory,
+} from '@/server/deployment-service'
 import { newDeploymentId } from '@/server/ids'
+import { getAppSettings } from '@/server/settings-service'
 import type { ArtifactContent, DeployStatusRecord } from '@/shared/types'
 
 import type { ToolDef } from './types'
@@ -12,6 +16,9 @@ import type { ToolDef } from './types'
 const ArgsSchema = z.object({
   artifactId: z.string().min(1),
 })
+
+const EXTERNAL_DEPLOYMENT_SUMMARY_INSTRUCTION =
+  'User-facing summaries may quote the returned previewPath/publicUrl exactly. Do not invent or rewrite hostnames. If localPreviewPath is present, mention it only as a local fallback inside AgentHub.'
 
 export const deployArtifactTool: ToolDef = {
   name: 'deploy_artifact',
@@ -60,16 +67,14 @@ export const deployArtifactTool: ToolDef = {
     }
 
     try {
-      return {
-        ok: true,
-        value: createLocalStaticDeployment({
-          id: newDeploymentId(),
-          artifactId: artifact.id,
-          title: artifact.title,
-          version: artifact.version,
-          content,
-        }),
-      }
+      const local = createLocalStaticDeployment({
+        id: newDeploymentId(),
+        artifactId: artifact.id,
+        title: artifact.title,
+        version: artifact.version,
+        content,
+      })
+      return { ok: true, value: await maybePublishExternally(local) }
     } catch (error) {
       return {
         ok: true,
@@ -82,6 +87,50 @@ export const deployArtifactTool: ToolDef = {
       }
     }
   },
+}
+
+async function maybePublishExternally(local: DeployStatusRecord): Promise<DeployStatusRecord> {
+  const settings = await getAppSettings()
+  if (!settings.deploymentPublishEnabled) return local
+
+  if (!settings.deploymentPublishDir || !settings.deploymentPublicBaseUrl) {
+    return {
+      ...local,
+      status: 'failed',
+      deploymentType: 'external_static',
+      localPreviewPath: local.previewPath,
+      error:
+        'External static publishing is enabled, but deployment publish directory or public base URL is not configured',
+    }
+  }
+
+  try {
+    const published = publishDeploymentToStaticDirectory(local.id, {
+      publishDir: settings.deploymentPublishDir,
+      publicBaseUrl: settings.deploymentPublicBaseUrl,
+    })
+    return {
+      ...local,
+      previewPath: published.publicUrl,
+      deploymentPath: published.publicUrl,
+      deploymentType: 'external_static',
+      localPreviewPath: local.previewPath,
+      publicUrl: published.publicUrl,
+      publishPath: published.publishPath,
+      publishTargetType: published.publishTargetType,
+      summaryInstruction: EXTERNAL_DEPLOYMENT_SUMMARY_INSTRUCTION,
+    }
+  } catch (error) {
+    return {
+      ...local,
+      status: 'failed',
+      deploymentType: 'external_static',
+      localPreviewPath: local.previewPath,
+      error: `External static publish failed: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`,
+    }
+  }
 }
 
 function failedDeployment(

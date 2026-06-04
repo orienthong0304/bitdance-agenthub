@@ -18,6 +18,9 @@ const PatchBody = z.object({
   arkApiKey: z.string().nullable().optional(),
   companionMode: z.enum(['off', 'lan', 'tailnet']).optional(),
   mobileDeviceToken: z.string().nullable().optional(),
+  deploymentPublishEnabled: z.boolean().optional(),
+  deploymentPublishDir: z.string().nullable().optional(),
+  deploymentPublicBaseUrl: z.string().nullable().optional(),
 })
 
 /** PATCH /api/settings —— upsert 部分字段 */

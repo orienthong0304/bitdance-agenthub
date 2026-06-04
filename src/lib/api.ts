@@ -593,6 +593,9 @@ export interface AppSettingsPatchBody {
   arkApiKey?: string | null
   companionMode?: 'off' | 'lan' | 'tailnet'
   mobileDeviceToken?: string | null
+  deploymentPublishEnabled?: boolean
+  deploymentPublishDir?: string | null
+  deploymentPublicBaseUrl?: string | null
 }
 
 export async function updateAppSettings(patch: AppSettingsPatchBody): Promise<AppSettingsRow> {

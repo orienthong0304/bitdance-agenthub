@@ -32,6 +32,18 @@ interface DeploymentOptions {
   dataDir?: string
 }
 
+export interface StaticPublishTarget {
+  publishDir: string
+  publicBaseUrl: string
+}
+
+export interface StaticPublishResult {
+  publicUrl: string
+  publishPath: string
+  localPreviewPath: string
+  publishTargetType: 'static_directory'
+}
+
 interface CreateLocalStaticDeploymentArgs extends DeploymentOptions {
   id: string
   artifactId: string
@@ -129,6 +141,44 @@ export function deploymentDownloadPath(
   kind: 'source' | 'container',
 ): string {
   return `/api/deployments/${encodeURIComponent(deploymentId)}/download/${kind}`
+}
+
+export function publishDeploymentToStaticDirectory(
+  deploymentId: string,
+  target: StaticPublishTarget,
+  options: DeploymentOptions = {},
+): StaticPublishResult {
+  const manifest = readDeploymentManifest(deploymentId, options)
+  if (!manifest) {
+    throw new Error(`Deployment not found: ${deploymentId}`)
+  }
+
+  const publishRoot = normalizePublishRoot(target.publishDir)
+  const publishDir = path.join(publishRoot, deploymentId)
+  if (!isPathWithin(publishDir, publishRoot)) {
+    throw new Error(`Publish path escapes configured directory: ${publishDir}`)
+  }
+
+  const deploymentDir = getDeploymentDir(deploymentId, options)
+  rmSync(publishDir, { recursive: true, force: true })
+  mkdirSync(publishDir, { recursive: true })
+
+  for (const file of listPublicDeploymentFiles(deploymentDir)) {
+    const source = safeJoinDeploymentPath(deploymentDir, file)
+    const dest = path.join(publishDir, ...file.split('/'))
+    if (!isPathWithin(dest, publishDir)) {
+      throw new Error(`Publish file path escapes deployment directory: ${file}`)
+    }
+    mkdirSync(path.dirname(dest), { recursive: true })
+    writeFileSync(dest, readFileSync(source))
+  }
+
+  return {
+    publicUrl: publicDeploymentUrl(target.publicBaseUrl, deploymentId),
+    publishPath: publishDir,
+    localPreviewPath: deploymentPreviewPath(deploymentId),
+    publishTargetType: 'static_directory',
+  }
 }
 
 export function readDeploymentAsset(
@@ -477,6 +527,37 @@ function downloadBaseName(manifest: DeploymentManifest): string {
     .slice(0, 60)
     .trim()
   return `${safeTitle || 'artifact'}-v${manifest.version}-${manifest.id}`
+}
+
+function normalizePublishRoot(publishDir: string): string {
+  const trimmed = publishDir.trim()
+  if (!trimmed) throw new Error('Deployment publish directory is empty')
+  if (!path.isAbsolute(trimmed)) {
+    throw new Error('Deployment publish directory must be an absolute path')
+  }
+  const resolved = path.resolve(trimmed)
+  if (resolved === path.parse(resolved).root) {
+    throw new Error('Deployment publish directory must not be the filesystem root')
+  }
+  return resolved
+}
+
+function publicDeploymentUrl(baseUrl: string, deploymentId: string): string {
+  assertDeploymentId(deploymentId)
+  let url: URL
+  try {
+    url = new URL(baseUrl.trim())
+  } catch {
+    throw new Error('Deployment public base URL must be a valid absolute URL')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Deployment public base URL must use http or https')
+  }
+  const basePath = url.pathname.endsWith('/') ? url.pathname : `${url.pathname}/`
+  url.pathname = `${basePath}${encodeURIComponent(deploymentId)}/`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

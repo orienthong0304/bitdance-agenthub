@@ -155,8 +155,12 @@ export interface DeployStatusRecord {
   version: number
   previewPath: string
   status: 'ready' | 'failed'
-  deploymentType?: 'local_static'
+  deploymentType?: 'local_static' | 'external_static'
   deploymentPath?: string
+  localPreviewPath?: string
+  publicUrl?: string
+  publishPath?: string
+  publishTargetType?: 'static_directory'
   sourceDownloadPath?: string
   containerDownloadPath?: string
   summaryInstruction?: string

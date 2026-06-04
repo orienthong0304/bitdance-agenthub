@@ -28,6 +28,9 @@ const EMPTY: AppSettingsRow = {
   arkApiKey: null,
   companionMode: 'off',
   mobileDeviceToken: null,
+  deploymentPublishEnabled: false,
+  deploymentPublishDir: null,
+  deploymentPublicBaseUrl: null,
   updatedAt: 0,
 }
 
@@ -46,6 +49,9 @@ export interface AppSettingsPatch {
   arkApiKey?: string | null
   companionMode?: CompanionMode
   mobileDeviceToken?: string | null
+  deploymentPublishEnabled?: boolean
+  deploymentPublishDir?: string | null
+  deploymentPublicBaseUrl?: string | null
 }
 
 /** UPSERT 全部字段：传 null 清空，undefined 不动。 */
@@ -78,6 +84,9 @@ export async function updateAppSettings(patch: AppSettingsPatch): Promise<AppSet
         arkApiKey: next.arkApiKey,
         companionMode: next.companionMode,
         mobileDeviceToken: next.mobileDeviceToken,
+        deploymentPublishEnabled: next.deploymentPublishEnabled,
+        deploymentPublishDir: next.deploymentPublishDir,
+        deploymentPublicBaseUrl: next.deploymentPublicBaseUrl,
         updatedAt: next.updatedAt,
       },
     })
@@ -109,9 +118,10 @@ export function syncCompanionRuntime(settings: AppSettingsRow): void {
 }
 
 /** 空串归一为 null，避免 "" 与 null 混杂。trim 用户输入。 */
-function normalize(v: string | null | undefined): string | null | undefined {
+function normalize(v: string | boolean | null | undefined): string | boolean | null | undefined {
   if (v === undefined) return undefined
   if (v === null) return null
+  if (typeof v === 'boolean') return v
   const trimmed = v.trim()
   return trimmed === '' ? null : trimmed
 }

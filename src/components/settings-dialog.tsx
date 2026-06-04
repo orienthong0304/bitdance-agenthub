@@ -6,6 +6,7 @@ import {
   Clipboard,
   Eye,
   EyeOff,
+  FolderUp,
   KeyRound,
   Loader2,
   Monitor,
@@ -46,6 +47,9 @@ interface SettingsForm {
   arkApiKey: string
   companionMode: 'off' | 'lan' | 'tailnet'
   mobileDeviceToken: string
+  deploymentPublishEnabled: boolean
+  deploymentPublishDir: string
+  deploymentPublicBaseUrl: string
 }
 
 /**
@@ -78,6 +82,9 @@ export function SettingsDialog({
     arkApiKey: '',
     companionMode: 'off',
     mobileDeviceToken: '',
+    deploymentPublishEnabled: false,
+    deploymentPublishDir: '',
+    deploymentPublicBaseUrl: '',
   })
   const [reveal, setReveal] = useState<Record<keyof SettingsForm, boolean>>({
     anthropicApiKey: false,
@@ -87,6 +94,9 @@ export function SettingsDialog({
     arkApiKey: false,
     companionMode: true,
     mobileDeviceToken: false,
+    deploymentPublishEnabled: true,
+    deploymentPublishDir: true,
+    deploymentPublicBaseUrl: true,
   })
 
   useEffect(() => {
@@ -149,6 +159,9 @@ export function SettingsDialog({
         arkApiKey: form.arkApiKey.trim() || null,
         companionMode: form.companionMode,
         mobileDeviceToken: form.mobileDeviceToken.trim() || null,
+        deploymentPublishEnabled: form.deploymentPublishEnabled,
+        deploymentPublishDir: form.deploymentPublishDir.trim() || null,
+        deploymentPublicBaseUrl: form.deploymentPublicBaseUrl.trim() || null,
       }
       await updateAppSettings(patch)
       onOpenChange(false)
@@ -257,6 +270,21 @@ export function SettingsDialog({
                 onEnable={() => void handleEnableCompanion()}
                 onDisable={() => void handleDisableCompanion()}
                 onRegenerateToken={() => void handleRegenerateToken()}
+              />
+
+              <DeploymentPublishSettings
+                enabled={form.deploymentPublishEnabled}
+                publishDir={form.deploymentPublishDir}
+                publicBaseUrl={form.deploymentPublicBaseUrl}
+                onEnabledChange={(deploymentPublishEnabled) =>
+                  setForm((f) => ({ ...f, deploymentPublishEnabled }))
+                }
+                onPublishDirChange={(deploymentPublishDir) =>
+                  setForm((f) => ({ ...f, deploymentPublishDir }))
+                }
+                onPublicBaseUrlChange={(deploymentPublicBaseUrl) =>
+                  setForm((f) => ({ ...f, deploymentPublicBaseUrl }))
+                }
               />
 
               <KeyField
@@ -464,6 +492,67 @@ function MobileConnectionHints({
   )
 }
 
+function DeploymentPublishSettings({
+  enabled,
+  publishDir,
+  publicBaseUrl,
+  onEnabledChange,
+  onPublishDirChange,
+  onPublicBaseUrlChange,
+}: {
+  enabled: boolean
+  publishDir: string
+  publicBaseUrl: string
+  onEnabledChange: (enabled: boolean) => void
+  onPublishDirChange: (value: string) => void
+  onPublicBaseUrlChange: (value: string) => void
+}) {
+  return (
+    <section className="rounded-lg border bg-muted/30 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <FolderUp className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">外部静态发布</h3>
+        </div>
+        <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => onEnabledChange(event.currentTarget.checked)}
+            className="size-4 rounded border-input accent-primary"
+          />
+          启用
+        </label>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <label className="text-xs font-medium">发布目录</label>
+          <Input
+            value={publishDir}
+            onChange={(event) => onPublishDirChange(event.target.value)}
+            placeholder="D:\\sites\\agenthub"
+          />
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            AgentHub 会写入该目录下的 dep_xxx 子目录。
+          </p>
+        </div>
+        <div className="grid gap-1.5">
+          <label className="text-xs font-medium">公开根 URL</label>
+          <Input
+            value={publicBaseUrl}
+            onChange={(event) => onPublicBaseUrlChange(event.target.value)}
+            placeholder="https://example.com/apps"
+          />
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            部署卡片会返回公开根 URL 加 deployment id 的地址。
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function hintIcon(kind: ConnectionHint['kind']) {
   switch (kind) {
     case 'tailscale':
@@ -554,5 +643,8 @@ function rowToForm(row: AppSettingsRow): SettingsForm {
     arkApiKey: row.arkApiKey ?? '',
     companionMode: row.companionMode,
     mobileDeviceToken: row.mobileDeviceToken ?? '',
+    deploymentPublishEnabled: row.deploymentPublishEnabled,
+    deploymentPublishDir: row.deploymentPublishDir ?? '',
+    deploymentPublicBaseUrl: row.deploymentPublicBaseUrl ?? '',
   }
 }

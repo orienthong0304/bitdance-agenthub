@@ -259,6 +259,11 @@ export const appSettings = sqliteTable('app_settings', {
   arkApiKey: text('ark_api_key'),
   companionMode: text('companion_mode', { enum: ['off', 'lan', 'tailnet'] }).notNull().default('off'),
   mobileDeviceToken: text('mobile_device_token'),
+  deploymentPublishEnabled: integer('deployment_publish_enabled', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  deploymentPublishDir: text('deployment_publish_dir'),
+  deploymentPublicBaseUrl: text('deployment_public_base_url'),
   updatedAt: integer('updated_at').notNull(),
 })
 

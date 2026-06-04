@@ -534,6 +534,10 @@ function DeployStatusPart({
   const ready = deployment.status === 'ready'
   const previewUrl = resolvePreviewUrl(deployment.previewPath)
   const isLocalStatic = deployment.deploymentType === 'local_static'
+  const isExternalStatic = deployment.deploymentType === 'external_static'
+  const fallbackPreviewPath = deployment.localPreviewPath
+  const fallbackPreviewUrl = fallbackPreviewPath ? resolvePreviewUrl(fallbackPreviewPath) : null
+  const actionPreviewPath = ready ? deployment.previewPath : fallbackPreviewPath
 
   return (
     <Card
@@ -551,30 +555,56 @@ function DeployStatusPart({
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {ready ? (isLocalStatic ? '本地静态发布已就绪' : '部署预览已就绪') : '部署预览失败'}
+            {ready
+              ? isExternalStatic
+                ? '外部静态发布已就绪'
+                : isLocalStatic
+                  ? '本地静态发布已就绪'
+                  : '部署预览已就绪'
+              : isExternalStatic
+                ? '外部静态发布失败'
+                : '部署预览失败'}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {deployment.title} · v{deployment.version}
-            {isLocalStatic && ` · ${deployment.id}`}
+            {(isLocalStatic || isExternalStatic) && ` · ${deployment.id}`}
           </div>
           {ready ? (
-            <div className="mt-1 truncate font-mono text-[11px] text-sky-700 dark:text-sky-300">
-              {previewUrl}
+            <div className="mt-1 space-y-0.5">
+              <div className="truncate font-mono text-[11px] text-sky-700 dark:text-sky-300">
+                {previewUrl}
+              </div>
+              {fallbackPreviewUrl && fallbackPreviewUrl !== previewUrl && (
+                <div className="truncate text-[11px] text-muted-foreground">
+                  本地回退：<span className="font-mono">{fallbackPreviewUrl}</span>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="mt-1 text-xs text-red-700 dark:text-red-300">
-              {deployment.error ?? 'Unknown deployment error'}
+            <div className="mt-1 space-y-0.5">
+              <div className="text-xs text-red-700 dark:text-red-300">
+                {deployment.error ?? 'Unknown deployment error'}
+              </div>
+              {fallbackPreviewUrl && (
+                <div className="truncate text-[11px] text-muted-foreground">
+                  本地回退：<span className="font-mono">{fallbackPreviewUrl}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
-        {ready && (
+        {(ready || actionPreviewPath || deployment.sourceDownloadPath || deployment.containerDownloadPath) && (
           <div className="flex shrink-0 items-center gap-1">
-            <IconAction title="打开预览 URL" onClick={() => openPath(deployment.previewPath)}>
-              <ExternalLink className="size-3.5" />
-            </IconAction>
-            <IconAction title="复制预览 URL" onClick={() => copyPath(deployment.previewPath)}>
-              <Copy className="size-3.5" />
-            </IconAction>
+            {actionPreviewPath && (
+              <>
+                <IconAction title={ready ? '打开预览 URL' : '打开本地回退预览'} onClick={() => openPath(actionPreviewPath)}>
+                  <ExternalLink className="size-3.5" />
+                </IconAction>
+                <IconAction title={ready ? '复制预览 URL' : '复制本地回退预览'} onClick={() => copyPath(actionPreviewPath)}>
+                  <Copy className="size-3.5" />
+                </IconAction>
+              </>
+            )}
             {deployment.sourceDownloadPath && (
               <IconLinkAction title="下载源码包" href={deployment.sourceDownloadPath}>
                 <Download className="size-3.5" />

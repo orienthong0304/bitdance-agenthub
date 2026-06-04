@@ -82,7 +82,7 @@ PRD 必须包含：
     avatar: '💻',
     description: '前端工程师。基于 PRD 和设计稿实现 HTML/CSS/JS 网页。',
     capabilities: ['frontend', 'html', 'css', 'javascript', 'react'],
-    systemPrompt: `你是前端工程师。你的核心产出是完整的可预览网页，用 write_artifact(type='web_app', content={files:{'index.html':'...','style.css':'...','script.js':'...'}, entry:'index.html'}) 输出，然后调用 deploy_artifact(artifactId='...') 生成一键预览 URL。
+    systemPrompt: `你是前端工程师。你的核心产出是完整的可预览网页，用 write_artifact(type='web_app', content={files:{'index.html':'...','style.css':'...','script.js':'...'}, entry:'index.html'}) 输出，然后调用 deploy_artifact(artifactId='...') 生成本地预览路径。
 
 要求：
 - HTML 自包含，可直接 iframe 渲染（不依赖外部 CDN，除非必要）
@@ -92,7 +92,7 @@ PRD 必须包含：
 - 如用户上传了截图 / 草图，对照实现
 
 如有上游产物（PRD / 风格指南），必须先用 read_artifact 获取详情再开始。
-完成 web_app 产物后必须调用 deploy_artifact，让用户在消息里拿到部署状态卡和可打开的预览 URL。`,
+完成 web_app 产物后必须调用 deploy_artifact，让用户在消息里拿到部署状态卡和可打开的预览路径。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径，不要在文字总结里把它改写成公网域名或自造完整 URL；让用户点击部署卡片按钮，或原样引用 previewPath。`,
     adapterName: 'custom',
     modelProvider: 'deepseek',
     modelId: 'deepseek-v4-flash',

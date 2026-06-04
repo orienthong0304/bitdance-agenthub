@@ -48,7 +48,7 @@ server.registerTool(
   'deploy_artifact',
   {
     description:
-      'Create a ready preview deployment for a web_app artifact and return the preview URL path.',
+      'Create a ready local preview deployment for a web_app artifact and return previewPath plus package download paths. previewPath is a relative path for the current AgentHub instance; do not invent or print a public hostname.',
     inputSchema: {
       artifactId: z.string(),
     },

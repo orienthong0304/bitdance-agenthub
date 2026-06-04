@@ -168,7 +168,8 @@ function buildCodexDeveloperInstructions(systemPrompt: string): string {
     systemPrompt,
     '',
     '## AgentHub MCP tools',
-    'When you create a previewable web app, use the AgentHub MCP write_artifact tool with type "web_app". After that, call deploy_artifact with the artifactId so the user receives a deployment status card with an openable preview URL.',
+    'When you create a previewable web app, use the AgentHub MCP write_artifact tool with type "web_app". After that, call deploy_artifact with the artifactId so the user receives a deployment status card with open/copy/download actions.',
+    'deploy_artifact returns previewPath as a local relative path for the current AgentHub instance. Do not convert it into an absolute public URL and do not invent hostnames. In user-facing summaries, tell the user to use the deployment card buttons or quote previewPath exactly.',
   ].join('\n')
 }
 

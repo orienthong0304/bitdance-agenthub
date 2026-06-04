@@ -102,7 +102,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',
       version: '1.0.0',
-      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成一键预览 URL。',
+      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成本地预览路径。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
       tools: [
         tool(
           'write_artifact',
@@ -155,7 +155,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
         ),
         tool(
           'deploy_artifact',
-          'Create a ready preview deployment for a web_app artifact. Use this after write_artifact when the user should receive an openable preview URL.',
+          'Create a ready local preview deployment for a web_app artifact. The returned previewPath is a relative path for the current AgentHub instance; do not invent or print a public hostname. Use this after write_artifact when the user should receive a deployment card with open/copy/download actions.',
           { artifactId: z.string() },
           async (args) => {
             const result = await toolRegistry.execute('deploy_artifact', args, toolCtx)

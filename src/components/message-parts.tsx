@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Rocket, Sparkles, XCircle } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Package, Rocket, Sparkles, XCircle } from 'lucide-react'
 import type { MouseEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
@@ -533,6 +533,7 @@ function DeployStatusPart({
 }) {
   const ready = deployment.status === 'ready'
   const previewUrl = resolvePreviewUrl(deployment.previewPath)
+  const isLocalStatic = deployment.deploymentType === 'local_static'
 
   return (
     <Card
@@ -550,10 +551,11 @@ function DeployStatusPart({
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {ready ? '部署预览已就绪' : '部署预览失败'}
+            {ready ? (isLocalStatic ? '本地静态发布已就绪' : '部署预览已就绪') : '部署预览失败'}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {deployment.title} · v{deployment.version}
+            {isLocalStatic && ` · ${deployment.id}`}
           </div>
           {ready ? (
             <div className="mt-1 truncate font-mono text-[11px] text-sky-700 dark:text-sky-300">
@@ -573,10 +575,41 @@ function DeployStatusPart({
             <IconAction title="复制预览 URL" onClick={() => copyPath(deployment.previewPath)}>
               <Copy className="size-3.5" />
             </IconAction>
+            {deployment.sourceDownloadPath && (
+              <IconLinkAction title="下载源码包" href={deployment.sourceDownloadPath}>
+                <Download className="size-3.5" />
+              </IconLinkAction>
+            )}
+            {deployment.containerDownloadPath && (
+              <IconLinkAction title="下载容器包" href={deployment.containerDownloadPath}>
+                <Package className="size-3.5" />
+              </IconLinkAction>
+            )}
           </div>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function IconLinkAction({
+  title,
+  href,
+  children,
+}: {
+  title: string
+  href: string
+  children: ReactNode
+}) {
+  return (
+    <a
+      href={href}
+      title={title}
+      download
+      className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background/80 hover:text-foreground"
+    >
+      {children}
+    </a>
   )
 }
 

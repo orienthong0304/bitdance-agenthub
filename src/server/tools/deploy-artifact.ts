@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { db, schema } from '@/db/client'
 import { artifactPreviewPath } from '@/lib/artifact-preview'
+import { createLocalStaticDeployment } from '@/server/deployment-service'
 import { newDeploymentId } from '@/server/ids'
 import type { ArtifactContent, DeployStatusRecord } from '@/shared/types'
 
@@ -15,7 +16,7 @@ const ArgsSchema = z.object({
 export const deployArtifactTool: ToolDef = {
   name: 'deploy_artifact',
   description:
-    'Create a ready preview deployment for a web_app artifact and return its preview URL path. Use after write_artifact when the user should be able to open the generated app.',
+    'Create a local static deployment for a web_app artifact and return its stable previewPath plus downloadable packages. The previewPath is a relative path for the current AgentHub instance; do not invent or print a public hostname. In user-facing summaries, tell the user to use the deployment card buttons or quote previewPath exactly.',
   parameters: {
     type: 'object',
     required: ['artifactId'],
@@ -58,17 +59,27 @@ export const deployArtifactTool: ToolDef = {
       }
     }
 
-    return {
-      ok: true,
-      value: {
-        id: newDeploymentId(),
-        artifactId: artifact.id,
-        title: artifact.title,
-        version: artifact.version,
-        previewPath: artifactPreviewPath(artifact.id),
-        status: 'ready',
-        createdAt: Date.now(),
-      } satisfies DeployStatusRecord,
+    try {
+      return {
+        ok: true,
+        value: createLocalStaticDeployment({
+          id: newDeploymentId(),
+          artifactId: artifact.id,
+          title: artifact.title,
+          version: artifact.version,
+          content,
+        }),
+      }
+    } catch (error) {
+      return {
+        ok: true,
+        value: failedDeployment(
+          artifact.id,
+          artifact.title,
+          error instanceof Error ? error.message : 'Failed to create deployment',
+          artifact.version,
+        ),
+      }
     }
   },
 }

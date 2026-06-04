@@ -40,3 +40,12 @@ Messages SHALL reference artifacts via `artifact_ref` parts instead of embedding
 #### Scenario: Artifact is created from a tool result
 - **WHEN** `write_artifact` returns an artifact id
 - **THEN** AgentRunner injects an `artifact_ref` part into the current message.
+
+### Requirement: Deployment status SHALL be structured
+
+Messages SHALL represent deploy preview results with a `deploy_status` part instead of plain text so the UI can render open/copy actions.
+
+#### Scenario: Deployment finishes
+- **WHEN** an adapter emits `deploy.status`
+- **THEN** AgentRunner injects a `deploy_status` part into the current message
+- **AND** the part includes status, artifact id, title, version, preview path, and optional error.

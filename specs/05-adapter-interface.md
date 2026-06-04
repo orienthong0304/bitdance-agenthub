@@ -158,7 +158,8 @@ interface AdapterInput {
      若有 tool_calls：
        并行 toolRegistry.execute(name, args, ctx)
        逐个 yield tool.result
-       检测 result.value.artifactId 存在 → yield artifact.create (拉 DB 详情)
+        write_artifact 检测 result.value.artifactId 存在 → yield artifact.create (拉 DB 详情)
+        deploy_artifact 检测 DeployStatusRecord → yield deploy.status
        把 assistant 消息（含 tool_calls + reasoning_content）和 tool result 推回 messages
        继续下一轮
 ```
@@ -184,15 +185,17 @@ DeepSeek 等支持思考链的模型在 stream 中会单独输出 `delta.reasoni
 
 DeepSeek 的多模态模型（`deepseek-v4-flash`）走标准 OpenAI image_url 协议。
 
-### Artifact 注入路径
+### Artifact / Deploy 注入路径
 
-不在 Adapter 自己发 `artifact_ref` part。流程：
+不在 Adapter 自己发 `artifact_ref` / `deploy_status` part。流程：
 
 1. Adapter 检测 `tool_result.value.artifactId` 非空 → `yield { type: 'artifact.create', artifact: <DB row> }`
 2. AgentRunner 接到 `artifact.create` 事件 → 在当前 message 末尾插入 `artifact_ref` part 并补发 `part.start`
-3. 这样 message.parts 里 tool_use → tool_result → artifact_ref 顺序排列，前端按 callId 合并工具卡片，artifact_ref 单独渲染为卡片
+3. Adapter 检测 `DeployStatusRecord` → `yield { type:'deploy.status', messageId, deployment }`
+4. AgentRunner 接到 `deploy.status` → 插入 `deploy_status` part 并补发 `part.start`
+5. 这样 message.parts 里 tool_use → tool_result → artifact_ref / deploy_status 顺序排列，前端按 callId 合并工具卡片，其它结构化 part 单独渲染为卡片
 
-详见 Spec 02 的「artifact_ref 注入路径」一节。
+详见 Spec 02 的「artifact_ref / deploy_status 注入路径」一节。
 
 ---
 
@@ -381,7 +384,7 @@ SDK 提供 `canUseTool(toolName, toolInput, options) => PermissionResult` 钩子
 
 ### 工具集
 
-完全用 SDK preset `'claude_code'`（即 Claude Code CLI 自带的全套），不消费 `AdapterInput.toolNames`。AgentHub 自家工具（`write_artifact` / `fs_read` / `fs_write` / `bash` / ...）对 Claude Code agent 不暴露。`fs_write` 审批流通过 `pendingWrites` store 共享，UI 层（`PendingWritesPanel` / `PendingWriteDiffTab`）和 `bash.ts` / `claude-code-adapter.ts` 共享 `BANNED_PATTERNS`（`src/server/security.ts`）。
+完全用 SDK preset `'claude_code'`（即 Claude Code CLI 自带的全套），不消费 `AdapterInput.toolNames`。AgentHub 通过 SDK in-process MCP server 额外暴露 `write_artifact` / `read_artifact` / `deploy_artifact` / `ask_user`。`fs_write` 审批流通过 `pendingWrites` store 共享，UI 层（`PendingWritesPanel` / `PendingWriteDiffTab`）和 `bash.ts` / `claude-code-adapter.ts` 共享 `BANNED_PATTERNS`（`src/server/security.ts`）。
 
 ### Subagent (Task)
 
@@ -448,11 +451,12 @@ const { events } = await thread.runStreamed(input.prompt, { signal })
 1. **SDK first**：CodexAdapter 使用 `@openai/codex-sdk`。`codex exec --json` 或 `codex mcp-server` 只作为自动化 / MCP 参考，不是主路径。
 2. **线程续接**：按 `conversationId + agentId` 缓存 Codex threadId；撤回 / 编辑重发 / 重新生成 / 删除会话 / context compact 时清理对应 thread，模式参考 `ClaudeCodeAdapter` 的 session 缓存。
 3. **运行时环境隔离**：Codex 子进程使用 AgentHub 管理的 `CODEX_HOME=<dataDir>/codex-home` 和 `CODEX_SQLITE_HOME=<dataDir>/codex-home`。继承 PATH / HOME / 代理等普通环境，但剥离外部 `CODEX_*`（保留 `CODEX_CA_CERTIFICATE`），避免 CC Switch 或用户 `~/.codex/config.toml` 影响 AgentHub 调试。
-4. **Base URL 兼容性**：`apiBaseUrl` 只接受 Codex/Responses 兼容 endpoint。运行前拦截已知不支持的 DeepSeek host；如果运行时出现 `/responses` 404 / Not Found，也归因为协议不兼容并提示用户改用 Custom adapter。
-5. **Workspace 与 sandbox**：`workingDirectory = AdapterInput.workspacePath`，`skipGitRepoCheck=true`（sandbox workspace 可能不是 git repo）。Review 模式用 `sandboxMode='read-only'`；Auto 模式用 `sandboxMode='workspace-write'`。不启用 `danger-full-access`。
-6. **审批与安全**：当前 TypeScript SDK 没有 Claude `canUseTool` 等价 hook，所以 Review 模式不允许自动写盘。Auto 模式下由 Codex 自己的 workspace-write sandbox 限制边界；`approvalPolicy='never'`、`networkAccessEnabled=false`、`webSearchMode='disabled'`，避免产生 AgentHub 无法接管的交互式审批请求。
-7. **事件翻译**：SDK 的 `thread.started` 缓存 threadId；`agent_message` → text part；`reasoning` / `todo_list` → thinking part；`command_execution` / `file_change` / `mcp_tool_call` / `web_search` → tool call/result；`turn.completed.usage` → `message.usage` + `run.usage`。
-8. **图片附件**：`kind='image'` 的 attachment 通过 SDK `local_image` 输入传给 Codex。普通文件附件暂不直传；需要文件内容时让 Codex 在 workspace 里读取，或后续通过 AgentHub MCP 工具扩展。
+4. **AgentHub MCP bridge**：Codex config 注入 `mcp_servers.agenthub`，启动 `scripts/agenthub-codex-mcp.mjs` stdio server。bridge 只暴露 `write_artifact` / `read_artifact` / `deploy_artifact`，通过带 token 的内部 API 调用 `toolRegistry`。
+5. **Base URL 兼容性**：`apiBaseUrl` 只接受 Codex/Responses 兼容 endpoint。运行前拦截已知不支持的 DeepSeek host；如果运行时出现 `/responses` 404 / Not Found，也归因为协议不兼容并提示用户改用 Custom adapter。
+6. **Workspace 与 sandbox**：`workingDirectory = AdapterInput.workspacePath`，`skipGitRepoCheck=true`（sandbox workspace 可能不是 git repo）。Review 模式用 `sandboxMode='read-only'`；Auto 模式用 `sandboxMode='workspace-write'`。不启用 `danger-full-access`。
+7. **审批与安全**：当前 TypeScript SDK 没有 Claude `canUseTool` 等价 hook，所以 Review 模式不允许自动写盘。Auto 模式下由 Codex 自己的 workspace-write sandbox 限制边界；`approvalPolicy='never'`、`networkAccessEnabled=false`、`webSearchMode='disabled'`，避免产生 AgentHub 无法接管的交互式审批请求。
+8. **事件翻译**：SDK 的 `thread.started` 缓存 threadId；`agent_message` → text part；`reasoning` / `todo_list` → thinking part；`command_execution` / `file_change` / `mcp_tool_call` / `web_search` → tool call/result；`turn.completed.usage` → `message.usage` + `run.usage`。AgentHub MCP 的 `write_artifact` / `deploy_artifact` 结果额外翻译成 `artifact.create` / `deploy.status`。
+9. **图片附件**：`kind='image'` 的 attachment 通过 SDK `local_image` 输入传给 Codex。普通文件附件暂不直传；需要文件内容时让 Codex 在 workspace 里读取，或后续通过 AgentHub MCP 工具扩展。
 
 ### CLI fallback（当前不实现）
 

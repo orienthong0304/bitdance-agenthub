@@ -1,6 +1,6 @@
 # Spec 03 — MessagePart 类型
 
-> Message 是「容器」，真正内容在 `parts: MessagePart[]`。本 spec 定义 8 种 part 类型与对应的渲染、增量协议、新增步骤。**修改 part 类型需先讨论。**
+> Message 是「容器」，真正内容在 `parts: MessagePart[]`。本 spec 定义 9 种 part 类型与对应的渲染、增量协议、新增步骤。**修改 part 类型需先讨论。**
 
 源文件：`src/shared/types.ts:7-27`、`src/components/message-parts.tsx`
 
@@ -25,6 +25,7 @@ type MessagePart =
   | { type: 'tool_use';    callId: string; toolName: string; args: unknown }
   | { type: 'tool_result'; callId: string; result: unknown; isError: boolean }
   | { type: 'artifact_ref'; artifactId: string }
+  | { type: 'deploy_status'; deployment: DeployStatusRecord }
   | { type: 'image_attachment';
       attachmentId: string; fileName: string; size: number; mimeType: string }
   | { type: 'file_attachment';
@@ -114,7 +115,17 @@ Agent 的主要文字输出。content 是 markdown 文本，前端用 `react-mar
 
 **Lazy load**：前端首次见到 `artifact_ref` 且 store 中无该 artifact 时，调 `fetchArtifact(id)` 拉详情；404 → 渲染「产物已删除」墓碑卡片。
 
-### 7. `image_attachment`
+### 7. `deploy_status`
+
+```typescript
+{ type: 'deploy_status', deployment: DeployStatusRecord }
+```
+
+展示一次 web_app 部署预览状态。`status='ready'` 时卡片提供打开 / 复制预览 URL；`status='failed'` 时展示失败原因。
+
+**注入路径**：Adapter 在 `deploy_artifact` 成功返回部署记录后 emit `deploy.status`，AgentRunner 在当前 message 末尾 push `deploy_status` 并补发 `part.start`。
+
+### 8. `image_attachment`
 
 ```typescript
 { type: 'image_attachment', attachmentId: string, fileName: string, size: number, mimeType: string }
@@ -183,6 +194,7 @@ function PartList({ parts }) {
 | `tool_use` | `<ToolUsePart>` | 合并 tool_result 渲染 |
 | `tool_result` | （跳过） | 由 ToolUsePart 吸收 |
 | `artifact_ref` | `<ArtifactRefPart>` | 卡片，lazy fetch |
+| `deploy_status` | `<DeployStatusPart>` | 部署状态卡，ready 时带打开/复制 |
 | `image_attachment` | `<AttachmentChip context="message">` | 图片缩略 |
 | `file_attachment` | `<AttachmentChip context="message">` | 文件 chip |
 
@@ -211,6 +223,7 @@ LLM 下一轮 turn 需要 history（assistant 的旧消息回传 messages 数组
 | `tool_use` | `[调用 <toolName>(<args 摘要>)]` |
 | `tool_result` | `[<toolName> 结果: <result 摘要>]` |
 | `artifact_ref` | `[产物: art_xxx]` |
+| `deploy_status` | `[部署预览: title vN (/api/artifacts/.../preview)]` 或 `[部署失败: ...]` |
 | 附件 | `[图片附件: <fileName>]` / `[文件附件: <fileName>]` |
 
 具体实现见 `agent-runner.ts` 的 `extractTextFromParts`（拼回字符串） + `buildMessagesForLLM`（构造 OpenAI format）。

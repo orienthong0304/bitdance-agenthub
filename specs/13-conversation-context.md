@@ -18,7 +18,7 @@ CustomAgentAdapter 已有 within-run 的 turn 累计（一个 run 内 LLM 调用
 
 1. **history 是 OpenAI ChatMessage 数组**：adapter 直接拼用，不做转换。L3 服务层负责序列化。
 2. **agent 视角隔离**：每个 agent 看到的 history 是「以该 agent 为 LLM 主体」视角下的版本——它自己的发言是 `assistant`，他人发言（如有）是 `user` 带前缀。
-3. **artifact 不内联**：history 里的 `artifact_ref` part 折叠成 `[Artifact: title (id=...)]` 文本占位，agent 真要看内容自己 `read_artifact`。
+3. **artifact 不内联**：history 里的 `artifact_ref` part 折叠成 `[Artifact: title (id=...)]` 文本占位，agent 真要看内容自己 `read_artifact`。`deploy_status` 只折叠为部署 URL / 失败原因，不内联 artifact 内容。
 4. **pinned 永远在**：pinned messages 不计入「最近 N 条」额度，永远注入（去重）。
 5. **token 预算 Phase D 才做**：Phase A 用简单 N=20 条上限，超出范围用户自行 pin 关键消息。
 
@@ -82,6 +82,7 @@ export async function buildHistoryFor(
 收集：
 - `text` / `code` → 拼到 assistant content
 - `artifact_ref` → 折叠 `[产物: <title> (id=<artifactId>)]` 文本（需要从 artifacts 表 join 出 title；title 拿不到时退化为 `[产物 art_xxx]`）
+- `deploy_status` → 折叠 `[部署预览: <title> vN (<previewPath>)]` 或 `[部署失败: ...]`
 
 输出（按 OpenAI schema）：
 

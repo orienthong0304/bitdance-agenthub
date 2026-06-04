@@ -93,6 +93,7 @@ interface AppState {
 | `tool.result` | 给消息 push 一个 `tool_result` part（前端按 callId 合并渲染） |
 | `artifact.create` | `artifacts[artifact.id] = artifact`（不在消息里插 `artifact_ref` part，那由 `part.start` 单独投递） |
 | `artifact.update` | 浅合并 `content` patch（TODO：当前没有 emitter，前端 reducer 已就绪） |
+| `deploy.status` | 不直接改 store；AgentRunner 会补发 `part.start(deploy_status)`，reducer 按普通 part 写入 |
 | `dispatch.plan` | 找该 runId 最新的 agent 消息作挂载点，创建 `DispatchState` |
 | `dispatch.start` | `taskStatus[taskId] = 'running'`，记 `childRunIds[taskId] = childRunId` |
 | `dispatch.end` | 优先通过 `parentRunId` 找 `dispatchesByRunId`，更新 `taskStatus[taskId]` 为 `complete` / `failed` / `aborted` / `skipped`；旧事件可用 `childRunId` 反查兜底 |
@@ -243,6 +244,8 @@ app/page.tsx
 | `agents` / `conversations` | 应用启动时全量拉一次 | 同名 maps |
 
 **404 行为**：artifact lazy fetch 404 → 渲染「产物已删除」墓碑卡片（不在 store 标记 deleted；用组件 local state）。
+
+`web_app` artifact 卡、ArtifactPreviewPanel 顶部和 `deploy_status` 卡都提供打开 / 复制预览 URL。URL 由当前 `window.location.origin + previewPath` 生成，避免把 dev 端口或 packaged 随机端口持久化进消息。
 
 ---
 

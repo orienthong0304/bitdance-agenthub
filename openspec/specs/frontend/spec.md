@@ -31,6 +31,14 @@ The UI MUST render artifact previews in a dedicated panel and render chat artifa
 - **WHEN** an `artifact_ref` part is selected
 - **THEN** the preview panel opens the referenced artifact.
 
+### Requirement: Preview URLs SHALL be one-click actions
+
+For `web_app` artifacts and ready deployment status parts, the UI MUST provide open and copy actions for the preview URL.
+
+#### Scenario: Deployment card is ready
+- **WHEN** a `deploy_status` part has `status='ready'`
+- **THEN** the chat renders a deployment card with open and copy controls.
+
 ### Requirement: Agent builder SHALL expose adapter-specific fields
 
 Create/edit agent UI MUST show provider, model, tool, key, and base URL fields according to selected adapter semantics.

@@ -2,7 +2,7 @@
 
 > Artifact 是 Agent 产出的「可独立预览的产物」：网页 / 代码 / 文档 / 图片 / diff。**与 Message 解耦**，有独立的生命周期、版本、二次编辑。**修改 ArtifactContent 结构需先讨论。**
 
-源文件：`src/shared/types.ts:36-76`、`src/db/schema.ts:88-109`、`src/server/artifact-service.ts`、`src/components/artifact-preview-panel.tsx`、`src/server/tools/write-artifact.ts`
+源文件：`src/shared/types.ts`、`src/db/schema.ts`、`src/server/artifact-service.ts`、`src/components/artifact-preview-panel.tsx`、`src/server/tools/write-artifact.ts`、`src/server/tools/deploy-artifact.ts`
 
 ---
 
@@ -150,9 +150,28 @@ store.previewArtifactId → ArtifactPreviewPanel
 
 `WebAppView`：
 - 上方 tab 切「预览 / 源码」
-- 预览：`<iframe srcDoc={html} sandbox="allow-scripts">`（**没有 allow-same-origin**，详见 CLAUDE.md §5.1）
+- 预览：`<iframe src="/api/artifacts/:id/preview" sandbox="allow-scripts">`（**没有 allow-same-origin**，详见 CLAUDE.md §5.1）
 - 源码：选文件 dropdown + `<pre><code>` 显示（**TODO**：源码视图也走 shiki 高亮）
-- `buildIframeHtml`：自动把 `style.css` / `script.js` 注入到 `index.html` 的 `</head>` / `</body>` 前；裸 HTML 片段会自动包成完整 doc
+- `buildIframeHtml`：共享 helper，自动把 `style.css` / `script.js` 注入到 `index.html` 的 `</head>` / `</body>` 前；裸 HTML 片段会自动包成完整 doc
+
+### 一键预览 URL
+
+`GET /api/artifacts/:id/preview` 只服务 `web_app` artifact，返回 `text/html`，并设置 CSP sandbox / `nosniff` / `no-store`。前端 artifact 卡和部署状态卡用该路径生成当前 origin 下的完整预览 URL。
+
+`deploy_artifact` 不做外部托管，返回本地预览部署记录：
+
+```typescript
+{
+  id: 'dep_xxx',
+  artifactId: 'art_xxx',
+  title: string,
+  version: number,
+  previewPath: '/api/artifacts/art_xxx/preview',
+  status: 'ready' | 'failed',
+  error?: string,
+  createdAt: number
+}
+```
 
 ### document
 
@@ -232,6 +251,7 @@ store.previewArtifactId → ArtifactPreviewPanel
 ## 安全 / 沙箱
 
 - **web_app 的 iframe 必须 `sandbox="allow-scripts"`，绝不加 `allow-same-origin`**（CLAUDE.md §5.1）。LLM 生成的 JS 可能尝试访问宿主 cookie / localStorage，必须隔离
+- **web_app 的 preview route 必须设置 CSP sandbox**，和 iframe sandbox 形成双层约束
 - **document 的 markdown 由 react-markdown 渲染**，默认不开启原生 HTML（避免 XSS）。如要支持 HTML，需要走 sanitize
 - **image 的 url**：可以是 `https://...` 或 `data:image/...;base64,...`。LLM 当前主要产 data URI（base64 编码的小图）。SVG data URI 仍可触发 XSS（SVG 内含 script），建议未来用 `<img>` 的 origin 隔离或 sanitize SVG
 

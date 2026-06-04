@@ -23,6 +23,15 @@ Artifact content MUST be a discriminated union keyed by artifact type so rendere
 - **WHEN** an artifact has web app content
 - **THEN** the preview renders it in a sandboxed iframe.
 
+### Requirement: Web app preview SHALL be addressable
+
+Each `web_app` artifact MUST have an HTTP preview route that renders the same HTML package used by the preview panel under sandboxing headers.
+
+#### Scenario: User opens preview URL
+- **WHEN** the user opens `/api/artifacts/{id}/preview`
+- **THEN** a `web_app` artifact is returned as sandboxed HTML
+- **AND** non-web artifacts are rejected.
+
 ### Requirement: Artifact writes SHALL record ownership
 
 Every artifact created by an agent MUST record the originating conversation and agent id.

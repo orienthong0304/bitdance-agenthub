@@ -43,6 +43,7 @@ type StreamEvent = BaseEvent & (
   // —— 产物 ——
   | { type: 'artifact.create', artifact: Artifact }
   | { type: 'artifact.update', artifactId: string, patch: Partial<ArtifactContent> }
+  | { type: 'deploy.status', messageId: string, deployment: DeployStatusRecord }
 
   // —— Orchestrator 调度可视化 ——
   | { type: 'dispatch.plan',  runId: string, plan: DispatchPlanItem[] }
@@ -117,6 +118,10 @@ tool.call         (m1, c1, 'write_artifact', { ... })
 artifact.create   ({ id:'a1', type:'web_app', ... })
 tool.result       (m1, c1, { artifactId:'a1' }, false)
 part.start        (m1, 1, { type:'artifact_ref', artifactId:'a1' })
+tool.call         (m1, c2, 'deploy_artifact', { artifactId:'a1' })
+tool.result       (m1, c2, { id:'dep1', status:'ready', previewPath:'/api/artifacts/a1/preview' }, false)
+deploy.status     (m1, { id:'dep1', status:'ready', ... })
+part.start        (m1, 2, { type:'deploy_status', deployment:{...} })
 part.end          (m1, 1)
 message.end       (m1)
 run.end           (r1, 'complete')
@@ -186,6 +191,17 @@ dispatch.end      (parentRunId=r1, taskId=t3, status='skipped', error='Upstream 
 **前端无差别处理**：part.start 事件不区分是 Adapter emit 的还是 Runner 补的，reducer 都按 partIndex 写入。详见 Spec 09。
 
 代码位置：`src/server/agent-runner.ts` 内 `consumeStream` 的 `artifact.create` 分支。
+
+## deploy_status part 的注入路径
+
+`deploy_status` part 同样由 AgentRunner 注入，不由 Adapter 直接发 `part.start`：
+
+1. Adapter 执行 `deploy_artifact` 工具，得到 `DeployStatusRecord`
+2. Adapter emit `tool.result`
+3. Adapter emit `deploy.status`
+4. AgentRunner 接到 `deploy.status` 后，在对应 message 末尾 push `{ type:'deploy_status', deployment }` 并补发 `part.start`
+
+部署状态不单独建表；它是对一次消息输出的可视化状态记录。
 
 ---
 

@@ -69,6 +69,7 @@ export const toolRegistry = buildRegistry()
 | 名称 | 用途 | 副作用 | 谁该装备 |
 |---|---|---|---|
 | `write_artifact` | 创建产物 | 写 DB | 任何产出代码 / 文档 / 网页的 agent |
+| `deploy_artifact` | 为 web_app 生成预览部署状态 | 无外部托管；返回 preview path | 前端 / web app 产出 agent |
 | `read_artifact` | 读已有产物的完整内容 | 读 DB | 跨任务复用产物的 agent（Orchestrator 派的子 agent 常用） |
 | `read_attachment` | 读用户上传附件 | 读文件系统 | 处理用户文档 / 文本附件的 agent |
 | `plan_tasks` | Orchestrator 拆解子任务 | 无（输出端工具） | **仅 Orchestrator** |
@@ -92,6 +93,16 @@ export const toolRegistry = buildRegistry()
 | `'<html>...'` 裸字符串 | 同上 |
 
 **返回值**：`{ artifactId, title, type }`。**不发布 `artifact.create` 事件**，由 Adapter 在 tool_result 后统一发，AgentRunner 接住后注入 `artifact_ref` part（见 Spec 02 的「artifact_ref 注入路径」）。
+
+### deploy_artifact
+
+源文件：`src/server/tools/deploy-artifact.ts`
+
+**入参**：`{ artifactId: string }`
+
+**作用域**：只能部署当前会话的 artifact。只有 `web_app` 返回 `status:'ready'`；缺失或非 web artifact 返回 `status:'failed'` 的部署记录，供 UI 显示失败原因。
+
+**返回值**：`DeployStatusRecord`，其中 `previewPath` 指向 `/api/artifacts/:id/preview`。Adapter 在 tool_result 后 emit `deploy.status`，AgentRunner 注入 `deploy_status` part。
 
 ### read_artifact
 
@@ -322,13 +333,15 @@ LLM 决定调用 →  Adapter emit  tool.call (StreamEvent)
 
 **副作用**：sandbox 模式 quota（`SANDBOX_TOTAL_BYTES` / `SANDBOX_TOTAL_FILES`）对 Claude Code agent 失效（SDK 自己写盘绕过 quota 检查）。Claude Code agent 实际场景都是 `workspace.mode === 'local'`（绑真实项目），quota 不适用，可接受。
 
-**新增 Claude Code 路径的工具**（例如未来想给 Claude Code agent 接 `write_artifact`）：通过 SDK 的 MCP server 注册自定义工具，或在 `canUseTool` 里转发到 AgentHub 自己工具的 handler 然后用 `behavior: 'allow' + updatedInput` 把结果回填给 SDK。MVP 不做。
+**AgentHub MCP 工具**：Claude Code adapter 通过 SDK in-process MCP server 暴露 `write_artifact` / `read_artifact` / `deploy_artifact` / `ask_user`。其中 `write_artifact` 和 `deploy_artifact` 的结果会被 adapter 翻译为 `artifact.create` / `deploy.status`。
 
 ---
 
 ## Codex agent 的工具集（不走 AgentHub 工具表）
 
 `adapterName === 'codex'` 的 agent 不消费上面的「内置工具清单」。它通过 `@openai/codex-sdk` 暴露 Codex 自身的本地命令、文件变更、MCP、web search、todo/plan 等事件。
+
+AgentHub 额外给 Codex 注入一个 stdio MCP bridge，只暴露 allowlist：`write_artifact` / `read_artifact` / `deploy_artifact`。bridge 通过受保护的内部 API 调用 `toolRegistry`，不会把 `bash` / `fs_write` 等 AgentHub 工具开放给 Codex。
 
 **审批策略**：当前 Codex TypeScript SDK 没有 Claude `canUseTool` 等价 hook。AgentHub 因此不在 Review 模式下开放自动写盘：
 

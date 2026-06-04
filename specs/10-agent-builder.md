@@ -37,7 +37,7 @@
 | `modelId` | string | — | provider 默认 | 切换 provider 时自动重置 |
 | `apiKey` | string | — | `''` | 留空走 env var |
 | `apiBaseUrl` | string | — | `''` | Claude Code 可填 Anthropic 兼容 endpoint；Codex 仅可填 Codex/Responses 兼容 endpoint |
-| `toolNames` | string[] | — | 全选 | 当前可勾选：`write_artifact` / `read_artifact` / `read_attachment` |
+| `toolNames` | string[] | — | 默认产物工具 | 当前可勾选：`write_artifact` / `deploy_artifact` / `read_artifact` / `read_attachment` / `fs_read` / `fs_write` / `bash` |
 | `supportsVision` | boolean | — | `true` | 决定是否把图片 base64 注入 messages |
 | `avatar` | string | — | `'🤖'` | service 层默认（UI 当前不暴露） |
 | `isBuiltin` | boolean | — | `false` | service 写死，UI 不可改 |
@@ -102,10 +102,10 @@ Custom provider 实现在 `custom-agent-adapter.ts` 的 `buildClient(provider, o
 源：`create-agent-dialog.tsx:35`
 
 ```typescript
-const AVAILABLE_TOOLS = ['write_artifact', 'read_artifact', 'read_attachment'] as const
+const AVAILABLE_TOOLS = ['write_artifact', 'deploy_artifact', 'read_artifact', 'read_attachment', 'fs_read', 'fs_write', 'bash'] as const
 ```
 
-UI 当前只允许勾选这 3 个工具。`plan_tasks` 不在列表里 —— 因为它是 Orchestrator 专用，自建 agent 不应装备。
+UI 当前允许勾选产物、附件和 workspace 相关常用工具。`plan_tasks` 不在列表里 —— 因为它是 Orchestrator 专用，自建 agent 不应装备。
 
 **新增工具时**：除了在 `src/server/tools/registry.ts` 注册，还要在这里 `AVAILABLE_TOOLS` 加上才能在 UI 勾选（详见 Spec 07 「新增工具步骤」）。
 

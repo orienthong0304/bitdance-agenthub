@@ -46,4 +46,17 @@ Claude Code and Codex SDK adapters MUST document their built-in tool ownership a
 #### Scenario: Codex agent runs in review mode
 - **WHEN** a Codex agent is selected
 - **THEN** Codex uses read-only sandbox mode
-- **AND** AgentHub does not expose Codex writes as approved until a bridge exists.
+- **AND** AgentHub exposes only the allowlisted artifact MCP tools to Codex.
+
+### Requirement: Web app artifacts SHALL be deployable to preview URLs
+
+AgentHub MUST provide a `deploy_artifact` tool that accepts a web app artifact id and returns a deployment status record with a preview path.
+
+#### Scenario: Agent deploys a web app artifact
+- **WHEN** `deploy_artifact` receives a valid `web_app` artifact id
+- **THEN** it returns a ready deployment record
+- **AND** the record points at the artifact preview route.
+
+#### Scenario: Agent deploys a non-web artifact
+- **WHEN** `deploy_artifact` receives a document, image, or missing artifact id
+- **THEN** it returns a failed deployment record with a user-visible reason.

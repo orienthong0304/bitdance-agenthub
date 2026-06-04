@@ -33,6 +33,15 @@ Adapters SHALL emit `message.usage` and `run.usage` when provider usage data is 
 - **THEN** the adapter emits `message.usage`
 - **AND** the adapter emits `run.usage` with the effective model id.
 
+### Requirement: Deployment events SHALL inject deploy status parts
+
+Adapters SHALL emit `deploy.status` when an AgentHub deploy tool finishes, and AgentRunner MUST convert that event into a `deploy_status` message part.
+
+#### Scenario: Deploy tool returns ready
+- **WHEN** `deploy_artifact` returns a ready deployment record
+- **THEN** the adapter emits `deploy.status`
+- **AND** AgentRunner persists and publishes a `part.start` for `deploy_status`.
+
 ### Requirement: Errors SHALL be visible in conversation state
 
 Failures MUST be represented in both AgentRun status and conversation-visible message content.

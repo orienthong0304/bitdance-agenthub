@@ -55,11 +55,11 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | ClaudeCodeAdapter | ✅ | claude-agent-sdk + 全套工具 + Session 续接 |
 | CustomAgentAdapter | ✅ | OpenAI 兼容（DeepSeek/OpenAI/火山方舟）+ 自驱 tool loop |
 | MockAdapter | ✅ | 开发期不烧 token |
-| CodexAdapter | ⏳ | 待接入（暂用 CustomAgent 走 OpenAI 协议替代） |
+| CodexAdapter | ✅ | @openai/codex-sdk + 线程续接 + AgentHub MCP bridge |
 | 自建 Agent | ✅ | 表单/对话式创建,自定义 prompt + 工具集 |
 | Orchestrator 编排 | ✅ | 三阶段规划 + DAG 调度 + 级联中止 + 可视化卡 |
-| 工具系统 | ✅ | write/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
-| Artifact 预览/编辑 | ✅ | web_app(iframe) / document(md) / image · 版本链 v1↔v2 · 选区改写 · 导出 |
+| 工具系统 | ✅ | write/deploy/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
+| Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL) / document(md) / image · 版本链 v1↔v2 · 选区改写 · 导出 |
 | Workspace 沙箱 | ✅ | sandbox/local 双模式 · fs_write 审批(Review/Auto) · 双平台 Bash 黑名单 |
 | Token 计量 | ✅ | per-run/per-message · cache 命中率 · 全局分析 Tab |
 | 跨 run 对话记忆 | ✅ | 历史序列化注入 · token 预算 · 群聊跨 agent 可见 · 手动压缩 |
@@ -171,7 +171,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - 目前是纯前端 UI 命令（打开设置 / 打开 Agents 库）
 
 ### 📋 待办（README「已知限制」）
-- Codex adapter 集成
+- Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
 - LLM Pin 的前端入口（schema `pinnedMessageIds` + agent-runner 已就绪,缺 UI;当前 ☆ 仅导航书签,独立于 LLM Pin）
 - sandbox 配额对 Claude Code SDK 失效（SDK 自己写盘绕过 quota）
 - 移动端伴随 App 配对通信打通

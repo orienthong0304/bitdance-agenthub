@@ -308,6 +308,7 @@ pnpm electron:rebuild   # 把 better-sqlite3 .node rebuild 到 Electron ABI 130
 - `next.config.ts` 必须把 `@openai/codex-sdk` / `@openai/codex` 放进 `serverExternalPackages`，避免被打包器内联后丢失 CLI binary 查找语义
 - `scripts/electron-prebuild.mjs` 的 standalone 依赖补齐逻辑会递归读取 dependencies / optionalDependencies，把当前平台可用的 Codex runtime 一起带进 `.next/standalone/node_modules`
 - Codex adapter 默认 `networkAccessEnabled=false`、`webSearchMode='disabled'`；Review 模式 read-only，Auto 模式 workspace-write；子进程 `CODEX_HOME` 指到 AgentHub dataDir 下，避免继承用户 `~/.codex` / CC Switch 配置
+- Codex adapter 的 AgentHub MCP bridge 由 `scripts/agenthub-codex-mcp.mjs` 启动；Next standalone 必须通过 `outputFileTracingIncludes` 把该脚本复制到 `.next/standalone/scripts/`，Electron embedded server 会设置 `AGENTHUB_INTERNAL_BASE_URL`
 
 ### 6.4 electron-builder 配置（节选 package.json）
 

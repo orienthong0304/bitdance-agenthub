@@ -5,7 +5,7 @@ import OpenAI from 'openai'
 import { newMessageId } from '@/server/ids'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
-import type { StreamEvent } from '@/shared/types'
+import type { DeployStatusRecord, StreamEvent } from '@/shared/types'
 
 import type { AdapterAttachment, AdapterInput, AgentPlatformAdapter } from './types'
 
@@ -280,13 +280,7 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 
         // 工具结果含 artifactId 视为「创建了产物」的约定，统一由 adapter 发布
         // artifact.create 事件，让上层 AgentRunner 注入 artifact_ref part。
-        if (
-          result.ok &&
-          value &&
-          typeof value === 'object' &&
-          'artifactId' in value &&
-          typeof (value as { artifactId: unknown }).artifactId === 'string'
-        ) {
+        if (tc.name === 'write_artifact' && result.ok && hasArtifactId(value)) {
           const artifactId = (value as { artifactId: string }).artifactId
           const { db, schema } = await import('@/db/client')
           const { eq } = await import('drizzle-orm')
@@ -309,6 +303,14 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
               },
             })
           }
+        }
+
+        if (tc.name === 'deploy_artifact' && result.ok && isDeployStatusRecord(value)) {
+          yield baseEvent(input, {
+            type: 'deploy.status',
+            messageId,
+            deployment: value,
+          })
         }
 
         messages.push({
@@ -388,6 +390,33 @@ function toApiTool(t: {
       parameters: t.parameters,
     },
   }
+}
+
+function hasArtifactId(value: unknown): value is { artifactId: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'artifactId' in value &&
+    typeof (value as { artifactId: unknown }).artifactId === 'string'
+  )
+}
+
+function isDeployStatusRecord(value: unknown): value is DeployStatusRecord {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof (value as { id: unknown }).id === 'string' &&
+    'artifactId' in value &&
+    typeof (value as { artifactId: unknown }).artifactId === 'string' &&
+    'previewPath' in value &&
+    typeof (value as { previewPath: unknown }).previewPath === 'string' &&
+    'status' in value &&
+    ((value as { status: unknown }).status === 'ready' ||
+      (value as { status: unknown }).status === 'failed') &&
+    'createdAt' in value &&
+    typeof (value as { createdAt: unknown }).createdAt === 'number'
+  )
 }
 
 /**

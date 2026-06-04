@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import {
   Codex,
   type ApprovalMode,
@@ -11,31 +13,24 @@ import {
 import { eq } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
+import { getInternalToolToken } from '@/server/internal-tool-auth'
 import { newMessageId, newToolCallId } from '@/server/ids'
 import {
   codexResponsesCompatibilityError,
   isCodexResponsesMissingErrorMessage,
   validateCodexBaseUrl,
 } from '@/shared/codex-compat'
-import type { StreamEvent } from '@/shared/types'
+import type { ArtifactRecord, DeployStatusRecord, StreamEvent } from '@/shared/types'
 
 import {
-  adapterSessionKey,
   buildCodexChildProcessEnv,
   createAdapterEvent,
-  createAdapterSessionStore,
   isAbortLikeError,
 } from './adapter-utils'
+import { adapterSessionKey, codexSessions } from './session-store'
 import type { AdapterInput, AgentPlatformAdapter } from './types'
 
 const DEFAULT_MODEL = 'gpt-5-codex'
-const codexSessions = createAdapterSessionStore('codex')
-
-export function clearCodexSession(conversationId: string): void {
-  for (const key of codexSessions.keys()) {
-    if (key.startsWith(`${conversationId}:`)) codexSessions.delete(key)
-  }
-}
 
 export class CodexAdapter implements AgentPlatformAdapter {
   readonly name = 'codex' as const
@@ -61,12 +56,20 @@ export class CodexAdapter implements AgentPlatformAdapter {
     const sandboxMode: SandboxMode = approvalMode === 'auto' ? 'workspace-write' : 'read-only'
     const approvalPolicy: ApprovalMode = 'never'
 
+    const codexEnv = buildCodexChildProcessEnv()
     const codex = new Codex({
       apiKey: input.apiKey ?? undefined,
       baseUrl: input.apiBaseUrl ?? undefined,
-      env: buildCodexChildProcessEnv(),
+      env: codexEnv,
       config: {
-        developer_instructions: input.systemPrompt,
+        developer_instructions: buildCodexDeveloperInstructions(input.systemPrompt),
+        mcp_servers: {
+          agenthub: {
+            command: process.execPath,
+            args: [getCodexMcpBridgePath()],
+            env: buildCodexMcpEnv(input, codexEnv),
+          },
+        },
       },
     })
 
@@ -127,12 +130,85 @@ export class CodexAdapter implements AgentPlatformAdapter {
         for (const streamEvent of translated.events) {
           yield streamEvent
         }
+        if (event.type === 'item.completed' && event.item.type === 'mcp_tool_call') {
+          if (event.item.server === 'agenthub' && event.item.tool === 'write_artifact') {
+            const artifactId = parseArtifactIdFromCodexMcpResult(event.item.result)
+            if (artifactId) {
+              const artifact = await loadArtifactRecord(artifactId)
+              if (artifact) {
+                yield baseEvent({
+                  type: 'artifact.create' as const,
+                  artifact,
+                })
+              }
+            }
+          }
+          if (event.item.server === 'agenthub' && event.item.tool === 'deploy_artifact') {
+            const deployment = parseDeploymentFromCodexMcpResult(event.item.result)
+            if (deployment) {
+              yield baseEvent({
+                type: 'deploy.status' as const,
+                messageId,
+                deployment,
+              })
+            }
+          }
+        }
       }
     } catch (err) {
       if (!isAbortLikeError(err, signal)) throw normalizeCodexError(err)
     }
 
     yield baseEvent({ type: 'message.end' as const, messageId })
+  }
+}
+
+function buildCodexDeveloperInstructions(systemPrompt: string): string {
+  return [
+    systemPrompt,
+    '',
+    '## AgentHub MCP tools',
+    'When you create a previewable web app, use the AgentHub MCP write_artifact tool with type "web_app". After that, call deploy_artifact with the artifactId so the user receives a deployment status card with an openable preview URL.',
+  ].join('\n')
+}
+
+function buildCodexMcpEnv(
+  input: AdapterInput,
+  baseEnv: Record<string, string>,
+): Record<string, string> {
+  return {
+    ELECTRON_RUN_AS_NODE: baseEnv.ELECTRON_RUN_AS_NODE ?? process.env.ELECTRON_RUN_AS_NODE ?? '1',
+    AGENTHUB_INTERNAL_BASE_URL: getAgentHubInternalBaseUrl(),
+    AGENTHUB_INTERNAL_TOOL_TOKEN: getInternalToolToken(),
+    AGENTHUB_CONVERSATION_ID: input.conversationId,
+    AGENTHUB_AGENT_ID: input.agentId,
+    AGENTHUB_RUN_ID: input.runId,
+  }
+}
+
+function getAgentHubInternalBaseUrl(): string {
+  return process.env.AGENTHUB_INTERNAL_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`
+}
+
+function getCodexMcpBridgePath(): string {
+  return path.join(/* turbopackIgnore: true */ process.cwd(), 'scripts', 'agenthub-codex-mcp.mjs')
+}
+
+async function loadArtifactRecord(artifactId: string): Promise<ArtifactRecord | null> {
+  const row = await db.query.artifacts.findFirst({
+    where: eq(schema.artifacts.id, artifactId),
+  })
+  if (!row) return null
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    type: row.type,
+    title: row.title,
+    content: row.content,
+    version: row.version,
+    parentArtifactId: row.parentArtifactId ?? undefined,
+    createdByAgentId: row.createdByAgentId,
+    createdAt: row.createdAt,
   }
 }
 
@@ -386,6 +462,69 @@ function toRunUsage(usage: Usage, model: string) {
     lastInputTokens: usage.input_tokens,
     model,
   }
+}
+
+function parseArtifactIdFromCodexMcpResult(result: unknown): string | null {
+  const parsed = parseCodexMcpJsonResult(result)
+  return hasArtifactId(parsed) ? parsed.artifactId : null
+}
+
+function parseDeploymentFromCodexMcpResult(result: unknown): DeployStatusRecord | null {
+  const parsed = parseCodexMcpJsonResult(result)
+  return isDeployStatusRecord(parsed) ? parsed : null
+}
+
+function parseCodexMcpJsonResult(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return null
+  const structured = (result as { structured_content?: unknown; structuredContent?: unknown }).structured_content ??
+    (result as { structuredContent?: unknown }).structuredContent
+  if (structured !== undefined) return structured
+
+  const content = (result as { content?: unknown }).content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (
+        block &&
+        typeof block === 'object' &&
+        'text' in block &&
+        typeof (block as { text: unknown }).text === 'string'
+      ) {
+        try {
+          return JSON.parse((block as { text: string }).text)
+        } catch {
+          continue
+        }
+      }
+    }
+  }
+  return null
+}
+
+function hasArtifactId(value: unknown): value is { artifactId: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'artifactId' in value &&
+    typeof (value as { artifactId: unknown }).artifactId === 'string'
+  )
+}
+
+function isDeployStatusRecord(value: unknown): value is DeployStatusRecord {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof (value as { id: unknown }).id === 'string' &&
+    'artifactId' in value &&
+    typeof (value as { artifactId: unknown }).artifactId === 'string' &&
+    'previewPath' in value &&
+    typeof (value as { previewPath: unknown }).previewPath === 'string' &&
+    'status' in value &&
+    ((value as { status: unknown }).status === 'ready' ||
+      (value as { status: unknown }).status === 'failed') &&
+    'createdAt' in value &&
+    typeof (value as { createdAt: unknown }).createdAt === 'number'
+  )
 }
 
 function safeToolSegment(value: string): string {

@@ -17,9 +17,10 @@ import { findBannedPattern } from '@/server/security'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
 import { assertPathWithinWorkspace, getEffectiveCwd } from '@/server/workspace-utils'
-import type { StreamEvent } from '@/shared/types'
+import type { DeployStatusRecord, StreamEvent } from '@/shared/types'
 
-import { buildChildProcessEnv, createAdapterEvent, createAdapterSessionStore } from './adapter-utils'
+import { buildChildProcessEnv, createAdapterEvent } from './adapter-utils'
+import { claudeCodeSessions } from './session-store'
 import type { AdapterInput, AgentPlatformAdapter } from './types'
 
 /**
@@ -44,13 +45,6 @@ import type { AdapterInput, AgentPlatformAdapter } from './types'
  * HMR-safe singleton。dev server 重启会丢失 —— 但 SDK 本身持久化到磁盘 (~/.claude
  * sessions)，所以即使我们丢了 id，SDK 数据还在；只是接下来的会话变成新 session。
  */
-const claudeSessions = createAdapterSessionStore('claude-code')
-
-/** 公开 API：清掉某个 conversation 的 session（删除 / 重新生成 / 撤回 / 编辑 时调用）。 */
-export function clearClaudeCodeSession(conversationId: string): void {
-  claudeSessions.delete(conversationId)
-}
-
 const DEFAULT_MODEL = 'claude-opus-4-7'
 /** SDK 内置工具中会改文件的，需要走审批 */
 const FS_WRITE_TOOLS = new Set(['Write', 'Edit'])
@@ -108,7 +102,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',
       version: '1.0.0',
-      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物。',
+      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成一键预览 URL。',
       tools: [
         tool(
           'write_artifact',
@@ -160,6 +154,23 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
           },
         ),
         tool(
+          'deploy_artifact',
+          'Create a ready preview deployment for a web_app artifact. Use this after write_artifact when the user should receive an openable preview URL.',
+          { artifactId: z.string() },
+          async (args) => {
+            const result = await toolRegistry.execute('deploy_artifact', args, toolCtx)
+            if (!result.ok) {
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
+                isError: true,
+              }
+            }
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify(result.value) }],
+            }
+          },
+        ),
+        tool(
           'ask_user',
           'Ask the user one or more structured multiple-choice questions with 2-4 options. Use only when there is a clear set of choices — for open-ended questions, just ask in text. Returns answers keyed by question text.',
           {
@@ -196,7 +207,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
 
     // 同一 conversation 的多轮 query 共享 session（resume）—— 否则每轮都是新对话上下文，
     // agent 就不记得上一轮说了什么。
-    const previousSessionId = claudeSessions.get(input.conversationId)
+    const previousSessionId = claudeCodeSessions.get(input.conversationId)
 
     const options: Options = {
       cwd: getEffectiveCwd(workspace),
@@ -227,7 +238,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
         // SDKSystemMessage init 携带 session_id —— 保存供下次 resume
         if (m.type === 'system') {
           const sid = (m as { session_id?: string }).session_id
-          if (sid) claudeSessions.set(input.conversationId, sid)
+          if (sid) claudeCodeSessions.set(input.conversationId, sid)
           continue
         }
 
@@ -346,6 +357,21 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
                   }
                 }
               }
+
+              if (
+                !block.is_error &&
+                (toolName === 'mcp__agenthub__deploy_artifact' ||
+                  toolName.endsWith('__deploy_artifact'))
+              ) {
+                const deployment = parseDeploymentFromMcpResult(block.content)
+                if (deployment) {
+                  yield baseEvent({
+                    type: 'deploy.status' as const,
+                    messageId,
+                    deployment,
+                  }) as StreamEvent
+                }
+              }
             }
           }
           continue
@@ -445,6 +471,45 @@ function parseArtifactIdFromMcpResult(content: unknown): string | null {
     }
   }
   return null
+}
+
+function parseDeploymentFromMcpResult(content: unknown): DeployStatusRecord | null {
+  const tryParse = (s: string): DeployStatusRecord | null => {
+    try {
+      const obj = JSON.parse(s) as unknown
+      return isDeployStatusRecord(obj) ? obj : null
+    } catch {
+      return null
+    }
+  }
+  if (typeof content === 'string') return tryParse(content)
+  if (Array.isArray(content)) {
+    for (const blk of content) {
+      if (blk && typeof blk === 'object' && 'text' in blk && typeof (blk as { text: unknown }).text === 'string') {
+        const r = tryParse((blk as { text: string }).text)
+        if (r) return r
+      }
+    }
+  }
+  return null
+}
+
+function isDeployStatusRecord(value: unknown): value is DeployStatusRecord {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof (value as { id: unknown }).id === 'string' &&
+    'artifactId' in value &&
+    typeof (value as { artifactId: unknown }).artifactId === 'string' &&
+    'previewPath' in value &&
+    typeof (value as { previewPath: unknown }).previewPath === 'string' &&
+    'status' in value &&
+    ((value as { status: unknown }).status === 'ready' ||
+      (value as { status: unknown }).status === 'failed') &&
+    'createdAt' in value &&
+    typeof (value as { createdAt: unknown }).createdAt === 'number'
+  )
 }
 
 function buildSdkEnv(

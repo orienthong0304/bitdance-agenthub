@@ -235,6 +235,25 @@ export async function togglePinConversation(
   return withWorkspaceMeta({ ...conv, pinnedAt: nextPinnedAt })
 }
 
+// ─── 归档 / 取消归档 ──────────────────────────────────────
+// 归档是会话级元操作，不更新 updatedAt（不应顶到列表前），与 togglePinConversation 一致。
+export async function toggleArchiveConversation(
+  conversationId: string,
+): Promise<ConversationWithMeta> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, conversationId),
+  })
+  if (!conv) throw new Error(`Conversation not found: ${conversationId}`)
+
+  const nextArchived = !conv.archived
+  await db
+    .update(schema.conversations)
+    .set({ archived: nextArchived })
+    .where(eq(schema.conversations.id, conversationId))
+
+  return withWorkspaceMeta({ ...conv, archived: nextArchived })
+}
+
 // ─── 列出会话消息 ────────────────────────────────────────
 export async function listMessages(conversationId: string) {
   return db.query.messages.findMany({

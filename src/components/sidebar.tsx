@@ -1,6 +1,6 @@
 'use client'
 
-import { BarChart3, Bot, Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react'
+import { Archive, ArchiveRestore, BarChart3, Bot, ChevronDown, ChevronRight, Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AgentLibrary } from '@/components/agent-library'
@@ -26,6 +26,7 @@ import {
   fetchAgents,
   fetchConversations,
   renameConversation as renameConversationAPI,
+  toggleArchiveConversation as toggleArchiveConversationAPI,
   togglePinConversation as togglePinConversationAPI,
 } from '@/lib/api'
 import { subscribeUiCommand } from '@/lib/ui-command-events'
@@ -54,12 +55,22 @@ export function Sidebar() {
   const [deleting, setDeleting] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+
+  const activeConversations = useMemo(
+    () => conversations.filter((c) => !c.archived),
+    [conversations],
+  )
+  const archivedConversations = useMemo(
+    () => conversations.filter((c) => c.archived),
+    [conversations],
+  )
 
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => c.title.toLowerCase().includes(q))
-  }, [conversations, search])
+    if (!q) return activeConversations
+    return activeConversations.filter((c) => c.title.toLowerCase().includes(q))
+  }, [activeConversations, search])
 
   const handleTogglePin = async (convId: string) => {
     try {
@@ -67,6 +78,27 @@ export function Sidebar() {
       upsertConversation(updated)
     } catch (err) {
       console.error('[Sidebar] toggle pin failed', err)
+    }
+  }
+
+  const handleToggleArchive = async (convId: string) => {
+    try {
+      const updated = await toggleArchiveConversationAPI(convId)
+      upsertConversation(updated)
+    } catch (err) {
+      console.error('[Sidebar] toggle archive failed', err)
+    }
+  }
+
+  const finishRename = async (convId: string, currentTitle: string, next: string) => {
+    const trimmed = next.trim()
+    setRenamingId(null)
+    if (!trimmed || trimmed === currentTitle) return
+    try {
+      const updated = await renameConversationAPI(convId, trimmed)
+      upsertConversation(updated)
+    } catch (err) {
+      console.error('[Sidebar] rename failed', err)
     }
   }
 
@@ -216,7 +248,7 @@ export function Sidebar() {
           </div>
 
           {/* Search box (only when not collapsed) */}
-          {!collapsed && conversations.length > 0 && (
+          {!collapsed && activeConversations.length > 0 && (
             <div className="shrink-0 px-3 pt-2 pb-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -275,23 +307,57 @@ export function Sidebar() {
                         isRenaming={renamingId === c.id}
                         onActivate={() => setActive(c.id)}
                         onTogglePin={() => void handleTogglePin(c.id)}
+                        onToggleArchive={() => void handleToggleArchive(c.id)}
                         onStartRename={() => setRenamingId(c.id)}
-                        onFinishRename={async (next) => {
-                          const trimmed = next.trim()
-                          setRenamingId(null)
-                          if (!trimmed || trimmed === c.title) return
-                          try {
-                            const updated = await renameConversationAPI(c.id, trimmed)
-                            upsertConversation(updated)
-                          } catch (err) {
-                            console.error('[Sidebar] rename failed', err)
-                          }
-                        }}
+                        onFinishRename={(next) => void finishRename(c.id, c.title, next)}
                         onRequestDelete={() => setDeleteTargetId(c.id)}
                       />
                     )
                   })}
             </div>
+
+            {/* 已归档区：可折叠，展开后每项可取消归档 */}
+            {!collapsed && archivedConversations.length > 0 && (
+              <div className="border-t p-2">
+                <button
+                  type="button"
+                  onClick={() => setShowArchived((v) => !v)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                >
+                  {showArchived ? (
+                    <ChevronDown className="size-3.5" />
+                  ) : (
+                    <ChevronRight className="size-3.5" />
+                  )}
+                  <Archive className="size-3.5" />
+                  <span>已归档</span>
+                  <span className="ml-auto tabular-nums">{archivedConversations.length}</span>
+                </button>
+                {showArchived && (
+                  <div className="mt-1 space-y-1">
+                    {archivedConversations.map((c) => {
+                      const firstAgent = c.agentIds[0] ? agents[c.agentIds[0]] : null
+                      return (
+                        <ConversationItem
+                          key={c.id}
+                          conversation={c}
+                          firstAgent={firstAgent}
+                          isActive={activeId === c.id}
+                          isRenaming={renamingId === c.id}
+                          isArchived
+                          onActivate={() => setActive(c.id)}
+                          onTogglePin={() => void handleTogglePin(c.id)}
+                          onToggleArchive={() => void handleToggleArchive(c.id)}
+                          onStartRename={() => setRenamingId(c.id)}
+                          onFinishRename={(next) => void finishRename(c.id, c.title, next)}
+                          onRequestDelete={() => setDeleteTargetId(c.id)}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </ScrollArea>
         </>
       ) : mode === 'artifacts' ? (
@@ -378,8 +444,10 @@ function ConversationItem({
   firstAgent,
   isActive,
   isRenaming,
+  isArchived = false,
   onActivate,
   onTogglePin,
+  onToggleArchive,
   onStartRename,
   onFinishRename,
   onRequestDelete,
@@ -388,8 +456,10 @@ function ConversationItem({
   firstAgent: AgentRow | null
   isActive: boolean
   isRenaming: boolean
+  isArchived?: boolean
   onActivate: () => void
   onTogglePin: () => void
+  onToggleArchive: () => void
   onStartRename: () => void
   onFinishRename: (next: string) => void | Promise<void>
   onRequestDelete: () => void
@@ -455,6 +525,17 @@ function ConversationItem({
             className={cn(isPinned ? 'text-amber-500' : 'hover:text-foreground')}
           >
             {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleArchive()
+            }}
+            title={isArchived ? '取消归档' : '归档'}
+            className="hover:text-foreground"
+          >
+            {isArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
           </button>
           <button
             type="button"

@@ -50,8 +50,8 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| IM 会话（多会话/搜索/置顶/未读） | ✅ | 单聊 + 群聊（@mention） |
-| 消息操作（引用/撤回/编辑重发/重新生成/收藏☆） | ✅ | 点击书签跳转 + 高亮辉光 |
+| IM 会话（多会话/搜索/置顶/归档/未读） | ✅ | 单聊 + 群聊（@mention） |
+| 消息操作（引用/撤回/编辑重发/重新生成/收藏☆/Pin） | ✅ | ☆ 书签跳转+辉光;Pin 注入 LLM 长期上下文(消息按钮 + 顶部横幅) |
 | ClaudeCodeAdapter | ✅ | claude-agent-sdk + 全套工具 + Session 续接 |
 | CustomAgentAdapter | ✅ | OpenAI 兼容（DeepSeek/OpenAI/火山方舟）+ 自驱 tool loop |
 | MockAdapter | ✅ | 开发期不烧 token |
@@ -173,7 +173,6 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ### 📋 待办（README「已知限制」）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
-- LLM Pin 的前端入口（schema `pinnedMessageIds` + agent-runner 已就绪,缺 UI;当前 ☆ 仅导航书签,独立于 LLM Pin）
 - sandbox 配额对 Claude Code SDK 失效（SDK 自己写盘绕过 quota）
 - 移动端伴随 App 配对通信打通
 - UI/E2E 测试覆盖
@@ -185,4 +184,4 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ---
 
-*最后更新：2026-06-04 · 已补核心纯函数 Vitest 覆盖。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*
+*最后更新：2026-06-06 · 修正 Pin 前端入口过时项 + 接通会话归档 UI（archived 字段早有，本次补 service/API/sidebar 入口）。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*

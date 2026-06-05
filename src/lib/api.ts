@@ -168,6 +168,19 @@ export async function togglePinConversation(conversationId: string): Promise<Con
   return conversation
 }
 
+export async function toggleArchiveConversation(
+  conversationId: string,
+): Promise<ConversationWithMeta> {
+  const { conversation } = await json<{ conversation: ConversationWithMeta }>(
+    fetch(`/api/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toggleArchive: true }),
+    }),
+  )
+  return conversation
+}
+
 export async function setFsWriteApprovalMode(
   conversationId: string,
   mode: 'auto' | 'review',

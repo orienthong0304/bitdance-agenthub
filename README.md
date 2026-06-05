@@ -214,7 +214,6 @@ DB 文件位于 `.agenthub-data/agenthub.db`。Workspace 默认在 `.agenthub-da
 
 - [ ] Codex Review 模式 diff 审批桥（当前 Review 以 read-only 运行；Auto 才允许 workspace-write）
 - [ ] CodexAdapter 暂不支持 DeepSeek 等 Chat Completions-only endpoint（DeepSeek 没有 `/responses`，请走 CustomAgentAdapter）
-- [ ] Pin LLM 上下文的 UI 入口（schema 字段 `pinnedMessageIds` 已有，agent-runner 已读，缺前端入口；当前 ☆ 是纯导航书签，独立于 LLM Pin）
 - [ ] sandbox 模式的总量配额对 Claude Code SDK 失效（SDK 自己写盘绕过我们的 quota）
 - [ ] 移动端伴随 App（Capacitor 客户端 + Tailscale/LAN 配对通信，详见 Spec 14）
 - [ ] UI / E2E 测试覆盖（核心纯函数已有 Vitest 覆盖）

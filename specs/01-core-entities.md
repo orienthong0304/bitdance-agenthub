@@ -23,7 +23,7 @@ interface Agent {
   modelProvider?: ModelProvider
   modelId?: string              // 厂商内部 model id
   apiKey?: string               // per-agent 自定义 key；NULL 走 app_settings → env var；Claude Code 还可走 OAuth（详见 Spec 05 §API key 解析、Spec 08 §8）
-  apiBaseUrl?: string           // per-agent 自定义 API endpoint；NULL 时 Claude Code 可走 app_settings.anthropicBaseUrl，Codex 走隔离 CODEX_HOME + SDK 默认 endpoint
+  apiBaseUrl?: string           // per-agent 自定义 API endpoint；openai-compatible 必填；NULL 时 Claude Code 可走 app_settings.anthropicBaseUrl，Codex 走隔离 CODEX_HOME + SDK 默认 endpoint
 
   toolNames: string[]           // 该 Agent 可调用的工具，引用 Spec 07
 
@@ -35,15 +35,16 @@ interface Agent {
 }
 
 type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
-type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
+type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'openai-compatible'
 ```
 
 **约束**：
 - `isOrchestrator: true` 的 Agent 必须 `toolNames.includes('plan_tasks')`（早期 spec 用过 `dispatch_to_agent` 命名，已统一为 `plan_tasks`，详见 Spec 07）
 - `adapterName === 'custom'` 时 `modelProvider` 和 `modelId` 必填
+- `modelProvider === 'openai-compatible'` 时 `apiKey` 与 `apiBaseUrl` 必填；`apiBaseUrl` 必须是 OpenAI Chat Completions 兼容 endpoint（例如通义千问 compatible-mode、智谱、MiniMax、OpenRouter、SiliconFlow 等兼容地址）
 - `adapterName === 'claude-code'` 时 `modelProvider` 忽略；`modelId` 可选（默认走 SDK 默认模型 `claude-opus-4-7`）；`toolNames` 强制 `[]`（Claude Code 用 SDK 内置工具集，详见 Spec 07）
 - `adapterName === 'codex'` 时 `modelProvider` 忽略；`modelId` 可选（默认 `gpt-5-codex`）；`toolNames` 强制 `[]`（Codex 用 SDK 内置工具集，详见 Spec 05）；`apiBaseUrl` 必须是 Codex/Responses 兼容 endpoint
-- `apiKey` / `apiBaseUrl` 是 per-agent 凭据：`apiBaseUrl` 非空时，`apiKey` 作为对应 SDK / endpoint 的 token；Claude Code 和 Codex 的 Base URL 协议不相同，DeepSeek 等 Chat Completions-only provider 走 Custom adapter
+- `apiKey` / `apiBaseUrl` 是 per-agent 凭据：`apiBaseUrl` 非空时，`apiKey` 作为对应 SDK / endpoint 的 token；Claude Code、Codex、Custom openai-compatible 的 Base URL 协议不相同，Chat Completions-only provider 走 Custom adapter
 - `isBuiltin: true` 的 Agent 不可删除但可修改配置（详见 Spec 10）
 - 删除 Agent 不级联删除使用它的 Conversation；前端应展示「已停用 Agent」灰态
 

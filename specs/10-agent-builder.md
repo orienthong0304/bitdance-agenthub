@@ -35,8 +35,8 @@
 | `systemPrompt` | string | ✓ | — | 决定 agent 行为 |
 | `modelProvider` | enum | — | `'deepseek'` | 见下方 Provider 矩阵 |
 | `modelId` | string | — | provider 默认 | 切换 provider 时自动重置 |
-| `apiKey` | string | — | `''` | 留空走 env var |
-| `apiBaseUrl` | string | — | `''` | Claude Code 可填 Anthropic 兼容 endpoint；Codex 仅可填 Codex/Responses 兼容 endpoint |
+| `apiKey` | string | — | `''` | 命名 provider 留空走 env var；`openai-compatible` 必填 per-agent key |
+| `apiBaseUrl` | string | — | `''` | Claude Code 可填 Anthropic 兼容 endpoint；Codex 仅可填 Codex/Responses 兼容 endpoint；Custom `openai-compatible` 必填 Chat Completions 兼容 endpoint |
 | `toolNames` | string[] | — | 默认产物工具 | 当前可勾选：`write_artifact` / `deploy_artifact` / `read_artifact` / `read_attachment` / `fs_read` / `fs_write` / `bash` |
 | `supportsVision` | boolean | — | `true` | 决定是否把图片 base64 注入 messages |
 | `avatar` | string | — | `'🤖'` | service 层默认（UI 当前不暴露） |
@@ -54,9 +54,10 @@
 | `deepseek` | DeepSeek | `deepseek-v4-flash` | ✅ 已接（OpenAI-compat）+ 支持 reasoning_content |
 | `volcano-ark` | 火山方舟 (豆包) | `doubao-seed-2-0-lite-260428` | ✅ 已接（OpenAI-compat） |
 | `openai` | OpenAI | `gpt-4o` | ✅ 已接 |
+| `openai-compatible` | OpenAI-compatible | — | ✅ 已接；要求 per-agent `apiKey` + `apiBaseUrl` |
 | `anthropic` | Anthropic | `claude-opus-4-7` | ❌ buildClient 里 throw（TODO） |
 
-**OpenAI-compat 接入说明**：DeepSeek / 火山方舟都对外暴露 OpenAI-compatible Chat Completions API，所以共用 `openai` npm 包 + 改 `baseURL`。这类 provider 应选择 `custom` adapter。详见 Spec 05 的「CustomAgentAdapter」一节。
+**OpenAI-compat 接入说明**：DeepSeek / 火山方舟都对外暴露 OpenAI-compatible Chat Completions API，所以共用 `openai` npm 包 + 改 `baseURL`。通义千问 compatible-mode、智谱、MiniMax、OpenRouter、SiliconFlow、Moonshot 等未内置 provider 应选择 `openai-compatible`，并填写该平台的 Chat Completions Base URL。详见 Spec 05 的「CustomAgentAdapter」一节。
 
 **SDK adapter 说明**：
 - `claude-code`：使用 `@anthropic-ai/claude-agent-sdk`，`toolNames=[]`，SDK 内置工具集；Review 模式通过 `canUseTool` 桥到 AgentHub 审批。
@@ -77,17 +78,19 @@ agent.apiKey (per-agent 自定义)
             deepseek    → DEEPSEEK_API_KEY
             volcano-ark → ARK_API_KEY
             openai      → OPENAI_API_KEY
+            openai-compatible → 无全局 fallback，必须填 agent.apiKey
             anthropic   → ANTHROPIC_API_KEY
             codex       → CODEX_API_KEY / OPENAI_API_KEY（AgentHub 隔离 CODEX_HOME，不读 ~/.codex）
 ```
 
-Custom provider 实现在 `custom-agent-adapter.ts` 的 `buildClient(provider, overrideKey)`；SDK adapter 的 key 解析由 `agent-runner.ts:buildAdapterInput` 统一注入。
+Custom provider 实现在 `custom-provider-client.ts` 的 `resolveCustomProviderClientConfig(provider, overrideKey, apiBaseUrl)`；SDK adapter 的 key 解析由 `agent-runner.ts:buildAdapterInput` 统一注入。
 
-`apiBaseUrl` 不是跨 adapter 通用的“OpenAI 兼容”开关。Claude Code 的 Base URL 走 Anthropic 兼容协议；Codex 的 Base URL 走 Codex/Responses runtime；DeepSeek / 火山方舟等 Chat Completions-only endpoint 走 Custom adapter。
+`apiBaseUrl` 不是跨 adapter 通用的“OpenAI 兼容”开关。Claude Code 的 Base URL 走 Anthropic 兼容协议；Codex 的 Base URL 走 Codex/Responses runtime；Custom `openai-compatible` 的 Base URL 才走 OpenAI Chat Completions 兼容协议。
 
 **UI 行为**：
 - 输入框默认 password 类型，旁边有「显示 / 隐藏」按钮（`create-agent-dialog.tsx:267-302`）
 - 输入框下方动态显示「留空则 fallback 到 `<ENV_VAR_NAME>`」提示，跟随当前 provider 切换
+- 选择 `openai-compatible` 时显示并要求填写 Base URL；API key 也必须为该 agent 单独填写
 - 编辑模式回填已保存的 key（password 形式）
 
 **安全**：
@@ -142,7 +145,7 @@ CreateAgentDialog (open, agent=undefined)
        │
        │ 填表 → submit
        ▼
-POST /api/agents { name, description, ..., modelProvider, modelId, apiKey? }
+POST /api/agents { name, description, ..., modelProvider, modelId, apiKey?, apiBaseUrl? }
        │
        ▼
 createCustomAgent: avatar='🤖' 默认，adapterName='custom'，isBuiltin=false, isOrchestrator=false
@@ -193,7 +196,7 @@ zod 校验 body 在每个 route 文件内。
 
 ## 表单 UX 注意点
 
-- **Provider 切换重置 modelId**：避免 `provider=openai, modelId=deepseek-v4-flash` 这种串味（`create-agent-dialog.tsx:99-103`）
+- **Provider 切换重置 modelId**：避免 `provider=openai, modelId=deepseek-v4-flash` 这种串味；`openai-compatible` 默认 modelId 为空，强制用户填写目标平台模型名
 - **API key 输入是 password 类型 + autocomplete=off**：防止浏览器把它存进 form autofill
 - **错误提示就近显示**：submit 失败时在 footer 上方显示 inline red banner，不用 toast
 - **打开 / 切换 agent 时 reset 表单**：用 `useEffect([open, agent])` 重置 state，避免编辑 A 后切到编辑 B 时残留 A 的输入

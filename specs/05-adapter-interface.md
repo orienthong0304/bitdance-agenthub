@@ -11,7 +11,7 @@
 | Adapter | 状态 |
 |---|---|
 | `MockAdapter` | ✅ 已实现，用于开发期不烧 token |
-| `CustomAgentAdapter` | ✅ 已实现，覆盖 DeepSeek / OpenAI / 火山方舟（OpenAI Chat Completions 兼容协议）；**Anthropic 路径在 buildClient 里直接 throw，待实装** |
+| `CustomAgentAdapter` | ✅ 已实现，覆盖 DeepSeek / OpenAI / 火山方舟 / per-agent OpenAI-compatible Base URL（OpenAI Chat Completions 兼容协议）；**Anthropic 路径在 buildClient 里直接 throw，待实装** |
 | `ClaudeCodeAdapter` | ✅ 已实现，基于 `@anthropic-ai/claude-agent-sdk` `query()` + `canUseTool` 审批桥 |
 | `CodexAdapter` | ✅ 已实现，基于 `@openai/codex-sdk` `runStreamed()`；Review 模式只读，Auto 模式 workspace-write；自定义 Base URL 必须支持 Codex/Responses |
 
@@ -31,8 +31,9 @@
 └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  └──────┬───────┘
        │                 │                   │                    │
    @anthropic-ai/    @openai/           OpenAI SDK            预设脚本
-   claude-agent-sdk  codex-sdk          (DeepSeek / 火山方舟 / OpenAI
-                    (Responses)         均走 Chat Completions 兼容协议)
+   claude-agent-sdk  codex-sdk          (DeepSeek / 火山方舟 / OpenAI /
+                    (Responses)         自定义 OpenAI-compatible
+                                        均走 Chat Completions 兼容协议)
                                         + 自写 tool loop
 ```
 
@@ -97,7 +98,7 @@ interface AdapterInput {
 
   // 仅 CustomAgentAdapter 使用（OpenAI 兼容协议特有的模型选择）
   customConfig?: {
-    modelProvider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
+    modelProvider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'openai-compatible'
     modelId: string
     supportsVision: boolean     // 决定是否把图片附件以 image_url block 投递给 LLM
   }
@@ -108,6 +109,7 @@ interface AdapterInput {
 - `tools: ToolDef[]` → `toolNames: string[]`：避免把 handler 函数引用塞进 input；Adapter 用 `toolRegistry.resolve` 自查
 - 新增 `attachments`：multimodal 路径
 - 新增 `customConfig.modelProvider: 'volcano-ark'`：OpenAI-compat 接入
+- 新增 `customConfig.modelProvider: 'openai-compatible'`：per-agent `apiBaseUrl` + `apiKey` 的通用 Chat Completions 兼容接入
 - `systemPrompt` / `apiKey` 提升到根字段（不再嵌 `customConfig`）：所有 adapter 都需要，ClaudeCodeAdapter 也读这两个
 - 新增 `customConfig.apiKey`：per-agent API key（优先级高于 env，见 Spec 08）
 - 新增 `customConfig.supportsVision`：决定是否把图片以 multimodal 投递
@@ -119,18 +121,19 @@ interface AdapterInput {
 
 源文件：`src/server/adapters/custom-agent-adapter.ts`
 
-最复杂的 adapter：自己实现 tool loop，覆盖 4 个 provider（其中 Anthropic 仍 TODO）。
+最复杂的 adapter：自己实现 tool loop，覆盖 DeepSeek / OpenAI / 火山方舟 / 通用 OpenAI-compatible provider（其中 Anthropic 仍 TODO）。
 
 ### 高层流程
 
 ```
-1. buildClient(provider, apiKey) → OpenAI 兼容 client
+1. buildClient(provider, apiKey, apiBaseUrl) → OpenAI 兼容 client
    apiKey 来自 AdapterInput.apiKey（已由 AgentRunner 按四层链解析，
    见下方顶级章节「API key 解析（共四层）」）。
    provider → baseURL 映射：
      deepseek    → https://api.deepseek.com/v1
      volcano-ark → https://ark.cn-beijing.volces.com/api/v3
      openai      → https://api.openai.com/v1
+     openai-compatible → agent.apiBaseUrl（必填）
      anthropic   → throw (TODO)
    
 2. 初始化 messages:
@@ -296,18 +299,19 @@ class MockAdapter implements AgentPlatformAdapter {
 | `custom` | `openai` | `openaiApiKey` | `OPENAI_API_KEY` |
 | `custom` | `deepseek` | `deepseekApiKey` | `DEEPSEEK_API_KEY` |
 | `custom` | `volcano-ark` | `arkApiKey` | `ARK_API_KEY` |
+| `custom` | `openai-compatible` | —（per-agent only） | — |
 
 **`apiBaseUrl` 按 adapter 分协议**：
 - Claude Code：`agent.apiBaseUrl` → `app_settings.anthropicBaseUrl` → `process.env.ANTHROPIC_BASE_URL` → SDK 默认。非空时 ClaudeCodeAdapter 改用 `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` env 注入（详见 Spec 01 §agents）。
 - Codex：只使用 `agent.apiBaseUrl` → SDK 默认，不读 CC Switch / `~/.codex/config.toml` / 全局 Codex base URL。非空时必须是 Codex/Responses 兼容 endpoint；DeepSeek 等 Chat Completions-only endpoint 会在运行前被拒绝。
-- Custom：当前各 provider 使用 adapter 内置默认 base URL；DeepSeek / 火山方舟这类 OpenAI Chat Completions 兼容 endpoint 应走 CustomAgentAdapter。
+- Custom：命名 provider 使用 adapter 内置默认 base URL；`openai-compatible` provider 必须使用 per-agent `apiBaseUrl`，该 URL 必须是 OpenAI Chat Completions 兼容 endpoint，不是 Codex/Responses endpoint。
 
 **优化点**：`buildAdapterInput` 只在 `agent.apiKey` 为空（或 Claude Code agent 的 `apiBaseUrl` 也为空）时才查 `app_settings`，避免每次构造 input 都打 DB。
 
 **Adapter 视角**：
 - **ClaudeCodeAdapter**：把 `input.apiKey` 通过 `options.env.ANTHROPIC_API_KEY` 传 SDK 子进程；为空时落到第 4 层 OAuth
 - **CodexAdapter**：把 `input.apiKey` 通过 SDK `apiKey` 注入 `CODEX_API_KEY`；默认使用 AgentHub 隔离的 `CODEX_HOME`，不读取用户本机 `~/.codex`。`baseUrl` 对应 Codex runtime 的 `openai_base_url`，要求后端支持 `/responses`
-- **CustomAgentAdapter**：`input.apiKey` 直接传 `new OpenAI({ apiKey })`；为空时 OpenAI SDK 自己抛 401，由 adapter 在 stream 顶层 catch 后 emit error event
+- **CustomAgentAdapter**：命名 provider 把 `input.apiKey` 传 `new OpenAI({ apiKey })` 或 provider 默认 `baseURL`；`openai-compatible` 传 `new OpenAI({ apiKey, baseURL: input.apiBaseUrl })`，缺 key/base URL 时在调用上游前抛清晰错误
 - **MockAdapter**：忽略
 
 **用户什么都不配，本机装过 Claude Code 并 login 过就能直接用**（第 4 层兜底）。

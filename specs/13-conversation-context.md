@@ -223,6 +223,7 @@ const historyBudget = Math.max(0, limits.contextWindow - limits.outputReserve - 
 | openai | 128K |
 | deepseek | 64K |
 | volcano-ark | 32K |
+| openai-compatible | 128K |
 
 Provider 也未知（ClaudeCode adapter 没 modelProvider 字段）→ 兜底 200K。
 

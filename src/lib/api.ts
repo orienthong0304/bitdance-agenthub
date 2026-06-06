@@ -240,6 +240,37 @@ export async function fetchMessages(conversationId: string): Promise<MessageRow[
   return messages
 }
 
+// ─── Search ──────────────────────────────────────
+export interface SearchApiResult {
+  hits: Array<{
+    messageId: string
+    conversationId: string
+    conversationTitle: string
+    role: 'user' | 'agent' | 'system'
+    agentId: string | null
+    agentName: string | null
+    agentAvatar: string | null
+    createdAt: number
+    snippetHtml: string
+  }>
+  total: number
+  tookMs: number
+}
+
+export async function searchMessagesApi(
+  query: string,
+  opts: { fallback?: 'like'; conversationId?: string; role?: 'user' | 'agent' } = {},
+): Promise<SearchApiResult> {
+  const params = new URLSearchParams({ q: query })
+  if (opts.fallback) params.set('fallback', opts.fallback)
+  if (opts.conversationId) params.set('conversationId', opts.conversationId)
+  if (opts.role) params.set('role', opts.role)
+  const { data } = await json<{ ok: true; data: SearchApiResult }>(
+    fetch(`/api/search?${params}`),
+  )
+  return data
+}
+
 export interface ClearConversationHistoryResult {
   conversation: ConversationWithMeta
   deletedMessageCount: number

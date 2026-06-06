@@ -232,3 +232,17 @@ export interface ArtifactRecord {
   createdByAgentId: string
   createdAt: number
 }
+
+// ─── Search 结果 ───────────────────────────────────────────
+export interface SearchHit {
+  messageId: string
+  conversationId: string
+  conversationTitle: string
+  role: 'user' | 'agent' | 'system'
+  agentId: string | null
+  agentName: string | null
+  agentAvatar: string | null
+  createdAt: number
+  /** FTS5 path: contains <mark>...</mark> tags. LIKE path: plain text. */
+  snippetHtml: string
+}

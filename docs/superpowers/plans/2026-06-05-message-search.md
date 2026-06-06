@@ -58,12 +58,12 @@ Expected: `spec/search`
 
 Run:
 ```bash
-git checkout -b feat/message-search
+git checkout -b feature/message-search
 ```
 
-Expected: `Switched to a new branch 'feat/message-search'`
+Expected: `Switched to a new branch 'feature/message-search'`
 
-> Each task ends with a commit. All commits land on `feat/message-search`. Merge back to `spec/search` (or directly to main) at the end.
+> Each task ends with a commit. All commits land on `feature/message-search`. Merge back to `spec/search` (or directly to main) at the end.
 
 ---
 
@@ -1888,7 +1888,7 @@ Expected: all green.
 - [ ] **Step 3: Push the branch and open a PR**
 
 ```bash
-git push -u origin feat/message-search
+git push -u origin feature/message-search
 gh pr create --base main --title "feat(search): cross-conversation message search" --body-file <(cat <<'EOF'
 ## Summary
 Implements Spec 16 — cross-conversation full-text search via SQLite FTS5.

@@ -106,9 +106,9 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       tools: [
         tool(
           'write_artifact',
-          'Create a previewable artifact (web_app / document / image) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use this for content that should be previewed in a card — NOT for files in the workspace.',
+          'Create a previewable artifact (web_app / document / image / ppt) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use this for content that should be previewed in a card — NOT for files in the workspace.',
           {
-            type: z.enum(['web_app', 'document', 'image']),
+            type: z.enum(['web_app', 'document', 'image', 'ppt']),
             title: z.string(),
             content: z.unknown(),
             parentArtifactId: z.string().optional(),

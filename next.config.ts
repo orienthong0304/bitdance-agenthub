@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     '@openai/codex-sdk',
     '@openai/codex',
     '@modelcontextprotocol/sdk',
+    'pptxgenjs',
   ],
 
   outputFileTracingIncludes: {

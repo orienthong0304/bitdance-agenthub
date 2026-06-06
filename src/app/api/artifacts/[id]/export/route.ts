@@ -16,6 +16,7 @@ interface RouteContext {
  *  - web_app  → ZIP 含所有源码文件，文件名 `<title>-v<version>.zip`
  *  - document → 单 Markdown 文件 `<title>-v<version>.md`
  *  - image    → 302 跳转到 image.url（外部图片）
+ *  - ppt      → pptxgenjs 生成真 .pptx 二进制
  *  - code_file / diff / 其它 → JSON dump
  */
 export async function GET(_req: Request, ctx: RouteContext) {
@@ -65,6 +66,18 @@ export async function GET(_req: Request, ctx: RouteContext) {
   if (content.type === 'image') {
     // 外部 URL：直接 302 让浏览器走原 URL
     return NextResponse.redirect(content.url, 302)
+  }
+
+  if (content.type === 'ppt') {
+    const { slidesToPptxBuffer } = await import('@/server/ppt-export')
+    const buf = await slidesToPptxBuffer(content, row.title)
+    return new NextResponse(new Uint8Array(buf), {
+      headers: {
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(baseName)}.pptx"`,
+      },
+    })
   }
 
   // 兜底：原始 JSON

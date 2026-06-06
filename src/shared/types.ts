@@ -35,7 +35,7 @@ export type PartDelta =
   | { type: 'thinking.append'; text: string }
 
 // ─── Artifact 内容（联合）─────────────────────────────────
-export type ArtifactType = 'web_app' | 'code_file' | 'diff' | 'document' | 'image'
+export type ArtifactType = 'web_app' | 'code_file' | 'diff' | 'document' | 'image' | 'ppt'
 
 export type ArtifactContent =
   | {
@@ -68,6 +68,27 @@ export type ArtifactContent =
       width?: number
       height?: number
     }
+  | {
+      type: 'ppt'
+      title?: string
+      theme?: PptTheme
+      slides: PptSlide[]
+    }
+
+export type PptLayout = 'title' | 'title-bullets' | 'section' | 'blank'
+
+export interface PptSlide {
+  title?: string
+  bullets?: string[]
+  notes?: string
+  layout?: PptLayout
+}
+
+export interface PptTheme {
+  /** 不带 # 的 hex，如 '1E40AF' */
+  primaryColor?: string
+  fontFace?: string
+}
 
 export interface DiffHunk {
   oldStart: number

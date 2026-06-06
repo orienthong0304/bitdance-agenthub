@@ -1,4 +1,4 @@
-import type { ArtifactContent, ArtifactType, DiffHunk } from '@/shared/types'
+import type { ArtifactContent, ArtifactType, DiffHunk, PptLayout, PptSlide, PptTheme } from '@/shared/types'
 
 /**
  * 把 LLM 或用户给的松散 content 规整成强类型 ArtifactContent;非法返回 null。
@@ -137,6 +137,53 @@ export function buildArtifactContent(type: ArtifactType, rawInput: unknown): Art
     }
   }
 
+  if (type === 'ppt') {
+    const obj =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null
+    const rawSlides = Array.isArray(raw)
+      ? raw
+      : Array.isArray(obj?.slides)
+        ? (obj!.slides as unknown[])
+        : null
+    if (!rawSlides) return null
+
+    const slides: PptSlide[] = []
+    for (const item of rawSlides) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const s = item as Record<string, unknown>
+      const title = readString(s.title) ?? undefined
+      let bullets: string[] | undefined
+      if (Array.isArray(s.bullets)) {
+        bullets = s.bullets.filter((b): b is string => typeof b === 'string')
+      } else if (typeof s.bullets === 'string') {
+        bullets = s.bullets.split('\n').map((x) => x.trim()).filter(Boolean)
+      } else if (Array.isArray(s.points)) {
+        bullets = s.points.filter((b): b is string => typeof b === 'string')
+      }
+      const notes = readString(s.notes) ?? undefined
+      const layout = normalisePptLayout(s.layout)
+      if (!title && (!bullets || bullets.length === 0)) continue
+      slides.push({
+        ...(title ? { title } : {}),
+        ...(bullets && bullets.length > 0 ? { bullets } : {}),
+        ...(notes ? { notes } : {}),
+        ...(layout ? { layout } : {}),
+      })
+    }
+    if (slides.length === 0) return null
+
+    const deckTitle = obj ? (readString(obj.title) ?? undefined) : undefined
+    const theme = obj ? normalisePptTheme(obj.theme) : undefined
+    return {
+      type: 'ppt',
+      ...(deckTitle ? { title: deckTitle } : {}),
+      ...(theme ? { theme } : {}),
+      slides,
+    }
+  }
+
   return null
 }
 
@@ -162,6 +209,7 @@ const CONTENT_WRAPPER_KEYS = [
   'language',
   'sizeBytes',
   'checksum',
+  'slides',
 ]
 
 /**
@@ -214,7 +262,7 @@ function isWrapperObject(v: unknown): v is Record<string, unknown> {
 
 /** content 串里出现包装字段名 —— 用于决定是否值得做容错解析(避免误伤正常内容)。 */
 function hasWrapperSignature(s: string): boolean {
-  return /"(?:format|content|markdown|text|files|entry|html|targetArtifactId|targetId|hunks|diff|patch|workspacePath|path)"\s*:/.test(s)
+  return /"(?:format|content|markdown|text|files|entry|html|targetArtifactId|targetId|hunks|diff|patch|workspacePath|path|slides)"\s*:/.test(s)
 }
 
 /** 把非法 JSON 转义 `\X`(X ∉ `"\/bfnrtu`)改成合法的 `\\X`,修掉模型常见的 `\|` 等。 */
@@ -335,4 +383,21 @@ function guessLanguage(workspacePath: string): string {
     yaml: 'yaml',
   }
   return aliases[ext] ?? (ext || 'text')
+}
+
+function normalisePptLayout(value: unknown): PptLayout | null {
+  const v = readString(value)
+  return v === 'title' || v === 'title-bullets' || v === 'section' || v === 'blank' ? v : null
+}
+
+function normalisePptTheme(value: unknown): PptTheme | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const obj = value as Record<string, unknown>
+  const primaryColor = readString(obj.primaryColor)?.replace(/^#/, '')
+  const fontFace = readString(obj.fontFace) ?? undefined
+  if (!primaryColor && !fontFace) return undefined
+  return {
+    ...(primaryColor ? { primaryColor } : {}),
+    ...(fontFace ? { fontFace } : {}),
+  }
 }

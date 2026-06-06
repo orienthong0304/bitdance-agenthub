@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Image as ImageIcon, Layers, Loader2, Search, Trash2 } from 'lucide-react'
+import { FileText, Image as ImageIcon, Layers, Loader2, Presentation, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
@@ -201,6 +201,7 @@ function TypeIcon({ type }: { type: string }) {
   const className = 'mt-0.5 size-4 shrink-0 text-muted-foreground'
   if (type === 'image') return <ImageIcon className={className} />
   if (type === 'document') return <FileText className={className} />
+  if (type === 'ppt') return <Presentation className={className} />
   return <Layers className={className} />
 }
 

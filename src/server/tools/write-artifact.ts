@@ -24,7 +24,7 @@ import type { ToolDef } from './types'
  */
 
 const ArgsSchema = z.object({
-  type: z.enum(['web_app', 'document', 'image', 'diff']),
+  type: z.enum(['web_app', 'document', 'image', 'diff', 'ppt']),
   title: z.string().min(1),
   content: z.unknown(),
   /** 可选：已有产物的 id，传则创建该产物的新版本（version+1，parentArtifactId 链接） */
@@ -41,15 +41,15 @@ export const writeArtifactTool: ToolDef = {
     properties: {
       type: {
         type: 'string',
-        enum: ['web_app', 'document', 'image', 'diff'],
+        enum: ['web_app', 'document', 'image', 'diff', 'ppt'],
         description:
-          'web_app for HTML/CSS/JS bundles, document for markdown text, image for URL or data URI, diff for a patch against an existing artifact',
+          'web_app for HTML/CSS/JS bundles, document for markdown text, image for URL or data URI, diff for a patch against an existing artifact, ppt for slide decks (structured JSON, exportable to a real .pptx)',
       },
       title: { type: 'string', description: 'Short human-readable title' },
       content: {
         type: 'object',
         description:
-          'Artifact body — pass as a JSON OBJECT, do NOT JSON-stringify it into a quoted string. For web_app: { files: { "index.html": "...", "style.css"?, "script.js"? }, entry: "index.html" }. For document: { format: "markdown", content: "...markdown text..." }. For image: { url: "...", alt: "..." }. For diff: { targetArtifactId: "art_xxx", hunks: [{ oldStart, oldLines, newStart, newLines, lines: [" line", "-old", "+new"] }] } or { targetArtifactId, diff: "@@ -1 +1 @@\\n-old\\n+new" }. Common mistake to avoid: sending content as a string like "{\\"format\\":\\"markdown\\",...}" — send the raw object, not its JSON text.',
+          'Artifact body — pass as a JSON OBJECT, do NOT JSON-stringify it into a quoted string. For web_app: { files: { "index.html": "...", "style.css"?, "script.js"? }, entry: "index.html" }. For document: { format: "markdown", content: "...markdown text..." }. For image: { url: "...", alt: "..." }. For diff: { targetArtifactId: "art_xxx", hunks: [{ oldStart, oldLines, newStart, newLines, lines: [" line", "-old", "+new"] }] } or { targetArtifactId, diff: "@@ -1 +1 @@\\n-old\\n+new" }. For ppt: { title?, theme?: { primaryColor?: "1E40AF", fontFace?: "Arial" }, slides: [{ title, bullets: ["point 1", "point 2"], notes?, layout?: "title"|"title-bullets"|"section" }] } — one slide per page, "title" for the cover and "title-bullets" (default) for content; bullets are plain text (no markdown); hex colors WITHOUT "#". Common mistake to avoid: sending content as a string like "{\\"format\\":\\"markdown\\",...}" — send the raw object, not its JSON text.',
       },
       parentArtifactId: {
         type: 'string',

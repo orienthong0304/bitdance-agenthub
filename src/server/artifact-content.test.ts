@@ -179,9 +179,87 @@ describe('buildArtifactContent', () => {
     })
   })
 
+  it('ppt: 标准 { slides } 对象', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        title: '季度汇报',
+        slides: [
+          { title: '封面', layout: 'title' },
+          { title: '要点', bullets: ['一', '二'] },
+        ],
+      }),
+    ).toEqual({
+      type: 'ppt',
+      title: '季度汇报',
+      slides: [
+        { title: '封面', layout: 'title' },
+        { title: '要点', bullets: ['一', '二'] },
+      ],
+    })
+  })
+
+  it('ppt: 顶层数组当作 slides', () => {
+    expect(buildArtifactContent('ppt', [{ title: 'A' }, { title: 'B', bullets: ['x'] }])).toEqual({
+      type: 'ppt',
+      slides: [{ title: 'A' }, { title: 'B', bullets: ['x'] }],
+    })
+  })
+
+  it('ppt: bullets 字符串按行拆 + points 别名', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        slides: [
+          { title: 'A', bullets: '一\n二\n' },
+          { title: 'B', points: ['x', 'y'] },
+        ],
+      }),
+    ).toEqual({
+      type: 'ppt',
+      slides: [
+        { title: 'A', bullets: ['一', '二'] },
+        { title: 'B', bullets: ['x', 'y'] },
+      ],
+    })
+  })
+
+  it('ppt: 过滤空页（无 title 且无 bullets）', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        slides: [{ title: 'keep' }, {}, { bullets: [] }, { notes: 'only notes' }],
+      }),
+    ).toEqual({
+      type: 'ppt',
+      slides: [{ title: 'keep' }],
+    })
+  })
+
+  it('ppt: 非法 layout 忽略 + theme 剥 #', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        theme: { primaryColor: '#1E40AF', fontFace: 'Arial' },
+        slides: [{ title: 'A', layout: 'fancy' }],
+      }),
+    ).toEqual({
+      type: 'ppt',
+      theme: { primaryColor: '1E40AF', fontFace: 'Arial' },
+      slides: [{ title: 'A' }],
+    })
+  })
+
+  it('ppt: 解开被字符串化的 { slides } 包装', () => {
+    const raw = JSON.stringify({ slides: [{ title: 'A', bullets: ['x'] }] })
+    expect(buildArtifactContent('ppt', raw)).toEqual({
+      type: 'ppt',
+      slides: [{ title: 'A', bullets: ['x'] }],
+    })
+  })
+
   it('非法输入返回 null', () => {
     expect(buildArtifactContent('document', 123)).toBeNull()
     expect(buildArtifactContent('diff', { targetArtifactId: 'art_target', hunks: [] })).toBeNull()
     expect(buildArtifactContent('code_file', { language: 'typescript' })).toBeNull()
+    expect(buildArtifactContent('ppt', { slides: [] })).toBeNull()
+    expect(buildArtifactContent('ppt', { slides: [{}] })).toBeNull()
+    expect(buildArtifactContent('ppt', 123)).toBeNull()
   })
 })

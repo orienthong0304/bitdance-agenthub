@@ -1,9 +1,9 @@
 'use client'
 
-import { AlertCircle, ChevronRight, Clock, Code, Copy, Download, ExternalLink, Eye, FileCode, FileText, GitCompare, History, Image as ImageIcon, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Save, X } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, Clock, Code, Copy, Download, ExternalLink, Eye, FileCode, FileText, GitCompare, History, Image as ImageIcon, Layers, Loader2, Maximize, Pencil, Presentation, RefreshCw, RotateCcw, Save, X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 
 import { CodeBlock } from '@/components/code-block'
@@ -16,7 +16,7 @@ import { createArtifactVersion, fetchArtifactVersions, workspaceReadFile, worksp
 import { artifactPreviewPath } from '@/lib/artifact-preview'
 import { normalizeLang } from '@/lib/highlighter'
 import { cn } from '@/lib/utils'
-import type { ArtifactContent, DiffHunk } from '@/shared/types'
+import type { ArtifactContent, DiffHunk, PptSlide } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
 
 // 编辑器仅在用户点「编辑」时懒加载（重型 client 库；CodeMirror 无 worker、离线 OK）
@@ -239,6 +239,8 @@ function ArtifactView({
       )
     case 'diff':
       return wrap(<DiffArtifactView content={content} />)
+    case 'ppt':
+      return wrap(<SlideDeckView content={content} onSaveVersion={onSaveVersion} />)
     default:
       return <Empty>该类型暂不支持预览</Empty>
   }
@@ -434,6 +436,159 @@ function DocumentView({
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── ppt: 幻灯片分页预览 + JSON 编辑 ────────────────────
+function SlideDeckView({
+  content,
+  onSaveVersion,
+}: {
+  content: Extract<ArtifactContent, { type: 'ppt' }>
+  onSaveVersion: SaveVersionFn
+}) {
+  const serialized = useMemo(() => JSON.stringify(content, null, 2), [content])
+  const [view, setView] = useState<'render' | 'edit'>('render')
+  const [idx, setIdx] = useState(0)
+  const [draft, setDraft] = useState(serialized)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setIdx(0)
+    setDraft(serialized)
+    setView('render')
+    setSaving(false)
+    setError(null)
+  }, [serialized])
+
+  const total = content.slides.length
+  const safeIdx = Math.min(idx, Math.max(0, total - 1))
+  const current = content.slides[safeIdx]
+  const dirty = draft !== serialized
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await onSaveVersion(JSON.parse(draft))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '提交失败（请检查 JSON 格式）')
+      setSaving(false)
+    }
+  }
+
+  const enterFullscreen = () => {
+    const el = containerRef.current
+    if (el?.requestFullscreen) el.requestFullscreen().catch(() => {})
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center border-b px-2">
+        <ViewTab active={view === 'render'} onClick={() => setView('render')}>
+          <Eye className="size-3.5" />
+          预览
+        </ViewTab>
+        <ViewTab active={view === 'edit'} onClick={() => setView('edit')}>
+          <Pencil className="size-3.5" />
+          编辑 JSON
+        </ViewTab>
+        {view === 'render' && total > 0 && (
+          <div className="ml-auto flex items-center gap-1 pr-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setIdx((i) => Math.max(0, i - 1))}
+              disabled={safeIdx <= 0}
+              title="上一页"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">
+              {safeIdx + 1} / {total}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}
+              disabled={safeIdx >= total - 1}
+              title="下一页"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={enterFullscreen}
+              title="全屏"
+            >
+              <Maximize className="size-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="min-h-0 flex-1">
+        {view === 'render' ? (
+          <div ref={containerRef} className="size-full bg-zinc-100 dark:bg-zinc-900">
+            {current ? (
+              <SlideView slide={current} deckTitle={content.title} />
+            ) : (
+              <Empty>没有幻灯片</Empty>
+            )}
+          </div>
+        ) : (
+          <ArtifactCodeEditor value={draft} onChange={setDraft} filename="slides.json" type="ppt" />
+        )}
+      </div>
+      {view === 'edit' && (
+        <EditFooter
+          dirty={dirty}
+          saving={saving}
+          error={error}
+          onSave={save}
+          onReset={() => {
+            setDraft(serialized)
+            setError(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function SlideView({ slide, deckTitle }: { slide: PptSlide; deckTitle?: string }) {
+  const layout = slide.layout ?? 'title-bullets'
+  const centered = layout === 'title' || layout === 'section'
+  const heading = slide.title ?? (centered ? deckTitle : undefined)
+  return (
+    <div className="flex size-full items-center justify-center p-6">
+      <div className="aspect-video w-full max-w-3xl overflow-hidden rounded-lg border bg-card shadow-sm">
+        <div
+          className={cn(
+            'flex size-full flex-col gap-4 overflow-auto p-10',
+            centered && 'items-center justify-center text-center',
+          )}
+        >
+          {heading && (
+            <h2 className={cn('font-semibold text-foreground', centered ? 'text-3xl' : 'text-2xl')}>
+              {heading}
+            </h2>
+          )}
+          {!centered && slide.bullets && slide.bullets.length > 0 && (
+            <ul className="list-disc space-y-2 pl-6 text-base leading-relaxed text-foreground/90">
+              {slide.bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -719,6 +874,7 @@ function TypeIcon({ type }: { type: string }) {
   if (type === 'document') return <FileText className="size-4 text-muted-foreground" />
   if (type === 'code_file') return <FileCode className="size-4 text-muted-foreground" />
   if (type === 'diff') return <GitCompare className="size-4 text-muted-foreground" />
+  if (type === 'ppt') return <Presentation className="size-4 text-muted-foreground" />
   return <Layers className="size-4 text-muted-foreground" />
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Package, Rocket, Sparkles, XCircle } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Package, Presentation, Rocket, Sparkles, XCircle } from 'lucide-react'
 import type { MouseEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
@@ -538,6 +538,7 @@ function ArtifactRefPart({ artifactId }: { artifactId: string }) {
 function ArtifactIcon({ type }: { type: string }) {
   if (type === 'image') return <ImageIcon className="size-5 shrink-0 text-muted-foreground" />
   if (type === 'document') return <FileText className="size-5 shrink-0 text-muted-foreground" />
+  if (type === 'ppt') return <Presentation className="size-5 shrink-0 text-muted-foreground" />
   return <Layers className="size-5 shrink-0 text-muted-foreground" />
 }
 

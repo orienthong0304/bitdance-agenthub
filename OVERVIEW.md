@@ -14,7 +14,7 @@
 
 > 把多 Agent 协作做成 IM 群聊体验 —— Agent 是「联系人」,对话是「工作空间」,Orchestrator 是「群里的项目经理」。
 
-本地运行（`pnpm dev`,SQLite 文件库,不依赖托管服务）。经 100+ commit 演进,五层架构完整落地,功能闭环已跑通,并已做到 **Electron 桌面打包** + **移动端伴随 App 脚手架**。当前重心是体验打磨（斜杠命令、上下文压缩）。
+本地运行（`pnpm dev`,SQLite 文件库,不依赖托管服务）。经 100+ commit 演进,五层架构完整落地,功能闭环已跑通,并已做到 **Electron 桌面打包** + **移动端伴随 App 脚手架**。当前重心是测试覆盖（Playwright E2E）与产物体验打磨（PPT 视觉、产物预览）。
 
 ### 2. 五层架构 + 数据流
 
@@ -57,9 +57,9 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | MockAdapter | ✅ | 开发期不烧 token |
 | CodexAdapter | ✅ | @openai/codex-sdk + 线程续接 + AgentHub MCP bridge |
 | 自建 Agent | ✅ | 表单/对话式创建,自定义 prompt + 工具集 |
-| Orchestrator 编排 | ✅ | 三阶段规划 + DAG 调度 + 级联中止 + 可视化卡 |
+| Orchestrator 编排 | ✅ | 三阶段规划 + DAG 调度 + 级联中止 + 可视化卡 + 同波次代码冲突检测（检测+上报，不自动合并） |
 | 工具系统 | ✅ | write/deploy/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
-| Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL + 本地静态发布/源码包/容器包) / document(md) / image / diff 双栏 · code_file workspace 预览/编辑 · 版本链 v1↔v2 · 选区改写 · 面板内编辑(CodeMirror)→提交新版本 · 导出 |
+| Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL + 本地静态发布/源码包/容器包) / document(md) / image / diff 双栏 / **ppt(幻灯片分页预览 + 完整 theme token + 导出真 .pptx)** · code_file workspace 预览/编辑 · 版本链 v1↔v2 · 选区改写 · 面板内编辑(CodeMirror)→提交新版本 · 导出 |
 | Workspace 沙箱 | ✅ | sandbox/local 双模式 · fs_write 审批(Review/Auto) · 双平台 Bash 黑名单 |
 | Token 计量 | ✅ | per-run/per-message · cache 命中率 · 全局分析 Tab |
 | 跨 run 对话记忆 | ✅ | 历史序列化注入 · token 预算 · 群聊跨 agent 可见 · 手动压缩 |
@@ -67,8 +67,8 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | Electron 桌面版 | ✅ | DMG / EXE 打包 · userData 路径迁移 |
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
-| 斜杠命令菜单 | 🚧 | 进行中(未提交),见附录 |
-| 测试覆盖 | 🟡 | Vitest 覆盖 security / workspace-utils / dispatch-plan 核心纯函数；UI/E2E 待补 |
+| 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
+| 测试覆盖 | 🟡 | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme）；Playwright **E2E 基建 + 核心 IM 流**（mock agent，见附录）；产物/群聊调度 E2E 待补（需测试假 adapter） |
 
 ---
 
@@ -118,12 +118,13 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 ### L3 服务层（`src/server/`）
 | 服务 | 文件 | 职责 |
 |---|---|---|
-| **AgentRunner** | `agent-runner.ts` | per-run 生命周期、选 adapter、`buildAdapterInput`、历史注入、token 预算 —— **L3 核心** |
+| **AgentRunner** | `agent-runner.ts` | per-run 生命周期、选 adapter、`buildAdapterInput`、历史注入、token 预算、Orchestrator DAG + 冲突检测 —— **L3 核心** |
+| 冲突检测 | `dispatch-file-writes.ts` | 子 run fs_write 写入追踪 + `detectWaveConflicts` 纯函数（`specs/06`） |
 | 会话服务 | `conversation-service.ts` | 会话/消息持久化 |
 | 跨 run 上下文 | `conversation-context.ts` | MessagePart → ChatMessage 序列化、pinned 注入（`specs/13`） |
 | 上下文压缩 | `context-compaction-service.ts` | 手动压缩历史为摘要（落 `context_summaries` 表） |
 | 事件总线 | `event-bus.ts` | HMR-safe globalThis 单例,推 SSE |
-| 产物服务 | `artifact-service.ts` · `deployment-service.ts` | 产物 CRUD + 版本链（parentArtifactId）· 本地静态发布与下载包 |
+| 产物服务 | `artifact-service.ts` · `deployment-service.ts` · `ppt-export.ts` | 产物 CRUD + 版本链（parentArtifactId）· 本地静态发布与下载包 · slides JSON → 真 .pptx（pptxgenjs） |
 | Agent / 附件 / 文件 | `agent-service.ts` · `attachment-service.ts` · `fs-service.ts` | |
 | 审批中转 store | `pending-writes.ts` · `pending-questions.ts` | fs_write 审批 / ask_user 的内存中转 |
 | 设置 / Key | `settings-service.ts` | 三层 key 优先级解析 |
@@ -155,27 +156,34 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/<conv_xxx>/`（sandbox 模式）。
 
 ### 共享类型（`src/shared/`）
-`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单）。
+`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单） · `ppt-theme.ts`（`PptTheme` 解析 + 专业默认,预览/导出共用）。
 
 ### 桌面（`electron/`）& 移动（`apps/mobile/`）
 - Electron：`main.ts`（主进程） · `paths.ts`（userData 路径迁移） · `server-bootstrap.ts`（拉起 Next standalone）。`specs/12`。
 - 移动：`apps/mobile/`（Capacitor 伴随客户端,monorepo workspace `@agenthub/mobile`）。`specs/14`。
 
+### 测试（`e2e/` + `*.test.ts`）
+- 单元：`src/**/*.test.ts`（Vitest 纯函数：security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme）。
+- E2E：`e2e/`（Playwright；`global-setup.ts` 建隔离库 + 插 mock agent，`chat.spec.ts` / `conversations.spec.ts` 跑核心 IM 流）；配置 `playwright.config.ts`，命令 `pnpm e2e`。
+
 ---
 
 ## 附 · 当前现状（易过时,以 git 为准）
 
-### 🚧 进行中（工作区未提交）
-**斜杠命令（`/`）菜单** —— 输入框敲 `/` 弹命令浮层：
-- 新增 `src/components/slash-command-menu.tsx`（命令列表） · `slash-command-help-dialog.tsx`（帮助弹窗） · `src/lib/ui-command-events.ts`（`open-settings` / `open-agents` UI 命令事件总线）
-- 改动 `message-input.tsx` · `settings-dialog.tsx` · `sidebar.tsx` 接入
-- 目前是纯前端 UI 命令（打开设置 / 打开 Agents 库）
+### ✅ 近期完成（最新一批）
+- 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
+- Orchestrator **同波次代码冲突检测**（fs_write 写入追踪 + 聚合阶段上报；盲区 bash / SDK adapter，`specs/06`）
+- **PPT 产物**：`ppt` 类型 + 结构化 slides JSON + 真 .pptx 导出（pptxgenjs）+ 完整 theme token（预览/导出同源消费 `resolvePptTheme`）
+- **Playwright E2E** 基建 + 核心 IM 流（mock agent；本机 `pnpm e2e` 跑，详见「测试」节）
+- 斜杠命令菜单（`/` 浮层）
 
-### 📋 待办（README「已知限制」）
+### 📋 待办
+- E2E 第二批：产物预览/导出 + 群聊调度（需「会产 artifact / dispatch」的测试假 adapter）
+- PPT 深化：辅色语义着色（正面↑ / 警示↓）+ 数据页卡片化
+- 冲突检测盲区：bash / SDK adapter 写入（可加波次快照补全）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
 - sandbox 配额对 Claude Code SDK 失效（SDK 自己写盘绕过 quota）
 - 移动端伴随 App 配对通信打通
-- UI/E2E 测试覆盖
 
 ### ⚠️ 关键约定（动手前必看）
 - 改实体字段 → 同步 `specs/01`;改事件 → `specs/02`;改 Bash 黑名单 → 同步 `specs/11` + `src/server/security.ts`（单一数据源）。
@@ -184,4 +192,4 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ---
 
-*最后更新：2026-06-06 · 修正 Pin 前端入口过时项 + 接通会话归档 UI（archived 字段早有，本次补 service/API/sidebar 入口）。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*
+*最后更新：2026-06-06 · 同步本批成果（会话归档 / Orchestrator 冲突检测 / PPT 产物+真 pptx+theme / Playwright E2E 基建）到功能矩阵、代码地图、当前现状三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*

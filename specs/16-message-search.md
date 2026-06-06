@@ -246,6 +246,7 @@ export async function countSearchMatches(query: string): Promise<number>
 行为：
 - `query` 为空 / 只含空白 → 直接返回 `{ hits: [], total: 0, tookMs: 0 }`，不打 DB
 - `query` 含 FTS5 非法语法 → try/catch 吞 `SQLITE_ERROR`，返回 `{ hits: [], total: 0, error: 'INVALID_QUERY' }`（错误通过 Result 类型变体表达，**不抛**）
+- **FTS5 连字符陷阱**：用户输入含 `-`（如 `render-pipeline`）时，FTS5 会把连字符解释为 column-restricted 查询的语法（`no such column: pipeline`）。Service 层必须在传给 `MATCH` 之前对 `query` 加双引号包裹（`"render-pipeline"`），强制 FTS5 当作 phrase 处理。LIKE 路径不需要这层处理（LIKE 是普通子串匹配）
 - `snippetHtml` 在 SQL 里生成（`snippet(messages_fts, 0, '<mark>', '</mark>', '…', 12)`），前端用 `dangerouslySetInnerHTML` 渲染；源头是用户自己的消息内容（不是 LLM 输出），XSS 风险低
 - LIKE 兜底路径**不生成** `<mark>`（LIKE 没有 snippet 函数），snippet 是裸文本
 

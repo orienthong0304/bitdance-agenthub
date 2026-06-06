@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type Database from 'better-sqlite3'
 import Database from 'better-sqlite3'
 
 import { runMessageSearchMigration } from '../db/migrate-add-message-search'
@@ -53,13 +54,13 @@ describe('searchMessages (FTS5 path)', () => {
   afterEach(() => { db.close() })
 
   it('returns empty result for empty query', async () => {
-    const r = await searchMessages({ query: '', db: db as any })
+    const r = await searchMessages({ query: '', db: db as Database.Database })
     expect(r.hits).toEqual([])
     expect(r.total).toBe(0)
   })
 
   it('returns empty result for whitespace query', async () => {
-    const r = await searchMessages({ query: '   ', db: db as any })
+    const r = await searchMessages({ query: '   ', db: db as Database.Database })
     expect(r.hits).toEqual([])
     expect(r.total).toBe(0)
   })
@@ -68,7 +69,7 @@ describe('searchMessages (FTS5 path)', () => {
     insertMessage(db, 'm1', 'c1', 'user', [
       { type: 'text', content: 'rendering pipeline discussion' },
     ])
-    const r = await searchMessages({ query: 'render*', db: db as any })
+    const r = await searchMessages({ query: 'render*', db: db as Database.Database })
     expect(r.total).toBe(1)
     expect(r.hits[0].messageId).toBe('m1')
     expect(r.hits[0].snippetHtml).toContain('<mark>')
@@ -78,7 +79,7 @@ describe('searchMessages (FTS5 path)', () => {
     insertMessage(db, 'm1', 'c1', 'user', [
       { type: 'text', content: '渲染管线优化方案' },
     ])
-    const r = await searchMessages({ query: '渲染管', db: db as any })
+    const r = await searchMessages({ query: '渲染管', db: db as Database.Database })
     expect(r.total).toBe(1)
   })
 
@@ -86,7 +87,7 @@ describe('searchMessages (FTS5 path)', () => {
     insertMessage(db, 'm1', 'c2', 'agent', [
       { type: 'text', content: 'switching to opus model' },
     ], 'complete', 'a1')
-    const r = await searchMessages({ query: 'opus', db: db as any })
+    const r = await searchMessages({ query: 'opus', db: db as Database.Database })
     expect(r.hits[0].conversationTitle).toBe('Second conv')
     expect(r.hits[0].agentName).toBe('Claude')
     expect(r.hits[0].agentAvatar).toBe('🤖')
@@ -95,7 +96,7 @@ describe('searchMessages (FTS5 path)', () => {
   it('filters by conversationId', async () => {
     insertMessage(db, 'm1', 'c1', 'user', [{ type: 'text', content: 'shared term' }])
     insertMessage(db, 'm2', 'c2', 'user', [{ type: 'text', content: 'shared term' }])
-    const r = await searchMessages({ query: 'shared', conversationId: 'c1', db: db as any })
+    const r = await searchMessages({ query: 'shared', conversationId: 'c1', db: db as Database.Database })
     expect(r.total).toBe(1)
     expect(r.hits[0].conversationId).toBe('c1')
   })
@@ -104,12 +105,12 @@ describe('searchMessages (FTS5 path)', () => {
     for (let i = 0; i < 5; i++) {
       insertMessage(db, `m${i}`, 'c1', 'user', [{ type: 'text', content: 'bulk' }])
     }
-    const r = await searchMessages({ query: 'bulk', limit: 2, db: db as any })
+    const r = await searchMessages({ query: 'bulk', limit: 2, db: db as Database.Database })
     expect(r.hits.length).toBe(2)
   })
 
   it('returns error code for invalid FTS5 syntax', async () => {
-    const r = await searchMessages({ query: '(unclosed', db: db as any })
+    const r = await searchMessages({ query: '(unclosed', db: db as Database.Database })
     expect(r.hits).toEqual([])
     expect(r.error).toBe('INVALID_QUERY')
   })
@@ -118,7 +119,7 @@ describe('searchMessages (FTS5 path)', () => {
     insertMessage(db, 'm1', 'c1', 'user', [
       { type: 'text', content: '模型切换问题' },
     ])
-    const r = await searchMessages({ query: '模型', fallback: 'like', db: db as any })
+    const r = await searchMessages({ query: '模型', fallback: 'like', db: db as Database.Database })
     expect(r.total).toBe(1)
     // LIKE path snippet has no <mark>
     expect(r.hits[0].snippetHtml).not.toContain('<mark>')
@@ -128,7 +129,7 @@ describe('searchMessages (FTS5 path)', () => {
     insertMessage(db, 'm1', 'c1', 'user', [{ type: 'text', content: '共同' }])
     insertMessage(db, 'm2', 'c2', 'user', [{ type: 'text', content: '共同' }])
     const r = await searchMessages({
-      query: '共同', fallback: 'like', conversationId: 'c2', db: db as any,
+      query: '共同', fallback: 'like', conversationId: 'c2', db: db as Database.Database,
     })
     expect(r.total).toBe(1)
     expect(r.hits[0].conversationId).toBe('c2')

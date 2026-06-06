@@ -14,7 +14,9 @@ const PatchBody = z
     capabilities: z.array(z.string()).optional(),
     systemPrompt: z.string().min(1).optional(),
     adapterName: z.enum(['custom', 'claude-code', 'codex']).optional(),
-    modelProvider: z.enum(['anthropic', 'openai', 'deepseek', 'volcano-ark']).optional(),
+    modelProvider: z
+      .enum(['anthropic', 'openai', 'deepseek', 'volcano-ark', 'openai-compatible'])
+      .optional(),
     modelId: z.union([z.string().min(1), z.null()]).optional(),
     toolNames: z.array(z.string()).optional(),
     supportsVision: z.boolean().optional(),

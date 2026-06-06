@@ -112,7 +112,12 @@ export interface DiffHunk {
 // ─── Adapter 名称 ──────────────────────────────────────────
 export type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
 
-export type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
+export type ModelProvider =
+  | 'anthropic'
+  | 'openai'
+  | 'deepseek'
+  | 'volcano-ark'
+  | 'openai-compatible'
 
 // ─── 调度 plan ────────────────────────────────────────────
 export interface DispatchPlanItem {

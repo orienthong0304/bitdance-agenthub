@@ -2,6 +2,10 @@ import { and, desc, eq } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import { newAgentId } from '@/server/ids'
+import {
+  validateOpenAICompatibleApiKey,
+  validateOpenAICompatibleBaseUrl,
+} from '@/shared/openai-compatible'
 import type { AdapterName, ModelProvider } from '@/shared/types'
 
 /**
@@ -40,6 +44,10 @@ export async function createCustomAgent(args: CreateAgentArgs) {
     if (!args.modelProvider || !args.modelId) {
       throw new Error('Custom adapter requires modelProvider and modelId')
     }
+    const baseUrlError = validateOpenAICompatibleBaseUrl(args.modelProvider, args.apiBaseUrl)
+    if (baseUrlError) throw new Error(baseUrlError)
+    const apiKeyError = validateOpenAICompatibleApiKey(args.modelProvider, args.apiKey)
+    if (apiKeyError) throw new Error(apiKeyError)
   }
 
   const row = {
@@ -111,9 +119,18 @@ export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch
   const nextAdapterName: AdapterName = patch.adapterName ?? agent.adapterName
   const nextModelProvider = patch.modelProvider ?? agent.modelProvider
   const nextModelId = patch.modelId ?? agent.modelId
+  const nextApiBaseUrl =
+    patch.apiBaseUrl !== undefined ? patch.apiBaseUrl?.trim() || null : agent.apiBaseUrl
+  const nextApiKey = patch.apiKey !== undefined ? patch.apiKey?.trim() || null : agent.apiKey
 
   if (nextAdapterName === 'custom' && (!nextModelProvider || !nextModelId)) {
     throw new Error('Custom adapter requires modelProvider and modelId')
+  }
+  if (nextAdapterName === 'custom') {
+    const baseUrlError = validateOpenAICompatibleBaseUrl(nextModelProvider, nextApiBaseUrl)
+    if (baseUrlError) throw new Error(baseUrlError)
+    const apiKeyError = validateOpenAICompatibleApiKey(nextModelProvider, nextApiKey)
+    if (apiKeyError) throw new Error(apiKeyError)
   }
 
   if (patch.name !== undefined) updates.name = patch.name.trim()

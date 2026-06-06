@@ -50,7 +50,7 @@ export interface CreateAgentBody {
   /** 默认 'custom'。SDK adapter 使用各自内置工具集 */
   adapterName?: 'custom' | 'claude-code' | 'codex'
   /** custom: required；SDK adapter: 忽略 */
-  modelProvider?: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark'
+  modelProvider?: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'openai-compatible'
   /** custom: required；SDK adapter: 可选，默认 SDK 默认模型 */
   modelId?: string
   toolNames: string[]

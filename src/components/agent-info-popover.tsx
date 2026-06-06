@@ -165,5 +165,6 @@ function providerName(provider: string | null): string | null {
   if (provider === 'deepseek') return 'DeepSeek'
   if (provider === 'anthropic') return 'Anthropic'
   if (provider === 'openai') return 'OpenAI'
+  if (provider === 'openai-compatible') return 'OpenAI-compatible'
   return provider
 }

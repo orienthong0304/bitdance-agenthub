@@ -5,14 +5,15 @@ import OpenAI from 'openai'
 import { newMessageId } from '@/server/ids'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
-import type { DeployStatusRecord, StreamEvent } from '@/shared/types'
+import type { DeployStatusRecord, ModelProvider, StreamEvent } from '@/shared/types'
 
+import { resolveCustomProviderClientConfig } from './custom-provider-client'
 import type { AdapterAttachment, AdapterInput, AgentPlatformAdapter } from './types'
 
 /**
  * CustomAgentAdapter —— 自配置 Agent 的适配器。
  *
- * 通过 openai SDK 调用底层模型（当前仅接 DeepSeek，未来扩展 Anthropic/OpenAI），
+ * 通过 openai SDK 调用底层模型（OpenAI Chat Completions 兼容协议），
  * 自己实现 tool loop：流式拉模型输出 → 解析 tool_calls → 调用 ToolExecutor →
  * 把结果回灌到 messages → 续写下一轮，直到模型不再调工具。
  *
@@ -26,9 +27,6 @@ interface AccumulatingToolCall {
   name: string
   argsBuffer: string
 }
-
-const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
-const DEFAULT_VOLCANO_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 /** 防止单条 user message 塞太多图片（token 爆炸 + provider 通常有上限） */
 const MAX_IMAGES_PER_MESSAGE = 5
@@ -48,7 +46,7 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
     const systemPrompt = input.systemPrompt
     const apiKey = input.apiKey
 
-    const client = buildClient(modelProvider, apiKey)
+    const client = buildClient(modelProvider, apiKey, input.apiBaseUrl)
 
     const toolDefs = toolRegistry.resolve(input.toolNames)
     const apiTools = toolDefs.map(toApiTool)
@@ -347,34 +345,14 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 const MAX_API_RETRIES = 2
 
 function buildClient(
-  provider: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark',
+  provider: ModelProvider,
   overrideKey?: string | null,
+  apiBaseUrl?: string | null,
 ): OpenAI {
-  // 优先用 agent 自带的 key，没有则 fallback env
-  if (provider === 'deepseek') {
-    const apiKey = overrideKey || process.env.DEEPSEEK_API_KEY
-    if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set and agent has no apiKey')
-    return new OpenAI({
-      apiKey,
-      baseURL: DEFAULT_DEEPSEEK_BASE_URL,
-      maxRetries: MAX_API_RETRIES,
-    })
-  }
-  if (provider === 'volcano-ark') {
-    const apiKey = overrideKey || process.env.ARK_API_KEY
-    if (!apiKey) throw new Error('ARK_API_KEY not set and agent has no apiKey')
-    return new OpenAI({
-      apiKey,
-      baseURL: DEFAULT_VOLCANO_ARK_BASE_URL,
-      maxRetries: MAX_API_RETRIES,
-    })
-  }
-  if (provider === 'openai') {
-    const apiKey = overrideKey || process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set and agent has no apiKey')
-    return new OpenAI({ apiKey, maxRetries: MAX_API_RETRIES })
-  }
-  throw new Error(`CustomAgentAdapter does not support provider "${provider}" yet`)
+  return new OpenAI({
+    ...resolveCustomProviderClientConfig(provider, overrideKey, apiBaseUrl),
+    maxRetries: MAX_API_RETRIES,
+  })
 }
 
 function toApiTool(t: {

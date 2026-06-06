@@ -22,9 +22,13 @@ import {
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { validateCodexBaseUrl } from '@/shared/codex-compat'
+import {
+  validateOpenAICompatibleApiKey,
+  validateOpenAICompatibleBaseUrl,
+} from '@/shared/openai-compatible'
 import { useAppStore } from '@/stores/app-store'
 
-type Provider = 'deepseek' | 'anthropic' | 'openai' | 'volcano-ark'
+type Provider = 'deepseek' | 'anthropic' | 'openai' | 'volcano-ark' | 'openai-compatible'
 type AdapterKind = 'custom' | 'claude-code' | 'codex'
 
 const PROVIDER_DEFAULTS: Record<Provider, { label: string; defaultModel: string }> = {
@@ -32,6 +36,7 @@ const PROVIDER_DEFAULTS: Record<Provider, { label: string; defaultModel: string 
   anthropic: { label: 'Anthropic', defaultModel: 'claude-opus-4-7' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-4o' },
   'volcano-ark': { label: '火山方舟 (豆包)', defaultModel: 'doubao-seed-2-0-lite-260428' },
+  'openai-compatible': { label: 'OpenAI-compatible', defaultModel: '' },
 }
 
 const CLAUDE_CODE_DEFAULT_MODEL = 'claude-opus-4-7'
@@ -171,9 +176,16 @@ export function CreateAgentDialog({
     if (!systemPrompt.trim()) return setError('System Prompt 不能为空')
     if (adapterKind === 'custom' && !modelId.trim()) return setError('Custom adapter 必须填写 Model ID')
     const trimmedApiBaseUrl = apiBaseUrl.trim()
+    const trimmedApiKey = apiKey.trim()
     if (adapterKind === 'codex') {
       const baseUrlError = validateCodexBaseUrl(trimmedApiBaseUrl || null)
       if (baseUrlError) return setError(baseUrlError)
+    }
+    if (adapterKind === 'custom') {
+      const baseUrlError = validateOpenAICompatibleBaseUrl(provider, trimmedApiBaseUrl || null)
+      if (baseUrlError) return setError(baseUrlError)
+      const apiKeyError = validateOpenAICompatibleApiKey(provider, trimmedApiKey || null)
+      if (apiKeyError) return setError(apiKeyError)
     }
 
     const capabilities = capabilitiesText
@@ -197,7 +209,7 @@ export function CreateAgentDialog({
           modelId: isSdkAgent ? modelId.trim() || null : modelId.trim(),
           toolNames: isSdkAgent ? [] : Array.from(toolNames),
           supportsVision,
-          apiKey: apiKey.trim() || null,
+          apiKey: trimmedApiKey || null,
           apiBaseUrl: trimmedApiBaseUrl || null,
         }
         const updated = await updateAgent(agent.id, patch)
@@ -214,7 +226,7 @@ export function CreateAgentDialog({
           modelId: modelId.trim() || undefined,
           toolNames: isSdkAgent ? [] : Array.from(toolNames),
           supportsVision,
-          apiKey: apiKey.trim() || undefined,
+          apiKey: trimmedApiKey || undefined,
           apiBaseUrl: trimmedApiBaseUrl || undefined,
         }
         const created = await createAgent(body)
@@ -300,7 +312,7 @@ export function CreateAgentDialog({
                 <div className="min-w-0">
                   <div className="text-xs font-medium">Custom（OpenAI 兼容协议）</div>
                   <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    用 DeepSeek / OpenAI / 火山方舟 等 OpenAI 兼容 API。可自定义工具集和模型。
+                    用 DeepSeek / OpenAI / 火山方舟 / 自定义 OpenAI-compatible API。可自定义工具集和模型。
                   </div>
                 </div>
               </label>
@@ -449,9 +461,11 @@ export function CreateAgentDialog({
             </div>
           )}
 
-          {(adapterKind === 'claude-code' || adapterKind === 'codex') && (
+          {(adapterKind === 'claude-code' ||
+            adapterKind === 'codex' ||
+            (adapterKind === 'custom' && provider === 'openai-compatible')) && (
             <div className="grid grid-cols-[80px_1fr] items-start gap-3">
-              <Label>Base URL</Label>
+              <Label required={adapterKind === 'custom' && provider === 'openai-compatible'}>Base URL</Label>
               <div>
                 <Input
                   value={apiBaseUrl}
@@ -459,7 +473,9 @@ export function CreateAgentDialog({
                   placeholder={
                     adapterKind === 'claude-code'
                       ? 'https://api.anthropic.com（默认）'
-                      : 'https://api.openai.com/v1（默认，需支持 /responses）'
+                      : adapterKind === 'codex'
+                        ? 'https://api.openai.com/v1（默认，需支持 /responses）'
+                        : 'https://dashscope.aliyuncs.com/compatible-mode/v1'
                   }
                   className="font-mono text-xs"
                 />
@@ -468,9 +484,13 @@ export function CreateAgentDialog({
                     <>
                       指向第三方 Claude API 兼容网关（如 <code className="font-mono">https://anyrouter.top</code>）；留空走 Anthropic 官方 endpoint。配此项时下方 API Key 自动作为 <code className="font-mono">ANTHROPIC_AUTH_TOKEN</code> 传给 SDK。
                     </>
-                  ) : (
+                  ) : adapterKind === 'codex' ? (
                     <>
                       必须指向 Codex/Responses 兼容 endpoint；DeepSeek / 火山方舟等 Chat Completions 兼容接口请用 Custom adapter。留空走 Codex SDK 默认 endpoint。
+                    </>
+                  ) : (
+                    <>
+                      必须指向 OpenAI Chat Completions 兼容 endpoint，例如通义千问 compatible-mode、智谱 / MiniMax / OpenRouter / SiliconFlow 的 OpenAI 兼容地址。
                     </>
                   )}
                 </div>
@@ -493,6 +513,8 @@ export function CreateAgentDialog({
                       ? '第三方网关的 token'
                       : adapterKind === 'codex' && apiBaseUrl.trim()
                         ? 'Codex/Responses endpoint token'
+                        : adapterKind === 'custom' && provider === 'openai-compatible'
+                          ? 'OpenAI-compatible endpoint token'
                       : '留空则使用环境变量'
                   }
                   className="flex-1 font-mono text-xs"
@@ -512,6 +534,8 @@ export function CreateAgentDialog({
                   <>填写后作为 <code className="font-mono">ANTHROPIC_AUTH_TOKEN</code> 传给 SDK，路由到自定义 Base URL；留空则透传空 token（第三方网关可能拒绝）</>
                 ) : adapterKind === 'codex' && apiBaseUrl.trim() ? (
                   <>填写后作为 <code className="font-mono">CODEX_API_KEY</code> 传给 SDK，路由到自定义 Codex/Responses Base URL；留空则走 AgentHub 设置或环境变量</>
+                ) : adapterKind === 'custom' && provider === 'openai-compatible' ? (
+                  <>OpenAI-compatible provider 需要为该 agent 单独填写 API Key；不会使用全局 OpenAI / DeepSeek / 火山方舟 key。</>
                 ) : (
                   <>
                     填写后该 agent 优先用此 key；留空则 fallback 到{' '}
@@ -526,7 +550,9 @@ export function CreateAgentDialog({
                             ? 'ARK_API_KEY'
                             : provider === 'openai'
                               ? 'OPENAI_API_KEY'
-                              : 'ANTHROPIC_API_KEY'}
+                              : provider === 'anthropic'
+                                ? 'ANTHROPIC_API_KEY'
+                                : '该 agent 的 API Key'}
                     </code>
                     {adapterKind === 'claude-code' || adapterKind === 'codex' ? '' : ' 环境变量'}
                   </>

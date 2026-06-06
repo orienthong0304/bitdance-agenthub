@@ -1056,6 +1056,8 @@ function pickSettingsKey(
       return settings.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY ?? null
     case 'volcano-ark':
       return settings.arkApiKey ?? process.env.ARK_API_KEY ?? null
+    case 'openai-compatible':
+      return null
     default:
       return null
   }

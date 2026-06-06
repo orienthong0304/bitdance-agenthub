@@ -19,6 +19,7 @@ const PROVIDER_FALLBACK_CONTEXT: Record<ModelProvider, number> = {
   openai: 128_000,
   deepseek: 64_000,
   'volcano-ark': 32_000,
+  'openai-compatible': 128_000,
 }
 
 /** 默认给输出留的 token。reasoning 模型实际上需要更多（thinking 也吃 token），但 4K 兜底足够。 */

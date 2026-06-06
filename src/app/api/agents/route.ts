@@ -16,7 +16,9 @@ const CreateBody = z
     capabilities: z.array(z.string()).default([]),
     systemPrompt: z.string().min(1),
     adapterName: z.enum(['custom', 'claude-code', 'codex']).default('custom'),
-    modelProvider: z.enum(['anthropic', 'openai', 'deepseek', 'volcano-ark']).optional(),
+    modelProvider: z
+      .enum(['anthropic', 'openai', 'deepseek', 'volcano-ark', 'openai-compatible'])
+      .optional(),
     modelId: z.string().min(1).optional(),
     toolNames: z.array(z.string()).default([]),
     supportsVision: z.boolean().optional(),

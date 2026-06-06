@@ -360,6 +360,15 @@ async function choiceFromCustomAgent(agent: AgentRow): Promise<SummaryModelChoic
       agent.modelId,
     )
   }
+  if (agent.modelProvider === 'openai-compatible') {
+    if (!agent.apiKey || !agent.apiBaseUrl) return null
+    return buildOpenAICompatibleChoice(
+      agent.modelProvider,
+      agent.modelId,
+      agent.apiKey,
+      agent.apiBaseUrl,
+    )
+  }
 
   const key =
     agent.apiKey ??

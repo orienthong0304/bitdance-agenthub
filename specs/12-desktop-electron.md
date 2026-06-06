@@ -268,23 +268,17 @@ export const db = drizzle(sqlite, { schema })
 > **⚠️ 2026-06-04 更新:`pnpm dev` 不再走 Electron Node。**
 > 在 `ELECTRON_RUN_AS_NODE=1`(Electron 内嵌 Node)下,**Next 16 dev server 的请求/渲染 worker 起不来,所有 HTTP 请求挂死(0 字节、无 compile 日志)**;纯 Node 下 Next dev 完全正常(实测全路由含 DB 路由 200)。`next build` / `next start` / db CLI 不受影响(它们不是「按需编译的长驻请求服务」)。
 > 因此 ABI 策略改为**两套**:
-> - **`pnpm dev` → 纯 Node**(`node next dev`),用 **Node ABI**;`scripts/ensure-node-sqlite.mjs` 在 dev 启动前检测 better-sqlite3,ABI 不符就 `pnpm rebuild better-sqlite3` 钉到当前 Node。
-> - **`build` / `db:*` / `electron:*` / packaged app → Electron ABI 130**,仍经 `run-electron-node.mjs` / `electron:rebuild`。
-> 一份 `.node` 只能一种 ABI,所以**在 web 开发(dev)与 Electron(build/db/打包)之间切换时各 rebuild 一次**:dev 由 `ensure-node-sqlite` 自动,Electron 侧用 `pnpm electron:rebuild`。这是已知的 flip-flop 代价,换取 dev server 可用。
+> - **`pnpm dev` / `pnpm test` / `pnpm e2e` → 纯 Node**,用 **Node ABI**;`scripts/ensure-node-sqlite.mjs` 在命令启动前打开 `better-sqlite3` 内存库,ABI 不符就 `pnpm rebuild better-sqlite3` 钉到当前 Node。
+> - **`build` / `start` / `db:*` / packaged app → Electron ABI 130**,经 `scripts/ensure-electron-sqlite.mjs` 在 `ELECTRON_RUN_AS_NODE=1` 下打开内存库,ABI 不符就 `pnpm electron:rebuild`。
+> 一份 `.node` 只能一种 ABI,所以在 web 开发/测试与 Electron build/db 之间仍会 flip-flop;但切换由 package scripts 自动完成,不再要求开发者记手动 rebuild。
 
-**build / db / 打包仍统一 Electron ABI 130** 的做法:经 `scripts/run-electron-node.mjs`(`ELECTRON_RUN_AS_NODE=1` 启动 Electron 内嵌 Node):
+**build / db / 打包仍统一 Electron ABI 130** 的做法:先跑 `scripts/ensure-electron-sqlite.mjs`,再经 `scripts/run-electron-node.mjs`(`ELECTRON_RUN_AS_NODE=1` 启动 Electron 内嵌 Node):
 
 ```
-pnpm build       → ELECTRON_RUN_AS_NODE=1 electron node_modules/next/dist/bin/next build
-pnpm db:push     → ELECTRON_RUN_AS_NODE=1 electron node_modules/drizzle-kit/bin.cjs push --force
-pnpm db:seed     → ELECTRON_RUN_AS_NODE=1 electron node_modules/tsx/dist/cli.mjs src/db/seed.ts
-# pnpm dev 改为:node scripts/ensure-node-sqlite.mjs && node node_modules/next/dist/bin/next dev(纯 Node)
-```
-
-**做 Electron(build / 打包 / db)前的一次性 setup**:
-
-```bash
-pnpm electron:rebuild   # 把 better-sqlite3 .node rebuild 到 Electron ABI 130
+pnpm build       → ensure-electron-sqlite → ELECTRON_RUN_AS_NODE=1 electron node_modules/next/dist/bin/next build
+pnpm db:push     → ensure-electron-sqlite → ELECTRON_RUN_AS_NODE=1 electron node_modules/drizzle-kit/bin.cjs push --force
+pnpm db:seed     → ensure-electron-sqlite → ELECTRON_RUN_AS_NODE=1 electron node_modules/tsx/dist/cli.mjs src/db/seed.ts
+pnpm dev/test    → ensure-node-sqlite → node/vitest/playwright(纯 Node)
 ```
 
 `electron:build` 流程(全程 Electron ABI 130)是:
@@ -352,7 +346,7 @@ pnpm electron:rebuild   # 把 better-sqlite3 .node rebuild 到 Electron ABI 130
 }
 ```
 
-`npmRebuild: false` 关键：禁用 electron-builder 内置的 `@electron/rebuild`。我们已经在 setup 阶段 `pnpm electron:rebuild` 把 store 钉到 ABI 130，build 流程从头到尾都用 ABI 130，不需要 electron-builder 再 rebuild。开了它反而会通过 pnpm 硬链接污染 source store。
+`npmRebuild: false` 关键：禁用 electron-builder 内置的 `@electron/rebuild`。Electron ABI 准备由 `scripts/ensure-electron-sqlite.mjs` 在 build/db 命令前完成，不需要 electron-builder 再 rebuild。开了它反而会通过 pnpm 硬链接污染 source store。
 
 ### 6.5 asarUnpack + .asar.unpacked require 路径
 
@@ -391,25 +385,24 @@ const nextConfig: NextConfig = {
 
 ## 7. 开发与构建流程
 
-### 7.1 一次性 setup
+### 7.1 ABI preflight
 
-每次 `pnpm install` 之后：
+`pnpm install` 后无需手动切 ABI。常用命令会自行执行对应 preflight：
 
-```bash
-pnpm electron:rebuild   # better-sqlite3 .node → Electron ABI 130
-```
-
-不需要重复跑。注意:`pnpm install` 会把 .node 重置到系统 Node ABI —— 此时 `pnpm dev`(纯 Node)正常,但 `electron:dev` / `build` / `db:*` 需先 `pnpm electron:rebuild` 钉回 Electron ABI 130。
+- `scripts/ensure-node-sqlite.mjs`：在当前 Node 下 `new Database(':memory:')` + trivial query；失败且是 native ABI/load error 时跑 `pnpm rebuild better-sqlite3`。
+- `scripts/ensure-electron-sqlite.mjs`：用 `ELECTRON_RUN_AS_NODE=1 electron scripts/check-sqlite-binding.mjs` 打开内存库；失败且是 native ABI/load error 时跑 `pnpm electron:rebuild`。
+- `scripts/check-sqlite-binding.mjs`：共享的真实 native binding 检查入口。**只 import package 不够**，`better_sqlite3.node` 到打开数据库时才会加载。
 
 ### 7.2 命令
 
 | 命令 | 行为 |
 |---|---|
-| `pnpm dev` | `node scripts/ensure-node-sqlite.mjs && node next dev` —— **纯 Node**(Node ABI);electron-as-node 会让 Next dev 请求挂死,故 dev 不走 wrapper |
-| `pnpm build` | `ELECTRON_RUN_AS_NODE=1 electron next build`，同上 |
-| `pnpm db:push` / `db:seed` / `db:studio` / `db:generate` | 同样通过 `run-electron-node.mjs` 包装 |
+| `pnpm dev` | `pnpm sqlite:ensure:node && node next dev` —— **纯 Node**(Node ABI);electron-as-node 会让 Next dev 请求挂死,故 dev 不走 wrapper |
+| `pnpm test` / `test:watch` / `e2e` | 先 `sqlite:ensure:node`,再跑 Vitest / Playwright |
+| `pnpm build` / `start` | 先 `sqlite:ensure:electron`,再 `ELECTRON_RUN_AS_NODE=1 electron next build/start` |
+| `pnpm db:push` / `db:seed` / `db:studio` / `db:generate` | 先 `sqlite:ensure:electron`,再通过 `run-electron-node.mjs` 包装 |
 | `pnpm electron:dev` | 并发跑 `pnpm dev` + `tsc watch` + Electron main 窗口；main 不嵌 server，loadURL `http://localhost:3000` |
-| `pnpm electron:rebuild` | `@electron/rebuild` 把 better-sqlite3 钉到 Electron ABI（setup 用） |
+| `pnpm electron:rebuild` | `scripts/rebuild-electron-sqlite.mjs` 直接用 Electron headers 重建 better-sqlite3（通常只作手动强制修复） |
 | `pnpm electron:build` | `pnpm build` → `pnpm electron:prebuild` → `pnpm electron:tsc` → `electron-builder` |
 
 ### 7.3 electron-dev 详细
@@ -425,14 +418,14 @@ pnpm electron:rebuild   # better-sqlite3 .node → Electron ABI 130
 
 ```bash
 pnpm electron:build
-# 1. pnpm build           — Next 在 Electron Node 里 build，standalone 自带 ABI 130 .node
+# 1. pnpm build           — ensure Electron ABI;Next 在 Electron Node 里 build，standalone 自带 ABI 130 .node
 # 2. pnpm electron:prebuild — 拷 static/public + 清 broken symlinks
 # 3. pnpm electron:tsc      — 编 main 进程到 dist-electron/main.js
 # 4. electron-builder       — 打包；npmRebuild: false，直接复用现成的 ABI 130 .node
 # 输出 release/AgentHub-<ver>.dmg、release/AgentHub-<ver>-setup.exe
 ```
 
-整条链路 ABI 一致，**没有 pnpm rebuild flip-flop，没有 afterPack hook**。源码 node_modules 永远是 ABI 130。
+打包链路 ABI 一致，且没有 afterPack hook。源码 `node_modules` 的 ABI 会按最后执行的 Node/Electron 命令自动切换；这是单 native binding 的预期行为。
 
 ---
 
@@ -484,8 +477,9 @@ Spec 12 把 in-process 作为首选；回退方案保留入口（同一份 main 
 
 **ABI / DB bootstrap（本次主要验证项）**：
 - [x] dev server 起得来、`GET /api/agents` 返回 200 + 5 个内置 agent(自动 seed 通过)。**注:`pnpm dev` 现为纯 Node(Node ABI);electron-as-node 下会挂死,见 §6.1 更新**
+- [x] `pnpm test` 先跑 Node ABI preflight,即使上一条命令把 native binding 切到 Electron ABI,也会自动切回 Node ABI
+- [x] `pnpm build` / `pnpm db:*` 先跑 Electron ABI preflight,即使上一条命令把 native binding 切到 Node ABI,也会自动切回 Electron ABI
 - [x] `pnpm electron:build` 日志包含 `skipped dependencies rebuild reason=npmRebuild is set to false`（确认没有 npm rebuild 反复污染 source store）
-- [x] build 完源码 `node_modules/.pnpm/better-sqlite3@.../better_sqlite3.node` 仍是 arm64（没被 build 流程动过）
 - [x] packaged `Contents/MacOS/AgentHub` 从终端启动无错误，`~/Library/Application Support/AgentHub/data/agenthub.db` 8 张表全建好，5 个内置 agent 已自动 seed
 - [x] packaged app 内 `app.asar.unpacked/.next/standalone/.../better_sqlite3.node` 是 arm64（standalone 自带的那份就是 ABI 130，无需 afterPack 覆盖）
 

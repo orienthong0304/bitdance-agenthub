@@ -120,6 +120,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 
 **关键优化**：`WHEN new.status != 'streaming'` —— 流式中的消息**不**同步进 FTS（用户搜半截无意义，且避免流式期间反复触发；终态 `'complete'` / `'error'` / `'aborted'` 一次性同步）。
 
+**实现细节**：`text` part 用 `GROUP_CONCAT(..., ' ')` 合并到单条 FTS 行。**原因**：FTS5 对 `rowid` 强制 UNIQUE 约束；同一 message 有 ≥ 2 个 text part 时直接 `INSERT ... SELECT` 会报 `constraint failed`。把全部 text part 拼成一个 content 字段后，1 个 message 对应 1 个 FTS 行，避免冲突。
+
+**取舍**：snippet 可能跨越多个 part 边界（在 FTS5 snippet 视图里它们已合并成一整段）。对搜索结果展示可接受——用户关心的是"这段话在哪"，不关心 part 边界。
+
 ```sql
 -- INSERT：仅当消息不在 streaming 状态
 CREATE TRIGGER IF NOT EXISTS messages_fts_ai
@@ -127,9 +131,10 @@ AFTER INSERT ON messages
 WHEN new.status != 'streaming'
 BEGIN
   INSERT INTO messages_fts(rowid, content)
-  SELECT new.rowid, json_extract(value, '$.content')
-  FROM json_each(new.parts)
-  WHERE json_extract(value, '$.type') = 'text';
+  SELECT new.rowid,
+    (SELECT GROUP_CONCAT(json_extract(value, '$.content'), ' ')
+     FROM json_each(new.parts)
+     WHERE json_extract(value, '$.type') = 'text');
 END;
 
 -- UPDATE：先删后插，仅当消息不在 streaming 状态
@@ -139,9 +144,10 @@ WHEN new.status != 'streaming'
 BEGIN
   DELETE FROM messages_fts WHERE rowid = old.rowid;
   INSERT INTO messages_fts(rowid, content)
-  SELECT new.rowid, json_extract(value, '$.content')
-  FROM json_each(new.parts)
-  WHERE json_extract(value, '$.type') = 'text';
+  SELECT new.rowid,
+    (SELECT GROUP_CONCAT(json_extract(value, '$.content'), ' ')
+     FROM json_each(new.parts)
+     WHERE json_extract(value, '$.type') = 'text');
 END;
 
 -- DELETE：级联清（无 WHEN 守卫，删除时总该清）

@@ -9,6 +9,7 @@ import type {
   DispatchPlanItem,
   DispatchTaskStatus,
   MessagePart,
+  PendingDispatchPlan,
   PendingQuestion,
   PendingWrite,
   StreamEvent,
@@ -22,6 +23,8 @@ export interface DispatchState {
   plan: DispatchPlanItem[]
   taskStatus: Record<string, DispatchTaskStatus>
   childRunIds: Record<string, string>              // taskId → childRunId
+  reviewStatus?: 'pending' | 'approved' | 'rejected'
+  pendingPlanId?: string
 }
 
 interface AppState {
@@ -134,6 +137,11 @@ interface AppState {
 
   setPendingQuestionsForConversation(conversationId: string, list: PendingQuestion[]): void
 
+  setPendingDispatchPlansForConversation(
+    conversationId: string,
+    list: PendingDispatchPlan[],
+  ): void
+
   /** 高亮指定消息 1.5 秒（点击「引用」预览时的跳转反馈） */
   highlightedMessageId: string | null
   highlightMessage(messageId: string): void
@@ -227,6 +235,7 @@ export const useAppStore = create<AppState>()(
           if (!existing || !areMessagesEquivalent(existing, m)) {
             s.messages[m.id] = m
           }
+          attachDispatchToMessageForRun(s.dispatchesByRunId, m.runId, m.id)
         }
       }),
 
@@ -235,6 +244,7 @@ export const useAppStore = create<AppState>()(
         s.messages[message.id] = message
         const bucket = (s.messageIdsByConv[message.conversationId] ??= [])
         if (!bucket.includes(message.id)) bucket.push(message.id)
+        attachDispatchToMessageForRun(s.dispatchesByRunId, message.runId, message.id)
       }),
 
     setActiveConversation: (id) =>
@@ -415,6 +425,27 @@ export const useAppStore = create<AppState>()(
         else s.pendingQuestionsByConv[conversationId] = list
       }),
 
+    setPendingDispatchPlansForConversation: (conversationId, list) =>
+      set((s) => {
+        for (const pending of list) {
+          if (pending.conversationId !== conversationId) continue
+          const status: DispatchState['taskStatus'] = {}
+          for (const task of pending.plan) status[task.id] = 'pending'
+          const existing = s.dispatchesByRunId[pending.runId]
+          s.dispatchesByRunId[pending.runId] = {
+            runId: pending.runId,
+            messageId:
+              existing?.messageId ||
+              findLatestAgentMessageIdForRun(s.messages, pending.runId),
+            plan: pending.plan,
+            taskStatus: status,
+            childRunIds: existing?.childRunIds ?? {},
+            reviewStatus: 'pending',
+            pendingPlanId: pending.id,
+          }
+        }
+      }),
+
     highlightMessage: (messageId) => {
       set((s) => {
         s.highlightedMessageId = messageId
@@ -550,6 +581,7 @@ export const useAppStore = create<AppState>()(
             if (!s.messageIdsByConv[event.conversationId].includes(event.messageId)) {
               s.messageIdsByConv[event.conversationId].push(event.messageId)
             }
+            attachDispatchToMessageForRun(s.dispatchesByRunId, event.runId, event.messageId)
             // 未读 +1 不在 message.start 触发：claude-code-adapter 整个 run 只发一次 message.start
             // 且发生时用户通常仍在该会话（被 activeConversationId === conv 抑制），导致后续切走再也不计未读。
             // 改在 message.end 触发，两个 adapter 都能可靠 +1，且每个 msg 仅 +1 一次。
@@ -660,24 +692,46 @@ export const useAppStore = create<AppState>()(
             return
           }
 
-          case 'dispatch.plan': {
-            // 找该 runId 当前最新的 agent message，作为卡片挂载点
-            let attachMsgId = ''
-            let attachCreated = -1
-            for (const m of Object.values(s.messages)) {
-              if (m.runId === event.runId && m.role === 'agent' && m.createdAt > attachCreated) {
-                attachMsgId = m.id
-                attachCreated = m.createdAt
-              }
+          case 'dispatch.plan.pending': {
+            const pending = event.pendingPlan
+            const status: DispatchState['taskStatus'] = {}
+            for (const t of pending.plan) status[t.id] = 'pending'
+            const existing = s.dispatchesByRunId[pending.runId]
+            s.dispatchesByRunId[pending.runId] = {
+              runId: pending.runId,
+              messageId:
+                existing?.messageId ||
+                findLatestAgentMessageIdForRun(s.messages, pending.runId),
+              plan: pending.plan,
+              taskStatus: status,
+              childRunIds: existing?.childRunIds ?? {},
+              reviewStatus: 'pending',
+              pendingPlanId: pending.id,
             }
+            return
+          }
+
+          case 'dispatch.plan.resolved': {
+            const dispatch = s.dispatchesByRunId[event.runId]
+            if (!dispatch) return
+            if (dispatch.pendingPlanId === event.pendingId) delete dispatch.pendingPlanId
+            dispatch.reviewStatus = event.approved ? 'approved' : 'rejected'
+            return
+          }
+
+          case 'dispatch.plan': {
+            const existing = s.dispatchesByRunId[event.runId]
             const status: DispatchState['taskStatus'] = {}
             for (const t of event.plan) status[t.id] = 'pending'
             s.dispatchesByRunId[event.runId] = {
               runId: event.runId,
-              messageId: attachMsgId,
+              messageId:
+                existing?.messageId ||
+                findLatestAgentMessageIdForRun(s.messages, event.runId),
               plan: event.plan,
               taskStatus: status,
-              childRunIds: {},
+              childRunIds: existing?.childRunIds ?? {},
+              reviewStatus: 'approved',
             }
             return
           }
@@ -750,6 +804,35 @@ export const useAppStore = create<AppState>()(
 // ─── 派生 hooks ──────────────────────────────────────
 // 用 useShallow 防止派生数组每次新引用导致无限渲染（Zustand 5 标准做法）。
 import { useShallow } from 'zustand/react/shallow'
+function findLatestAgentMessageIdForRun(
+  messages: Record<string, MessageRow>,
+  runId: string,
+): string {
+  let attachMsgId = ''
+  let attachCreated = -1
+  for (const message of Object.values(messages)) {
+    if (
+      message.runId === runId &&
+      message.role === 'agent' &&
+      message.createdAt > attachCreated
+    ) {
+      attachMsgId = message.id
+      attachCreated = message.createdAt
+    }
+  }
+  return attachMsgId
+}
+
+function attachDispatchToMessageForRun(
+  dispatches: Record<string, DispatchState>,
+  runId: string | null,
+  messageId: string,
+): void {
+  if (!runId) return
+  const dispatch = dispatches[runId]
+  if (dispatch && !dispatch.messageId) dispatch.messageId = messageId
+}
+
 function areMessagesEquivalent(a: MessageRow, b: MessageRow): boolean {
   if (a === b) return true
   return (
@@ -903,14 +986,19 @@ export const useTopLevelRunningRuns = (conversationId: string) =>
     }),
   )
 
+export function selectDispatchForMessage(
+  state: Pick<AppState, 'dispatchesByRunId'>,
+  messageId: string,
+): DispatchState | null {
+  for (const id in state.dispatchesByRunId) {
+    const dispatch = state.dispatchesByRunId[id]
+    if (dispatch.messageId === messageId) return dispatch
+  }
+  return null
+}
+
 export const useDispatchForMessage = (messageId: string) =>
-  useAppStore((s) => {
-    for (const id in s.dispatchesByRunId) {
-      const d = s.dispatchesByRunId[id]
-      if (d.messageId === messageId) return d
-    }
-    return null
-  })
+  useAppStore((s) => selectDispatchForMessage(s, messageId))
 
 /** 返回该会话最后一条 user 消息的 id（用于撤回 / 编辑入口判断）。 */
 export const useLatestUserMessageId = (conversationId: string): string | null =>

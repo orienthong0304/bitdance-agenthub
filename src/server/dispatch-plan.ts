@@ -464,3 +464,56 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+// ─── 动态重规划（dynamic re-planning）──────────────────────
+export interface ReplanTaskView {
+  taskId: string
+  agentId: string
+  status: 'complete' | 'failed' | 'skipped' | 'aborted'
+  error?: string
+}
+
+export interface ReplanConflictView {
+  path: string
+  taskIds: string[]
+}
+
+/** 本轮执行后是否需要 Orchestrator 再 plan 补救：有非 complete 任务，或有写冲突。 */
+export function shouldReplan(views: ReplanTaskView[], conflicts: ReplanConflictView[]): boolean {
+  return views.some((v) => v.status !== 'complete') || conflicts.length > 0
+}
+
+/**
+ * 构造补救轮 plan 的上下文：把上一轮结果（已完成 / 失败 / 冲突）拼成 XML + 补救指示，
+ * 作为补救轮 plan 阶段的 user prompt 前缀，引导 Orchestrator 决定补救 plan。
+ */
+export function buildReplanContext(
+  views: ReplanTaskView[],
+  conflicts: ReplanConflictView[],
+): string {
+  const done = views.filter((v) => v.status === 'complete')
+  const failed = views.filter((v) => v.status !== 'complete')
+  const lines: string[] = ['<previous_round_results>']
+  for (const v of done) {
+    lines.push(`  <task id="${v.taskId}" agent="${v.agentId}" status="complete" />`)
+  }
+  for (const v of failed) {
+    const err = v.error ? ` error=${JSON.stringify(v.error)}` : ''
+    lines.push(`  <task id="${v.taskId}" agent="${v.agentId}" status="${v.status}"${err} />`)
+  }
+  lines.push('</previous_round_results>')
+  if (conflicts.length > 0) {
+    lines.push('<file_conflicts>')
+    for (const c of conflicts) {
+      lines.push(
+        `  <conflict path=${JSON.stringify(c.path)} tasks=${JSON.stringify(c.taskIds.join(', '))} />`,
+      )
+    }
+    lines.push('</file_conflicts>')
+  }
+  lines.push(
+    '',
+    '上一轮存在未完成任务或写冲突。请**只为未完成 / 冲突的部分**输出补救 plan_tasks：可换更合适的 agent、把写同一文件的任务用 dependsOn 串行化、或把任务拆得更细。已 complete 的任务不要重做。若判断无需或无法补救，就不要调用 plan_tasks（直接进入总结）。',
+  )
+  return lines.join('\n')
+}

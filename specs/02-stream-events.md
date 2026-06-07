@@ -275,3 +275,15 @@ data: {"type":"part.delta","conversationId":"conv_abc","timestamp":1715000000000
 1. 先打 `@deprecated` 注释，保留至少 1 个版本
 2. 验证所有 producer 已不再发该事件
 3. 删除时同步删 reducer case
+## Orchestrator plan review events
+
+Plan review adds two dispatch events before the existing `dispatch.plan` execution event:
+
+```typescript
+| { type: 'dispatch.plan.pending', pendingPlan: PendingDispatchPlan }
+| { type: 'dispatch.plan.resolved', pendingId: string, runId: string, approved: boolean }
+```
+
+`dispatch.plan.pending` means AgentRunner has compiled and validated a plan, registered it in the in-memory pending plan queue, and is waiting for user action. `dispatch.plan.resolved` removes that pending review from the UI. The existing `dispatch.plan` event remains the signal that an approved compiled plan is now executing.
+
+These events are pass-through and are not persisted. The pending queue is recoverable through `GET /api/conversations/:id/pending-dispatch-plans` while the server process is alive.

@@ -273,7 +273,7 @@ function MessageItemImpl({ message }: { message: MessageRow }) {
               <PartList parts={message.parts} conversationId={message.conversationId} />
               {dispatch && (
                 <div className="mt-3">
-                  <DispatchPlanCard dispatch={dispatch} />
+                  <DispatchPlanCard conversationId={message.conversationId} dispatch={dispatch} />
                 </div>
               )}
             </>

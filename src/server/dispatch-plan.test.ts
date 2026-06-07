@@ -4,9 +4,11 @@ import type { DispatchPlanItem } from '@/shared/types'
 
 import {
   assertAcyclicDispatchPlan,
+  buildReplanContext,
   collectDependencyClosure,
   compileDispatchPlan,
   parseDispatchPlanToolArgs,
+  shouldReplan,
   taskExpectsArtifact,
   validateDispatchPlan,
 } from './dispatch-plan'
@@ -287,5 +289,59 @@ describe('assertAcyclicDispatchPlan', () => {
     expect(() =>
       assertAcyclicDispatchPlan([task('t1', 'ag_pm', ['t2']), task('t2', 'ag_frontend', ['t1'])]),
     ).toThrow('circular dependency t1 -> t2 -> t1')
+  })
+})
+
+describe('shouldReplan', () => {
+  it('false when all tasks complete and no conflicts', () => {
+    expect(
+      shouldReplan(
+        [
+          { taskId: 't1', agentId: 'ag_pm', status: 'complete' },
+          { taskId: 't2', agentId: 'ag_frontend', status: 'complete' },
+        ],
+        [],
+      ),
+    ).toBe(false)
+  })
+
+  it('true when a task failed or was skipped', () => {
+    expect(
+      shouldReplan(
+        [
+          { taskId: 't1', agentId: 'ag_pm', status: 'complete' },
+          { taskId: 't2', agentId: 'ag_frontend', status: 'failed', error: 'no artifact' },
+        ],
+        [],
+      ),
+    ).toBe(true)
+  })
+
+  it('true when there is a write conflict even if all complete', () => {
+    expect(
+      shouldReplan(
+        [{ taskId: 't1', agentId: 'ag_a', status: 'complete' }],
+        [{ path: 'index.html', taskIds: ['t1', 't2'] }],
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('buildReplanContext', () => {
+  it('lists complete + failed tasks + conflicts and instructs remediation', () => {
+    const ctx = buildReplanContext(
+      [
+        { taskId: 't1', agentId: 'ag_pm', status: 'complete' },
+        { taskId: 't2', agentId: 'ag_frontend', status: 'failed', error: 'missing artifact' },
+      ],
+      [{ path: 'index.html', taskIds: ['t2', 't3'] }],
+    )
+    expect(ctx).toContain('<previous_round_results>')
+    expect(ctx).toContain('id="t1" agent="ag_pm" status="complete"')
+    expect(ctx).toContain('status="failed"')
+    expect(ctx).toContain('missing artifact')
+    expect(ctx).toContain('<file_conflicts>')
+    expect(ctx).toContain('index.html')
+    expect(ctx).toContain('plan_tasks')
   })
 })

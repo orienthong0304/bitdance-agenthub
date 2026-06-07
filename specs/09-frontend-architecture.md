@@ -299,3 +299,15 @@ app/page.tsx
 - Spec 03：MessagePart 是 message.parts 元素，PartList 按 type 分发
 - Spec 04：Artifact 渲染在 `ArtifactPreviewPanel`，按 `content.type` 分发
 - Spec 06：DispatchState + DispatchPlanCard 是 Orchestrator 调度的前端表达
+## Orchestrator plan review UI
+
+`DispatchState` may include:
+
+```typescript
+reviewStatus?: 'pending' | 'approved' | 'rejected'
+pendingPlanId?: string
+```
+
+`dispatch.plan.pending` creates a dispatch card in review mode. `DispatchPlanCard` lets the user edit task text, agent assignment, `dependsOn`, `expectedOutputs`, `inputs`, and `acceptanceCriteria`. The card submits the full edited plan through `POST /api/conversations/:id/pending-dispatch-plans/:planId`.
+
+`dispatch.plan.resolved` removes the pending marker and records whether the review was approved or rejected. The existing `dispatch.plan` event switches the card into execution progress mode for the approved compiled plan.

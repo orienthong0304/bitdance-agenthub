@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { MessageInput } from '@/components/message-input'
 import { MessageList } from '@/components/message-list'
 import { UsageBadge } from '@/components/usage-badge'
+import { fetchPendingDispatchPlans } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
   useActiveConversation,
@@ -38,6 +39,9 @@ export function ChatPanel() {
   const closeFile = useAppStore((s) => s.closeFile)
   const setActiveTab = useAppStore((s) => s.setActiveTab)
   const setMobileSidebarOpen = useAppStore((s) => s.setMobileSidebarOpen)
+  const setPendingDispatchPlansForConversation = useAppStore(
+    (s) => s.setPendingDispatchPlansForConversation,
+  )
   const [addOpen, setAddOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(false)
 
@@ -58,6 +62,21 @@ export function ChatPanel() {
       }
     }
   }, [conv, openFiles, pendingById, closeFile])
+
+  useEffect(() => {
+    if (!conv) return
+    let cancelled = false
+    fetchPendingDispatchPlans(conv.id)
+      .then((list) => {
+        if (!cancelled) setPendingDispatchPlansForConversation(conv.id, list)
+      })
+      .catch((err) => {
+        console.warn('[ChatPanel] fetch pending dispatch plans failed', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [conv, setPendingDispatchPlansForConversation])
 
   if (!conv) {
     return (

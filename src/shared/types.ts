@@ -204,6 +204,15 @@ export interface PendingQuestion {
   createdAt: number
 }
 
+export interface PendingDispatchPlan {
+  id: string                  // pdp_<nanoid>
+  conversationId: string
+  agentId: string
+  runId: string
+  plan: DispatchPlanItem[]
+  createdAt: number
+}
+
 export interface DeployStatusRecord {
   id: string
   artifactId: string
@@ -261,6 +270,8 @@ export type StreamEvent = BaseEvent &
     | { type: 'artifact.create'; artifact: ArtifactRecord }
     | { type: 'artifact.update'; artifactId: string; patch: Partial<ArtifactContent> }
     | { type: 'deploy.status'; messageId: string; deployment: DeployStatusRecord }
+    | { type: 'dispatch.plan.pending'; pendingPlan: PendingDispatchPlan }
+    | { type: 'dispatch.plan.resolved'; pendingId: string; runId: string; approved: boolean }
     | { type: 'dispatch.plan'; runId: string; plan: DispatchPlanItem[] }
     | { type: 'dispatch.start'; parentRunId: string; childRunId: string; taskId: string; agentId: string }
     | {

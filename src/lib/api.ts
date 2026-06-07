@@ -11,6 +11,8 @@ import type {
   AskUserAnswer,
   DeployCandidateRecord,
   DeployStatusRecord,
+  DispatchPlanItem,
+  PendingDispatchPlan,
   PendingQuestion,
   PendingWrite,
 } from '@/shared/types'
@@ -252,6 +254,43 @@ export async function submitQuestionAnswers(
 }
 
 // ─── Messages ───────────────────────────────────
+// ─── Pending dispatch plans (Orchestrator plan review) ───
+export async function fetchPendingDispatchPlans(
+  conversationId: string,
+): Promise<PendingDispatchPlan[]> {
+  const { pendingDispatchPlans } = await json<{ pendingDispatchPlans: PendingDispatchPlan[] }>(
+    fetch(`/api/conversations/${conversationId}/pending-dispatch-plans`),
+  )
+  return pendingDispatchPlans
+}
+
+export async function approvePendingDispatchPlan(
+  conversationId: string,
+  planId: string,
+  plan: DispatchPlanItem[],
+): Promise<void> {
+  await json<{ ok: true }>(
+    fetch(`/api/conversations/${conversationId}/pending-dispatch-plans/${planId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve', plan }),
+    }),
+  )
+}
+
+export async function rejectPendingDispatchPlan(
+  conversationId: string,
+  planId: string,
+): Promise<void> {
+  await json<{ ok: true }>(
+    fetch(`/api/conversations/${conversationId}/pending-dispatch-plans/${planId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reject' }),
+    }),
+  )
+}
+
 export async function fetchMessages(conversationId: string): Promise<MessageRow[]> {
   const { messages } = await json<{ messages: MessageRow[] }>(
     fetch(`/api/conversations/${conversationId}/messages`),

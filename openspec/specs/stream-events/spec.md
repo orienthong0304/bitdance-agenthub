@@ -34,6 +34,15 @@ A newly created user message MUST be published as a `message.added` event carryi
 - **AND** every other subscribed client upserts it by id
 - **AND** the sending client (which already inserted it optimistically and reconciled via the POST response) is unaffected.
 
+### Requirement: Message removals SHALL be broadcast to all clients
+
+When messages are deleted server-side (withdraw, edit-and-resend, or regenerate), the deletion MUST be published as a `message.removed` event carrying the removed `messageIds` and `artifactIds`, so that clients other than the initiator drop them in real time. Subscribers MUST apply it idempotently (re-removing already-removed ids is a no-op), so the initiating client — which already reconciled via the HTTP response — is unaffected.
+
+#### Scenario: A second client sees a withdraw/edit/regenerate
+- **WHEN** withdraw, edit-and-resend, or regenerate deletes messages from any client
+- **THEN** EventBus publishes a `message.removed` event with the deleted messageIds and artifactIds
+- **AND** every other subscribed client removes those messages and artifacts by id.
+
 ### Requirement: Usage events SHALL update durable accounting
 
 Adapters SHALL emit `message.usage` and `run.usage` when provider usage data is available, and AgentRunner MUST persist those payloads without coupling to provider-specific token fields.

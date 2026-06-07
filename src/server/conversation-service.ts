@@ -777,6 +777,16 @@ export async function withdrawLatestUserMessage(
     }
   })
 
+  // 广播删除：让其它已连接客户端（尤其桌面端）实时移除被撤回/编辑掉的消息及其产物。
+  // 同时覆盖编辑路径——editAndResendLatestUserMessage 内部就是调本函数删除的。
+  eventBus.publish({
+    type: 'message.removed',
+    conversationId,
+    timestamp: Date.now(),
+    messageIds,
+    artifactIds: [...artifactIds],
+  })
+
   return { deletedMessageIds: messageIds, deletedArtifactIds: [...artifactIds] }
 }
 
@@ -868,6 +878,15 @@ export async function regenerateLatestResponse(
     if (runIds.length > 0) {
       tx.delete(schema.agentRuns).where(inArray(schema.agentRuns.id, runIds)).run()
     }
+  })
+
+  // 广播删除：在启动新 run 之前发，保证其它客户端「先移除旧回复，再收到新回复」。
+  eventBus.publish({
+    type: 'message.removed',
+    conversationId,
+    timestamp: Date.now(),
+    messageIds,
+    artifactIds: [...artifactIds],
   })
 
   // 重新决定 responders（沿用 sendMessage 的 decideResponders）

@@ -252,6 +252,7 @@ export type StreamEvent = BaseEvent &
     | { type: 'message.end'; messageId: string }
     | { type: 'message.usage'; messageId: string; usage: MessageUsageEvent }
     | { type: 'message.added'; message: MessageRecord }
+    | { type: 'message.removed'; messageIds: string[]; artifactIds: string[] }
     | { type: 'part.start'; messageId: string; partIndex: number; part: MessagePart }
     | { type: 'part.delta'; messageId: string; partIndex: number; delta: PartDelta }
     | { type: 'part.end'; messageId: string; partIndex: number }

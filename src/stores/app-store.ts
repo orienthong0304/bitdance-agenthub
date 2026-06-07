@@ -578,6 +578,23 @@ export const useAppStore = create<AppState>()(
             return
           }
 
+          case 'message.removed': {
+            // 撤回 / 编辑 / 重新生成在别处删了消息（及其产物）。幂等移除：发起方已删过则无副作用。
+            const toRemove = new Set(event.messageIds)
+            for (const id of toRemove) delete s.messages[id]
+            const bucket = s.messageIdsByConv[event.conversationId]
+            if (bucket) {
+              s.messageIdsByConv[event.conversationId] = bucket.filter((id) => !toRemove.has(id))
+            }
+            const replyId = s.replyTargetByConv[event.conversationId]
+            if (replyId && toRemove.has(replyId)) delete s.replyTargetByConv[event.conversationId]
+            for (const id of event.artifactIds) {
+              delete s.artifacts[id]
+              if (s.previewArtifactId === id) s.previewArtifactId = null
+            }
+            return
+          }
+
           case 'part.start': {
             const msg = s.messages[event.messageId]
             if (!msg) return

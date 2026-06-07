@@ -1,37 +1,20 @@
 'use client'
 
 import { Ban, Check, CheckCircle2, Circle, Loader2, Network, X, XCircle } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  approvePendingDispatchPlan,
-  rejectPendingDispatchPlan,
-} from '@/lib/api'
+import { approvePendingDispatchPlan, rejectPendingDispatchPlan } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { AgentRow } from '@/db/schema'
 import type { DispatchState } from '@/stores/app-store'
 import { useAppStore } from '@/stores/app-store'
-import type {
-  DispatchExpectedOutput,
-  DispatchPlanItem,
-  DispatchTaskInput,
-  DispatchTaskStatus,
-} from '@/shared/types'
+import type { DispatchTaskStatus } from '@/shared/types'
 
 interface DispatchPlanCardProps {
   conversationId: string
   dispatch: DispatchState
-}
-
-interface ContractDraft {
-  expectedOutputs: string
-  inputs: string
-  acceptanceCriteria: string
 }
 
 export function DispatchPlanCard({ conversationId, dispatch }: DispatchPlanCardProps) {
@@ -57,51 +40,15 @@ function DispatchPlanReviewCard({
   dispatch: DispatchState
   pendingPlanId: string
 }) {
-  const agents = useAppStore((s) => s.agents)
-  const conversation = useAppStore((s) => s.conversations[conversationId])
-  const selectableAgents = useMemo(
-    () =>
-      (conversation?.agentIds ?? Object.keys(agents))
-        .map((id) => agents[id])
-        .filter((agent): agent is AgentRow => Boolean(agent) && !agent.isOrchestrator),
-    [agents, conversation?.agentIds],
-  )
-
-  const [draft, setDraft] = useState<DispatchPlanItem[]>(() => clonePlan(dispatch.plan))
-  const [contracts, setContracts] = useState<Record<string, ContractDraft>>(() =>
-    createContractDraft(dispatch.plan),
-  )
   const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setDraft(clonePlan(dispatch.plan))
-    setContracts(createContractDraft(dispatch.plan))
-    setBusy(null)
-    setError(null)
-  }, [dispatch.plan, pendingPlanId])
-
-  const updateTask = (taskId: string, updater: (task: DispatchPlanItem) => DispatchPlanItem) => {
-    setDraft((prev) => prev.map((task) => (task.id === taskId ? updater(task) : task)))
-  }
-
-  const updateContract = (taskId: string, key: keyof ContractDraft, value: string) => {
-    setContracts((prev) => ({
-      ...prev,
-      [taskId]: {
-        ...(prev[taskId] ?? emptyContractDraft()),
-        [key]: value,
-      },
-    }))
-  }
 
   const handleApprove = async () => {
     if (busy) return
     setBusy('approve')
     setError(null)
     try {
-      const nextPlan = buildPlanFromDraft(draft, contracts)
-      await approvePendingDispatchPlan(conversationId, pendingPlanId, nextPlan)
+      await approvePendingDispatchPlan(conversationId, pendingPlanId)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setBusy(null)
@@ -125,7 +72,7 @@ function DispatchPlanReviewCard({
       <div className="space-y-3 p-3">
         <div className="flex items-center gap-2">
           <Network className="size-4 text-amber-600" />
-          <div className="text-sm font-medium">计划待确认 · {draft.length} 项</div>
+          <div className="text-sm font-medium">计划待确认 · {dispatch.plan.length} 项</div>
           <div className="ml-auto flex items-center gap-1.5">
             <Button
               size="sm"
@@ -163,93 +110,101 @@ function DispatchPlanReviewCard({
           </div>
         )}
 
-        <div className="space-y-2">
-          {draft.map((task, idx) => {
-            const agent = agents[task.agentId]
-            const contract = contracts[task.id] ?? emptyContractDraft()
-            const options = agentOptionsForTask(task.agentId, selectableAgents, agents)
-            return (
-              <div
-                key={task.id}
-                style={{ animationDelay: `${idx * 50}ms` }}
-                className="space-y-2 rounded-md border bg-card p-2 text-xs animate-in fade-in slide-in-from-left-2 fill-mode-both duration-300"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <Circle className="size-3.5 shrink-0 text-muted-foreground/40" />
-                  {agent ? (
-                    <AgentAvatar agent={agent} size="xs" />
-                  ) : (
-                    <div className="size-5 shrink-0 rounded-full bg-muted" />
-                  )}
-                  <span className="font-mono text-[10px] text-muted-foreground">{task.id}</span>
-                  <select
-                    value={task.agentId}
-                    onChange={(event) =>
-                      updateTask(task.id, (current) => ({
-                        ...current,
-                        agentId: event.target.value,
-                      }))
-                    }
-                    className="h-7 min-w-[140px] rounded-md border bg-background px-2 text-xs outline-none focus:border-[#3370FF]"
-                  >
-                    {options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    value={(task.dependsOn ?? []).join(', ')}
-                    onChange={(event) =>
-                      updateTask(task.id, (current) => {
-                        const dependsOn = parseCsv(event.target.value)
-                        return {
-                          ...current,
-                          ...(dependsOn.length > 0 ? { dependsOn } : { dependsOn: undefined }),
-                        }
-                      })
-                    }
-                    placeholder="dependsOn: t1, t2"
-                    className="h-7 min-w-[160px] flex-1 text-xs"
-                  />
-                </div>
+        <PlanTaskList dispatch={dispatch} />
 
-                <Textarea
-                  value={task.task}
-                  onChange={(event) =>
-                    updateTask(task.id, (current) => ({ ...current, task: event.target.value }))
-                  }
-                  className="min-h-[72px] resize-y text-xs leading-5"
-                />
-
-                <div className="grid gap-2 md:grid-cols-3">
-                  <JsonField
-                    label="expectedOutputs"
-                    value={contract.expectedOutputs}
-                    onChange={(value) => updateContract(task.id, 'expectedOutputs', value)}
-                  />
-                  <JsonField
-                    label="inputs"
-                    value={contract.inputs}
-                    onChange={(value) => updateContract(task.id, 'inputs', value)}
-                  />
-                  <JsonField
-                    label="acceptanceCriteria"
-                    value={contract.acceptanceCriteria}
-                    onChange={(value) => updateContract(task.id, 'acceptanceCriteria', value)}
-                  />
-                </div>
-              </div>
-            )
-          })}
+        <div className="text-[11px] leading-5 text-muted-foreground">
+          想改计划？在下方对话框直接说，例如「把 t2 改成依赖 t1」「设计任务交给后端 agent」——Orchestrator
+          会据此重排，再给你确认。
         </div>
       </div>
     </Card>
   )
 }
 
-function DispatchPlanReadOnlyCard({ dispatch }: { dispatch: DispatchState }) {
+/** 计划任务行列表（只读展示，审批卡与执行卡共用）。 */
+function PlanTaskList({ dispatch }: { dispatch: DispatchState }) {
   const agents = useAppStore((s) => s.agents)
+  return (
+    <div className="space-y-1.5">
+      {dispatch.plan.map((task, idx) => {
+        const status =
+          dispatch.reviewStatus === 'rejected'
+            ? 'skipped'
+            : (dispatch.taskStatus[task.id] ?? 'pending')
+        const agent = agents[task.agentId]
+        const inputRefs = task.inputs?.map((input) => `${input.fromTaskId}.${input.outputId}`) ?? []
+        const outputRefs =
+          task.expectedOutputs?.map((output) => `${output.id}:${output.type}`) ?? []
+        const criteriaCount = task.acceptanceCriteria?.length ?? 0
+        return (
+          <div
+            key={task.id}
+            style={{ animationDelay: `${idx * 60}ms` }}
+            className={cn(
+              'flex items-start gap-2 rounded-md border bg-card px-2 py-1.5 text-xs',
+              'animate-in fade-in slide-in-from-left-2 fill-mode-both duration-300',
+              'transition-[border-color,box-shadow,background-color] duration-300',
+              status === 'running' &&
+                'border-amber-300 bg-amber-50/40 ring-2 ring-amber-200/60 dark:bg-amber-950/20',
+              status === 'complete' && 'border-emerald-200 dark:border-emerald-900/40',
+              status === 'failed' && 'border-red-300',
+              status === 'aborted' && 'border-zinc-300 bg-zinc-50/50 dark:border-zinc-700',
+              status === 'skipped' && 'border-zinc-200 bg-muted/40 dark:border-zinc-800',
+            )}
+          >
+            <StatusIcon status={status} />
+            {agent ? (
+              <AgentAvatar
+                agent={agent}
+                size="xs"
+                className={cn(
+                  'transition-transform',
+                  status === 'running' && 'scale-110 ring-2 ring-amber-300 ring-offset-1',
+                )}
+              />
+            ) : (
+              <div className="size-5 shrink-0 rounded-full bg-muted" />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">{agent?.name ?? task.agentId}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{task.id}</span>
+                {task.dependsOn && task.dependsOn.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    → {task.dependsOn.join(', ')}
+                  </span>
+                )}
+                {status === 'running' && <TypingDots />}
+              </div>
+              <div className="mt-0.5 line-clamp-2 text-muted-foreground">{task.task}</div>
+              {(inputRefs.length > 0 || outputRefs.length > 0 || criteriaCount > 0) && (
+                <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+                  {inputRefs.length > 0 && (
+                    <span className="rounded border bg-muted/40 px-1 py-0.5">
+                      in {inputRefs.join(', ')}
+                    </span>
+                  )}
+                  {outputRefs.length > 0 && (
+                    <span className="rounded border bg-muted/40 px-1 py-0.5">
+                      out {outputRefs.join(', ')}
+                    </span>
+                  )}
+                  {criteriaCount > 0 && (
+                    <span className="rounded border bg-muted/40 px-1 py-0.5">
+                      checks {criteriaCount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DispatchPlanReadOnlyCard({ dispatch }: { dispatch: DispatchState }) {
   const total = dispatch.plan.length
   const displayStatuses = dispatch.plan.map((task) =>
     dispatch.reviewStatus === 'rejected' ? 'skipped' : (dispatch.taskStatus[task.id] ?? 'pending'),
@@ -297,216 +252,10 @@ function DispatchPlanReadOnlyCard({ dispatch }: { dispatch: DispatchState }) {
           />
         </div>
 
-        <div className="space-y-1.5">
-          {dispatch.plan.map((task, idx) => {
-            const status =
-              dispatch.reviewStatus === 'rejected'
-                ? 'skipped'
-                : (dispatch.taskStatus[task.id] ?? 'pending')
-            const agent = agents[task.agentId]
-            const inputRefs = task.inputs?.map((input) => `${input.fromTaskId}.${input.outputId}`) ?? []
-            const outputRefs =
-              task.expectedOutputs?.map((output) => `${output.id}:${output.type}`) ?? []
-            const criteriaCount = task.acceptanceCriteria?.length ?? 0
-            return (
-              <div
-                key={task.id}
-                style={{ animationDelay: `${idx * 60}ms` }}
-                className={cn(
-                  'flex items-start gap-2 rounded-md border bg-card px-2 py-1.5 text-xs',
-                  'animate-in fade-in slide-in-from-left-2 fill-mode-both duration-300',
-                  'transition-[border-color,box-shadow,background-color] duration-300',
-                  status === 'running' &&
-                    'border-amber-300 bg-amber-50/40 ring-2 ring-amber-200/60 dark:bg-amber-950/20',
-                  status === 'complete' && 'border-emerald-200 dark:border-emerald-900/40',
-                  status === 'failed' && 'border-red-300',
-                  status === 'aborted' && 'border-zinc-300 bg-zinc-50/50 dark:border-zinc-700',
-                  status === 'skipped' && 'border-zinc-200 bg-muted/40 dark:border-zinc-800',
-                )}
-              >
-                <StatusIcon status={status} />
-                {agent ? (
-                  <AgentAvatar
-                    agent={agent}
-                    size="xs"
-                    className={cn(
-                      'transition-transform',
-                      status === 'running' && 'scale-110 ring-2 ring-amber-300 ring-offset-1',
-                    )}
-                  />
-                ) : (
-                  <div className="size-5 shrink-0 rounded-full bg-muted" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">{agent?.name ?? task.agentId}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground">{task.id}</span>
-                    {task.dependsOn && task.dependsOn.length > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        → {task.dependsOn.join(', ')}
-                      </span>
-                    )}
-                    {status === 'running' && <TypingDots />}
-                  </div>
-                  <div className="mt-0.5 line-clamp-2 text-muted-foreground">{task.task}</div>
-                  {(inputRefs.length > 0 || outputRefs.length > 0 || criteriaCount > 0) && (
-                    <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
-                      {inputRefs.length > 0 && (
-                        <span className="rounded border bg-muted/40 px-1 py-0.5">
-                          in {inputRefs.join(', ')}
-                        </span>
-                      )}
-                      {outputRefs.length > 0 && (
-                        <span className="rounded border bg-muted/40 px-1 py-0.5">
-                          out {outputRefs.join(', ')}
-                        </span>
-                      )}
-                      {criteriaCount > 0 && (
-                        <span className="rounded border bg-muted/40 px-1 py-0.5">
-                          checks {criteriaCount}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <PlanTaskList dispatch={dispatch} />
       </div>
     </Card>
   )
-}
-
-function JsonField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <label className="grid gap-1">
-      <span className="font-mono text-[10px] text-muted-foreground">{label}</span>
-      <Textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        spellCheck={false}
-        className="min-h-[84px] resize-y font-mono text-[11px] leading-4"
-      />
-    </label>
-  )
-}
-
-function clonePlan(plan: DispatchPlanItem[]): DispatchPlanItem[] {
-  return plan.map((task) => ({
-    ...task,
-    dependsOn: task.dependsOn ? [...task.dependsOn] : undefined,
-    expectedOutputs: task.expectedOutputs?.map((output) => ({ ...output })),
-    inputs: task.inputs?.map((input) => ({ ...input })),
-    acceptanceCriteria: task.acceptanceCriteria ? [...task.acceptanceCriteria] : undefined,
-  }))
-}
-
-function createContractDraft(plan: DispatchPlanItem[]): Record<string, ContractDraft> {
-  const draft: Record<string, ContractDraft> = {}
-  for (const task of plan) {
-    draft[task.id] = {
-      expectedOutputs: stringifyJsonArray(task.expectedOutputs),
-      inputs: stringifyJsonArray(task.inputs),
-      acceptanceCriteria: stringifyJsonArray(task.acceptanceCriteria),
-    }
-  }
-  return draft
-}
-
-function emptyContractDraft(): ContractDraft {
-  return {
-    expectedOutputs: '[]',
-    inputs: '[]',
-    acceptanceCriteria: '[]',
-  }
-}
-
-function buildPlanFromDraft(
-  draft: DispatchPlanItem[],
-  contracts: Record<string, ContractDraft>,
-): DispatchPlanItem[] {
-  return draft.map((task) => {
-    const id = task.id.trim()
-    const agentId = task.agentId.trim()
-    const instruction = task.task.trim()
-    if (!id || !agentId || !instruction) {
-      throw new Error(`Task ${task.id || '(empty)'} must include id, agent, and instruction`)
-    }
-
-    const contract = contracts[task.id] ?? emptyContractDraft()
-    const expectedOutputs = parseJsonArray<DispatchExpectedOutput>(
-      contract.expectedOutputs,
-      `${id}.expectedOutputs`,
-    )
-    const inputs = parseJsonArray<DispatchTaskInput>(contract.inputs, `${id}.inputs`)
-    const acceptanceCriteria = parseJsonArray<unknown>(
-      contract.acceptanceCriteria,
-      `${id}.acceptanceCriteria`,
-    )
-    if (!acceptanceCriteria.every((item) => typeof item === 'string')) {
-      throw new Error(`${id}.acceptanceCriteria must be an array of strings`)
-    }
-
-    const item: DispatchPlanItem = { id, agentId, task: instruction }
-    const dependsOn = task.dependsOn?.map((dep) => dep.trim()).filter(Boolean) ?? []
-    if (dependsOn.length > 0) item.dependsOn = dependsOn
-    if (expectedOutputs.length > 0) item.expectedOutputs = expectedOutputs
-    if (inputs.length > 0) item.inputs = inputs
-    if (acceptanceCriteria.length > 0) {
-      item.acceptanceCriteria = acceptanceCriteria as string[]
-    }
-    return item
-  })
-}
-
-function parseJsonArray<T>(raw: string, label: string): T[] {
-  let parsed: unknown
-  try {
-    parsed = raw.trim() ? JSON.parse(raw) : []
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    throw new Error(`${label} is not valid JSON: ${message}`)
-  }
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${label} must be a JSON array`)
-  }
-  return parsed as T[]
-}
-
-function stringifyJsonArray(value: unknown[] | undefined): string {
-  return JSON.stringify(value ?? [], null, 2)
-}
-
-function parseCsv(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function agentOptionsForTask(
-  agentId: string,
-  selectableAgents: AgentRow[],
-  agents: Record<string, AgentRow>,
-): AgentRow[] {
-  const seen = new Set<string>()
-  const result: AgentRow[] = []
-  const current = agents[agentId]
-  for (const agent of [current, ...selectableAgents]) {
-    if (!agent || seen.has(agent.id)) continue
-    seen.add(agent.id)
-    result.push(agent)
-  }
-  return result
 }
 
 function isTerminalStatus(status: DispatchTaskStatus): boolean {

@@ -1,43 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
+import { reviseDispatchPlan } from '@/server/conversation-service'
 import { pendingDispatchPlans } from '@/server/pending-dispatch-plans'
 
 interface RouteContext {
   params: Promise<{ id: string; planId: string }>
 }
 
-const ExpectedOutputSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(['web_app', 'document', 'image', 'ppt']),
-  required: z.boolean().optional(),
-  description: z.string().optional(),
-})
-
-const InputSchema = z.object({
-  fromTaskId: z.string().min(1),
-  outputId: z.string().min(1),
-  required: z.boolean().optional(),
-  description: z.string().optional(),
-})
-
-const TaskSchema = z.object({
-  id: z.string().min(1),
-  agentId: z.string().min(1),
-  task: z.string().min(1),
-  dependsOn: z.array(z.string().min(1)).optional(),
-  expectedOutputs: z.array(ExpectedOutputSchema).optional(),
-  inputs: z.array(InputSchema).optional(),
-  acceptanceCriteria: z.array(z.string().min(1)).optional(),
-})
-
 const Body = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('approve'),
-    plan: z.array(TaskSchema).min(1),
   }),
   z.object({
     action: z.literal('reject'),
+  }),
+  z.object({
+    action: z.literal('revise'),
+    feedback: z.string().min(1).max(4000),
   }),
 ])
 
@@ -63,7 +43,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ ok: true })
   }
 
-  const result = pendingDispatchPlans.approve(planId, parsed.data.plan)
+  if (parsed.data.action === 'revise') {
+    const result = await reviseDispatchPlan({ conversationId: id, planId, feedback: parsed.data.feedback })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  const result = pendingDispatchPlans.approve(planId)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }

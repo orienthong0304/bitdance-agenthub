@@ -4,16 +4,19 @@ This spec supplements Spec 06 (Orchestrator flow), Spec 02 (StreamEvent), and Sp
 
 ## Goal
 
-AgentHub pauses an Orchestrator run after Stage 1 planning and before Stage 2 DAG execution so the user can review, edit, approve, or reject the dispatch plan.
+AgentHub pauses an Orchestrator run after Stage 1 planning and before Stage 2 DAG execution so the user can review the dispatch plan and either approve it, reject it, or **revise it conversationally** — describing the desired changes in natural language and letting the Orchestrator re-plan. Review stays inside the IM/chat paradigm rather than a structured DAG-editing form.
 
 ## Lifecycle
 
 1. The Orchestrator calls `plan_tasks`.
 2. AgentRunner parses the raw plan, runs `compileDispatchPlan`, and validates the compiled plan.
 3. AgentRunner registers a pending plan review and publishes `dispatch.plan.pending`.
-4. The frontend renders the plan in review mode.
-5. The user approves as-is, edits and approves, or rejects.
-6. On approval, the server compiles and validates the submitted plan again.
+4. The frontend renders the plan **read-only** with 执行 (approve) / 拒绝 (reject) actions plus a hint to type revisions in the composer.
+5. The user either:
+   - **approves** — the registered plan executes as-is;
+   - **rejects** — the dispatch is cancelled;
+   - **revises** — sends a natural-language change request; the Orchestrator re-plans with that feedback and the new plan re-enters review (loop until approve/reject).
+6. On approval, the server re-compiles and re-validates the already-registered plan (defensive).
 7. AgentRunner publishes the normal `dispatch.plan` event and executes the approved plan.
 8. On rejection or parent run abort, no child agent runs are launched.
 
@@ -36,10 +39,10 @@ Pending plans are in-memory process state, matching pending writes/questions. Th
 
 ```typescript
 | { type: 'dispatch.plan.pending', pendingPlan: PendingDispatchPlan }
-| { type: 'dispatch.plan.resolved', pendingId: string, runId: string, approved: boolean }
+| { type: 'dispatch.plan.resolved', pendingId: string, runId: string, approved: boolean, revising?: boolean }
 ```
 
-`dispatch.plan.pending` means a plan is waiting for user action. `dispatch.plan` remains the execution-start event and is emitted only after approval.
+`dispatch.plan.pending` means a plan is waiting for user action. `dispatch.plan.resolved` with `revising: true` means the current plan was superseded by a revision request — the frontend drops the pending state (the card falls back to read-only) but keeps the run alive; the Orchestrator soon emits a fresh `dispatch.plan.pending` with the re-planned plan. `dispatch.plan` remains the execution-start event and is emitted only after approval.
 
 ## REST API
 
@@ -52,24 +55,22 @@ POST body:
 
 ```typescript
 type ResolvePendingDispatchPlanBody =
-  | { action: 'approve'; plan: DispatchPlanItem[] }
+  | { action: 'approve' }
   | { action: 'reject' }
+  | { action: 'revise'; feedback: string }
 ```
 
-Invalid bodies return 400. Invalid edited plans return 400 and keep the pending plan open.
+`approve` carries **no plan body** — the server executes the already-registered (read-only) plan after re-validating it. `revise` carries the user's natural-language `feedback`. Invalid bodies return 400; a registered plan that fails re-validation on approve returns 400 and keeps the pending plan open.
 
-## Editable Fields
+## Conversational Revision
 
-The UI may edit:
+Plan changes are made by **describing them in the chat composer**, not by editing form fields. While a plan is pending review:
 
-- `task`
-- `agentId`
-- `dependsOn`
-- `expectedOutputs`
-- `inputs`
-- `acceptanceCriteria`
+- The composer is enabled (even though the Orchestrator run is technically still running) and routes input to `revise` instead of starting a new run.
+- The feedback is persisted and broadcast as a normal user message (so it appears in the thread and on other connected clients), without launching a new run.
+- The Orchestrator re-runs its plan stage with the feedback as context (`buildReviseContext`) and produces a new plan, which re-enters review.
 
-The server is the source of truth. UI validation can help format input, but execution depends only on server-side compilation and validation.
+The server (Orchestrator) is the source of truth for the plan; the client never submits a structured plan.
 
 ## Rejection Semantics
 
@@ -80,4 +81,4 @@ Rejecting a plan is an explicit user decision to stop that Orchestrator dispatch
 - Persisting pending plan reviews in SQLite.
 - Adding a workflow/DAG framework such as LangGraph.
 - Adding conversation-level plan approval settings.
-- Supporting drag-and-drop DAG editing in this change.
+- Structured / form-based or drag-and-drop DAG editing — revisions go through conversation.

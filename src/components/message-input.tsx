@@ -41,13 +41,14 @@ import {
   clearConversationHistory as clearConversationHistoryAPI,
   compactConversation as compactConversationAPI,
   fetchMessages,
+  reviseDispatchPlan,
   sendMessage as sendMessageAPI,
   setFsWriteApprovalMode,
   uploadAttachment as uploadAttachmentAPI,
 } from '@/lib/api'
 import { emitUiCommand } from '@/lib/ui-command-events'
 import { cn } from '@/lib/utils'
-import { useAppStore, usePendingAttachments, useTopLevelRunningRuns } from '@/stores/app-store'
+import { useAppStore, usePendingAttachments, usePendingPlanReviewForConversation, useTopLevelRunningRuns } from '@/stores/app-store'
 
 interface MentionTrigger {
   start: number // textarea 中 @ 字符的 index
@@ -251,6 +252,9 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   const agents = useAppStore((s) => s.agents)
   const runningRuns = useTopLevelRunningRuns(conversationId)
   const isRunning = runningRuns.length > 0
+  // 计划待审批时，输入框改作「对计划提修改意见」用——即使 orchestrator run 仍在 running 也放开
+  const planReview = usePendingPlanReviewForConversation(conversationId)
+  const composerLocked = isRunning && !planReview
   const pending = usePendingAttachments(conversationId)
   const addPendingAttachment = useAppStore((s) => s.addPendingAttachment)
   const removePendingAttachment = useAppStore((s) => s.removePendingAttachment)
@@ -666,6 +670,23 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   const submit = async () => {
     const text = content.trim()
     const hasAttachments = pending.length > 0
+
+    // 计划审批中：把输入当作对计划的自然语言修改意见，交给 Orchestrator 重排（不走普通发送）。
+    // 反馈会由服务端落库 + 广播成一条 user 消息回显到对话。
+    if (planReview) {
+      if (!text || sending) return
+      setContent('')
+      setSending(true)
+      try {
+        await reviseDispatchPlan(conversationId, planReview.planId, text)
+      } catch (err) {
+        console.error('[MessageInput] revise plan failed', err)
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
     if ((!text && !hasAttachments) || sending || isRunning) return
 
     const exactSlashCommand = slashCommands.find((command) => command.command === text)
@@ -919,14 +940,16 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
           onSelect={handleSelect}
           onKeyDown={handleKeyDown}
           placeholder={
-            isRunning
-              ? '当前有 Agent 正在响应…'
-              : isGroup
-                ? '输入消息，@ 指定 Agent，Enter 发送，Shift+Enter 换行'
-                : '输入消息，Enter 发送，Shift+Enter 换行'
+            planReview
+              ? '对计划提修改意见，或点上方执行/拒绝…'
+              : isRunning
+                ? '当前有 Agent 正在响应…'
+                : isGroup
+                  ? '输入消息，@ 指定 Agent，Enter 发送，Shift+Enter 换行'
+                  : '输入消息，Enter 发送，Shift+Enter 换行'
           }
           className="min-h-[44px] max-h-40 resize-none"
-          disabled={isRunning}
+          disabled={composerLocked}
         />
 
         {/* 文件上传 */}
@@ -977,7 +1000,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
             )}
           </Button>
         </div>
-        {isRunning ? (
+        {composerLocked ? (
           <Button
             onClick={() => void abortAll()}
             disabled={aborting}

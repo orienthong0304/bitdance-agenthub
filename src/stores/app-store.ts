@@ -699,9 +699,12 @@ export const useAppStore = create<AppState>()(
             const existing = s.dispatchesByRunId[pending.runId]
             s.dispatchesByRunId[pending.runId] = {
               runId: pending.runId,
+              // 跟随该 run「最新」的规划消息：revise 重排会产出新的一条 Orchestrator 消息（同 runId），
+              // 计划卡片随之落到新气泡，而不是钉在第一版那条上。
               messageId:
+                findLatestAgentMessageIdForRun(s.messages, pending.runId) ||
                 existing?.messageId ||
-                findLatestAgentMessageIdForRun(s.messages, pending.runId),
+                '',
               plan: pending.plan,
               taskStatus: status,
               childRunIds: existing?.childRunIds ?? {},
@@ -715,7 +718,9 @@ export const useAppStore = create<AppState>()(
             const dispatch = s.dispatchesByRunId[event.runId]
             if (!dispatch) return
             if (dispatch.pendingPlanId === event.pendingId) delete dispatch.pendingPlanId
-            dispatch.reviewStatus = event.approved ? 'approved' : 'rejected'
+            // revising：只清掉当前 pending（计划卡先回落到只读），等 Orchestrator 重排发来新的
+            // dispatch.plan.pending 再变回审批态；不要置成 rejected。
+            if (!event.revising) dispatch.reviewStatus = event.approved ? 'approved' : 'rejected'
             return
           }
 
@@ -983,6 +988,22 @@ export const useTopLevelRunningRuns = (conversationId: string) =>
       const runs = s.runsByConv[conversationId]
       if (!runs) return []
       return Object.values(runs).filter((r) => r.status === 'running' && !r.parentRunId)
+    }),
+  )
+
+/** 该会话是否有待审批的 Orchestrator 计划。返回 { planId, runId } 供对话式修改路由。 */
+export const usePendingPlanReviewForConversation = (conversationId: string) =>
+  useAppStore(
+    useShallow((s): { planId: string; runId: string } | null => {
+      const runs = s.runsByConv[conversationId]
+      if (!runs) return null
+      for (const runId in runs) {
+        const d = s.dispatchesByRunId[runId]
+        if (d?.reviewStatus === 'pending' && d.pendingPlanId) {
+          return { planId: d.pendingPlanId, runId }
+        }
+      }
+      return null
     }),
   )
 

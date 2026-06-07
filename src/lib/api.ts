@@ -11,7 +11,6 @@ import type {
   AskUserAnswer,
   DeployCandidateRecord,
   DeployStatusRecord,
-  DispatchPlanItem,
   PendingDispatchPlan,
   PendingQuestion,
   PendingWrite,
@@ -267,13 +266,26 @@ export async function fetchPendingDispatchPlans(
 export async function approvePendingDispatchPlan(
   conversationId: string,
   planId: string,
-  plan: DispatchPlanItem[],
 ): Promise<void> {
   await json<{ ok: true }>(
     fetch(`/api/conversations/${conversationId}/pending-dispatch-plans/${planId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'approve', plan }),
+      body: JSON.stringify({ action: 'approve' }),
+    }),
+  )
+}
+
+export async function reviseDispatchPlan(
+  conversationId: string,
+  planId: string,
+  feedback: string,
+): Promise<void> {
+  await json<{ ok: true }>(
+    fetch(`/api/conversations/${conversationId}/pending-dispatch-plans/${planId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'revise', feedback }),
     }),
   )
 }

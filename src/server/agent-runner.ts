@@ -32,6 +32,7 @@ import {
 } from './dispatch-file-writes'
 import {
   buildReplanContext,
+  buildReviseContext,
   collectDependencyClosure,
   compileDispatchPlan,
   parseDispatchPlanToolArgs,
@@ -43,7 +44,7 @@ import {
 } from './dispatch-plan'
 import { eventBus } from './event-bus'
 import { newRunId } from './ids'
-import { pendingDispatchPlans } from './pending-dispatch-plans'
+import { pendingDispatchPlans, type PlanReviewOutcome } from './pending-dispatch-plans'
 import { getAppSettings } from './settings-service'
 import { getEffectiveCwd } from './workspace-utils'
 
@@ -384,15 +385,44 @@ async function executeOrchestratorRun(
       break
     }
 
-    const approvedPlan = await waitForDispatchPlanReview({
-      conversationId: args.conversationId,
-      agentId: agent.id,
-      runId,
-      plan: initialPlan,
-      availableAgents: otherAgents,
-      orchestratorAgentId: agent.id,
-      signal,
-    })
+    // ─── REVIEW (gate) ─── 审批：批准 / 拒绝 / 自然语言修改。修改 → Orchestrator 重排后再次入 gate。
+    let plan = initialPlan
+    let approvedPlan: DispatchPlanItem[] | null = null
+    let reviewing = true
+    while (reviewing) {
+      const outcome = await waitForDispatchPlanReview({
+        conversationId: args.conversationId,
+        agentId: agent.id,
+        runId,
+        plan,
+        availableAgents: otherAgents,
+        orchestratorAgentId: agent.id,
+        signal,
+      })
+      if (outcome.kind === 'approve') {
+        approvedPlan = outcome.plan
+        reviewing = false
+      } else if (outcome.kind === 'reject') {
+        reviewing = false
+      } else {
+        // revise：把用户的自然语言反馈喂回 plan 阶段重排；新计划继续循环再审
+        const revised = await runPlanStage(
+          args,
+          agent,
+          runId,
+          workspace,
+          userPrompt,
+          otherAgents,
+          [],
+          signal,
+          buildReviseContext(plan, outcome.feedback),
+        )
+        allArtifactIds.push(...revised.planRun.artifactIds)
+        allOutputMessageIds.push(...revised.planRun.outputMessageIds)
+        Object.assign(allOutputArtifacts, revised.planRun.outputArtifacts)
+        if (revised.plan) plan = revised.plan
+      }
+    }
     if (!approvedPlan) {
       if (signal.aborted) throw new Error('Orchestrator run aborted')
       // 用户 reject：首轮直接返回；补救轮跳出，用已有结果聚合
@@ -560,7 +590,7 @@ async function waitForDispatchPlanReview(args: {
   availableAgents: readonly { id: string }[]
   orchestratorAgentId: string
   signal: AbortSignal
-}): Promise<DispatchPlanItem[] | null> {
+}): Promise<PlanReviewOutcome> {
   const pending = pendingDispatchPlans.register({
     conversationId: args.conversationId,
     agentId: args.agentId,
@@ -572,11 +602,11 @@ async function waitForDispatchPlanReview(args: {
 
   return new Promise((resolve) => {
     let settled = false
-    const finish = (plan: DispatchPlanItem[] | null) => {
+    const finish = (outcome: PlanReviewOutcome) => {
       if (settled) return
       settled = true
       args.signal.removeEventListener('abort', onAbort)
-      resolve(plan)
+      resolve(outcome)
     }
     const onAbort = () => {
       pendingDispatchPlans.cancel(pending.id)

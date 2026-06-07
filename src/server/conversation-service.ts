@@ -21,6 +21,7 @@ import {
   newMessageId,
   newWorkspaceId,
 } from './ids'
+import { pendingDispatchPlans } from './pending-dispatch-plans'
 import { IS_WINDOWS } from './platform'
 import { isPathSafe } from './workspace-utils'
 
@@ -653,6 +654,60 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
   }
 
   return { messageId, runIds }
+}
+
+/**
+ * 对话式修改待审计划：把用户的自然语言反馈作为一条 user 消息落库并广播（进对话、跨端可见），
+ * 再交回正在 await 的 Orchestrator run 重排。不触发新 run（现有 run 会自己续上并发出新 plan）。
+ */
+export async function reviseDispatchPlan(args: {
+  conversationId: string
+  planId: string
+  feedback: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const pending = pendingDispatchPlans.get(args.planId)
+  if (!pending || pending.conversationId !== args.conversationId) {
+    return { ok: false, error: 'Pending dispatch plan not found' }
+  }
+
+  const messageId = newMessageId()
+  const now = Date.now()
+  const parts: MessagePart[] = [{ type: 'text', content: args.feedback }]
+  await db.insert(schema.messages).values({
+    id: messageId,
+    conversationId: args.conversationId,
+    role: 'user',
+    parts,
+    status: 'complete',
+    mentionedAgentIds: [],
+    parentMessageId: null,
+    createdAt: now,
+  })
+  await db
+    .update(schema.conversations)
+    .set({ updatedAt: now })
+    .where(eq(schema.conversations.id, args.conversationId))
+  eventBus.publish({
+    type: 'message.added',
+    conversationId: args.conversationId,
+    timestamp: now,
+    message: {
+      id: messageId,
+      conversationId: args.conversationId,
+      role: 'user',
+      agentId: null,
+      parts,
+      status: 'complete',
+      parentMessageId: null,
+      mentionedAgentIds: [],
+      runId: null,
+      usage: null,
+      createdAt: now,
+    },
+  })
+
+  const ok = pendingDispatchPlans.revise(args.planId, args.feedback)
+  return ok ? { ok: true } : { ok: false, error: 'Failed to revise pending dispatch plan' }
 }
 
 function decideResponders(

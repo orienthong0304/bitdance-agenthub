@@ -517,3 +517,27 @@ export function buildReplanContext(
   )
   return lines.join('\n')
 }
+
+/**
+ * 构造「对话式修改」轮的 plan 上下文：把当前待审计划 + 用户的自然语言修改意见拼成 XML + 指示，
+ * 作为 plan 阶段的 user prompt 前缀，引导 Orchestrator 据此重排并重新调用 plan_tasks。
+ */
+export function buildReviseContext(currentPlan: DispatchPlanItem[], feedback: string): string {
+  const lines: string[] = ['<current_plan>']
+  for (const t of currentPlan) {
+    const deps =
+      t.dependsOn && t.dependsOn.length > 0
+        ? ` dependsOn=${JSON.stringify(t.dependsOn.join(', '))}`
+        : ''
+    lines.push(`  <task id="${t.id}" agent="${t.agentId}"${deps}>${t.task}</task>`)
+  }
+  lines.push('</current_plan>')
+  lines.push(
+    '<user_revision_request>',
+    feedback,
+    '</user_revision_request>',
+    '',
+    '用户对上面这份待执行计划提出了修改意见。请据此调整，重新调用 plan_tasks 输出**完整的新计划**：保留未被要求改动的任务，只改动用户要求的部分（依赖、执行者、任务描述、拆分等）。',
+  )
+  return lines.join('\n')
+}

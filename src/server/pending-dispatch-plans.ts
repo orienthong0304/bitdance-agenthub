@@ -5,9 +5,15 @@ import { newPendingDispatchPlanId } from './ids'
 
 type PlanValidator = (plan: DispatchPlanItem[]) => DispatchPlanItem[]
 
+/** 用户对 pending 计划的决定，由 gate 的 resolver 回传给 Orchestrator run。 */
+export type PlanReviewOutcome =
+  | { kind: 'approve'; plan: DispatchPlanItem[] }
+  | { kind: 'reject' }
+  | { kind: 'revise'; feedback: string }
+
 interface PendingEntry {
   pendingPlan: PendingDispatchPlan
-  resolver: ((plan: DispatchPlanItem[] | null) => void) | null
+  resolver: ((outcome: PlanReviewOutcome) => void) | null
   validator: PlanValidator
 }
 
@@ -50,10 +56,7 @@ class PendingDispatchPlansStore {
     return pendingPlan
   }
 
-  attachResolver(
-    id: string,
-    resolver: (plan: DispatchPlanItem[] | null) => void,
-  ): void {
+  attachResolver(id: string, resolver: (outcome: PlanReviewOutcome) => void): void {
     const entry = this.map.get(id)
     if (entry) entry.resolver = resolver
   }
@@ -69,13 +72,14 @@ class PendingDispatchPlansStore {
       .sort((a, b) => a.createdAt - b.createdAt)
   }
 
-  approve(id: string, plan: DispatchPlanItem[]): PendingDispatchPlanResult {
+  /** 批准：用已登记的（只读）计划执行；仍过一遍 validator 做防御性校验。 */
+  approve(id: string): PendingDispatchPlanResult {
     const entry = this.map.get(id)
     if (!entry) return { ok: false, error: 'Pending dispatch plan not found' }
 
     let compiledPlan: DispatchPlanItem[]
     try {
-      compiledPlan = entry.validator(plan)
+      compiledPlan = entry.validator(entry.pendingPlan.plan)
     } catch (err) {
       return {
         ok: false,
@@ -83,27 +87,36 @@ class PendingDispatchPlansStore {
       }
     }
 
-    entry.resolver?.(compiledPlan)
-    this.finalize(id, true)
+    entry.resolver?.({ kind: 'approve', plan: compiledPlan })
+    this.finalize(id, { approved: true })
     return { ok: true }
+  }
+
+  /** 修改：把用户的自然语言反馈交回 Orchestrator 重排；当前 pending 作废（重排后会再发新的）。 */
+  revise(id: string, feedback: string): boolean {
+    const entry = this.map.get(id)
+    if (!entry) return false
+    entry.resolver?.({ kind: 'revise', feedback })
+    this.finalize(id, { approved: false, revising: true })
+    return true
   }
 
   reject(id: string): boolean {
     const entry = this.map.get(id)
     if (!entry) return false
-    entry.resolver?.(null)
-    this.finalize(id, false)
+    entry.resolver?.({ kind: 'reject' })
+    this.finalize(id, { approved: false })
     return true
   }
 
   cancel(id: string): void {
     const entry = this.map.get(id)
     if (!entry) return
-    entry.resolver?.(null)
-    this.finalize(id, false)
+    entry.resolver?.({ kind: 'reject' })
+    this.finalize(id, { approved: false })
   }
 
-  private finalize(id: string, approved: boolean): void {
+  private finalize(id: string, opts: { approved: boolean; revising?: boolean }): void {
     const entry = this.map.get(id)
     if (!entry) return
     this.map.delete(id)
@@ -113,7 +126,8 @@ class PendingDispatchPlansStore {
       timestamp: Date.now(),
       pendingId: id,
       runId: entry.pendingPlan.runId,
-      approved,
+      approved: opts.approved,
+      ...(opts.revising ? { revising: true } : {}),
     })
   }
 }

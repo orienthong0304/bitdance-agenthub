@@ -535,7 +535,10 @@ function ConversationItem({
               onTogglePin()
             }}
             title={isPinned ? '取消置顶' : '置顶'}
-            className={cn(isPinned ? 'text-amber-500' : 'hover:text-foreground')}
+            className={cn(
+              'transition-colors',
+              isPinned ? 'text-amber-500 hover:text-amber-600' : 'hover:text-amber-500',
+            )}
           >
             {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
           </button>
@@ -546,7 +549,7 @@ function ConversationItem({
               onToggleArchive()
             }}
             title={isArchived ? '取消归档' : '归档'}
-            className="hover:text-foreground"
+            className="transition-colors hover:text-sky-500"
           >
             {isArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
           </button>
@@ -557,7 +560,7 @@ function ConversationItem({
               onStartRename()
             }}
             title="重命名"
-            className="hover:text-foreground"
+            className="transition-colors hover:text-primary"
           >
             <Pencil className="size-4" />
           </button>
@@ -568,7 +571,7 @@ function ConversationItem({
               onRequestDelete()
             }}
             title="删除会话"
-            className="hover:text-red-600"
+            className="transition-colors hover:text-red-600"
           >
             <Trash2 className="size-4" />
           </button>

@@ -28,20 +28,37 @@ The orchestration flow MUST produce a compiled and validated task plan before la
 - **THEN** AgentRunner adds high-confidence inferred dependencies before dispatch
 - **AND** publishes and executes the compiled plan.
 
-### Requirement: Child tasks SHALL respect dependency order
+### Requirement: Child tasks SHALL respect dependency order and semantic reports
 
-AgentRunner MUST execute dispatch tasks as a DAG and skip dependent tasks when prerequisites fail or required artifacts are not produced.
+AgentRunner MUST execute dispatch tasks as a DAG and skip dependent tasks when prerequisites fail, required inputs cannot be resolved, or the child task does not report a successful semantic outcome.
 
 #### Scenario: Upstream task fails
 - **WHEN** a task dependency ends with status `failed`
 - **THEN** dependent tasks are skipped
 - **AND** dispatch events include the blocking reason.
 
-#### Scenario: Upstream task produces no required artifact
-- **WHEN** a child task appears to require artifact output
-- **AND** the run completes without artifact ids
-- **THEN** the task result is treated as `failed`
+#### Scenario: Downstream task is missing a required input artifact
+- **WHEN** a downstream task declares a required input from an upstream output key
+- **AND** the upstream result has no artifact bound to that key
+- **THEN** the downstream task is skipped before launch
+- **AND** dispatch events include the missing input reason.
+
+#### Scenario: Child run completes without a task report
+- **WHEN** a child run ends with status `complete`
+- **AND** it did not call `report_task_result`
+- **THEN** the dispatch task is treated as `failed`
 - **AND** dependent tasks are skipped.
+
+#### Scenario: Child task reports failed acceptance
+- **WHEN** a child run calls `report_task_result`
+- **AND** the report status is not `complete` or an acceptance result is missing/failed
+- **THEN** the dispatch task is treated as `failed`
+- **AND** dependent tasks are skipped.
+
+#### Scenario: Replan references a previous-round task
+- **WHEN** a remediation plan depends on a task id from an earlier dispatch round
+- **THEN** AgentRunner treats that previous task as a resolved external dependency
+- **AND** validates and executes the remediation plan without requiring the previous task to be repeated in the new plan.
 
 ### Requirement: Child task context SHALL include transitive upstream artifacts
 

@@ -63,6 +63,7 @@ Orchestrator 是「特殊 Agent」（详见 Spec 01）：
 │         等待进程级全局子任务信号量槽位                     │
 │         dispatch.start                                      │
 │         AgentRunner.run(subAgentId, subTask, subContext)   │
+│         子 Agent 必须调用 report_task_result 上报语义结果   │
 │         事件全部转发到主事件流                              │
 │         dispatch.end(status=complete/failed/aborted/skipped)│
 │       上游 failed/aborted/skipped 时，下游传递 skipped      │
@@ -183,6 +184,8 @@ const planTasksTool: ToolDef = {
 - 能并行的尽量并行（不写 dependsOn）
 - 有依赖关系的明确写 dependsOn
 - 每个子任务给出独立可执行的描述（被分派的 Agent 看不到完整群聊上下文）
+- 只有需要真实 artifact 交接或供用户预览时才声明 expectedOutputs
+- 审查 / 验证 / 诊断 / 状态检查 / 解释 / 总结等文字型任务不要声明 expectedOutputs，用 acceptanceCriteria 描述完成条件
 - 不要重复拆解已有产物已满足的需求
 
 【输出规则】
@@ -225,6 +228,8 @@ const planTasksTool: ToolDef = {
 ```
 
 **lazy load**：子 Agent 需要某个产物详情时，调用 `read_artifact(id)` 工具按需获取。
+
+**结果上报**：子 Agent 收尾时必须调用 `report_task_result`。AgentRunner 不再把“child run 成功结束”或“artifact 已产出”直接等同于“任务完成”；只有 report 的 `status='complete'` 且 `acceptanceCriteria` 全部通过时，任务才进入 `complete`。未调用该工具、report 为 `failed/blocked`、或任一 acceptance result 失败 / 缺失，都会把该任务判为 `failed`。
 
 **artifact 注入**：
 - `upstream_artifacts`：来自当前任务 `dependsOn` 的传递闭包上游结果，按 artifact id 去重后全部列出。例：`t4 -> t3 -> t2 -> t1` 时，t4 能看到 t1/t2/t3 的产物摘要。
@@ -343,10 +348,25 @@ async function runSubTask(
   TaskResult.status = 'aborted'
   dispatch.end.status = 'aborted'
 
-某任务文本 / 类型明确要求产出 artifact，但 child run complete 后 artifactIds 为空:
+子 Agent run complete 但未调用 report_task_result:
   TaskResult.status = 'failed'
-  error 记录「任务需要产物但未产出」
+  error 记录「任务缺少 report_task_result」
   下游按依赖失败规则 skipped
+
+子 Agent 调用 report_task_result 但 status 为 failed / blocked:
+  TaskResult.status = 'failed'
+  error 记录 report summary 与 blockers
+  下游按依赖失败规则 skipped
+
+子 Agent report_task_result.status=complete 但 acceptanceCriteria 缺项或 passed=false:
+  TaskResult.status = 'failed'
+  error 记录未通过 / 未上报的验收项
+  下游按依赖失败规则 skipped
+
+expectedOutputs / outputKey:
+  只用于 artifact 交接映射，不直接决定 TaskResult.status
+  如果上游 complete 但没有绑定下游需要的 artifact，依赖该 artifact 的任务会因 required input 缺失而 skipped
+  上游任务本身是否 complete 由 report_task_result 判定
 
 某任务的任一 dependsOn 上游不是 complete:
   不启动该任务，不创建 child AgentRun
@@ -356,6 +376,9 @@ async function runSubTask(
 Stage 3 聚合时，Orchestrator 看到的 prompt 包含所有任务状态：
   <task_results>
     <result task="t1" agent="pm" status="complete">
+      <task_report status="complete">
+        <summary>PRD 已完成并覆盖核心范围。</summary>
+      </task_report>
       <artifact_ref id="art_001"/>
     </result>
     <result task="t2" agent="design" status="failed">
@@ -386,6 +409,7 @@ PLAN → EXECUTE → (有失败/冲突 且未达上限?) → REPLAN(补救) → 
 - **上限**：`MAX_DISPATCH_ROUNDS = 2`（首轮 + 最多 1 轮补救），呼应"不做无限重试"。
 - **触发判定**：`shouldReplan(views, conflicts)` —— 本轮有非 complete 任务或有写冲突（纯函数，`dispatch-plan.ts`，可单测）。
 - **结果合并**：跨轮按 `taskId` 合并（`mergedResults`，新轮覆盖同 id）；AGGREGATE 只喂合并后的最终态，避免列陈旧/重复 artifact。
+- **跨轮依赖**：补救轮 plan 可以在 `dependsOn` / `inputs` 中引用上一轮已出现过的 task id。AgentRunner 校验时把上一轮任务视为外部已知任务，执行 DAG 时把上一轮结果预置为外部依赖；若本轮重用了同一个 task id，则本轮任务覆盖旧结果，避免旧失败状态提前跳过下游。
 - **副作用注意**：补救轮重做会新建 artifact（独立 id）、覆盖 workspace 文件（跨轮覆盖按设计不算冲突，见下节）；故补救 prompt 明确"已 complete 的不要重做"。
 - **级联中止**：同一 `signal` 透传每轮，每轮前查 `signal.aborted`；`waitForDispatchPlanReview` 每轮新注册的 pending 在 abort 时已能 cancel。
 - **UI**：补救轮复用 Orchestrator runId 发新 `dispatch.plan`，前端调度卡覆盖为最新轮；补救过程由聚合消息文字体现（多轮卡片可视化为后续增强）。

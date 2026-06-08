@@ -6,6 +6,7 @@ import { fsWriteTool } from './fs-write'
 import { planTasksTool } from './plan-tasks'
 import { readArtifactTool } from './read-artifact'
 import { readAttachmentTool } from './read-attachment'
+import { reportTaskResultTool } from './report-task-result'
 import type { ToolContext, ToolDef, ToolResult } from './types'
 import { writeArtifactTool } from './write-artifact'
 
@@ -63,6 +64,7 @@ function buildRegistry(): ToolRegistry {
   reg.register(deployArtifactTool)
   reg.register(readAttachmentTool)
   reg.register(planTasksTool)
+  reg.register(reportTaskResultTool)
   reg.register(fsReadTool)
   reg.register(fsWriteTool)
   reg.register(bashTool)

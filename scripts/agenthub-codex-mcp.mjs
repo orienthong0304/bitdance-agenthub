@@ -20,13 +20,17 @@ server.registerTool(
     description:
       'Create a previewable AgentHub artifact in the current conversation. Use web_app for HTML/CSS/JS bundles that should appear as preview cards.',
     inputSchema: {
-      type: z.enum(['web_app', 'document', 'image']),
+      type: z.enum(['web_app', 'document', 'image', 'ppt']),
       title: z.string(),
       content: z
         .unknown()
         .describe(
           'Artifact body as a JSON OBJECT, NOT a JSON-stringified string. web_app: { files: { "index.html": "..." }, entry: "index.html" }. document: { format: "markdown", content: "..." }. image: { url, alt }.',
         ),
+      outputKey: z
+        .string()
+        .optional()
+        .describe('Optional Orchestrator handoff key matching expected_outputs.id.'),
       parentArtifactId: z.string().optional(),
     },
   },
@@ -54,6 +58,29 @@ server.registerTool(
     },
   },
   async (args) => callAgentHubTool('deploy_artifact', args),
+)
+
+server.registerTool(
+  'report_task_result',
+  {
+    description:
+      'Report the final semantic outcome of the current AgentHub sub-task. Call exactly once at the end of a dispatched child task. Use complete only when the assigned task is fully accomplished and every acceptance criterion passed; never report complete for partial work, failing tests, unresolved errors, or missing files/dependencies.',
+    inputSchema: {
+      status: z.enum(['complete', 'failed', 'blocked']),
+      summary: z.string(),
+      acceptanceResults: z
+        .array(
+          z.object({
+            criterion: z.string(),
+            passed: z.boolean(),
+            evidence: z.string(),
+          }),
+        )
+        .optional(),
+      blockers: z.array(z.string()).optional(),
+    },
+  },
+  async (args) => callAgentHubTool('report_task_result', args),
 )
 
 async function callAgentHubTool(toolName, args) {

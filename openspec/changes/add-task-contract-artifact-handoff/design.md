@@ -48,7 +48,7 @@ outputArtifacts: Record<string, string>
 
 Where the key is `outputKey` and the value is `artifactId`.
 
-If a task declares a required expected output, the run must create an artifact with the matching `outputKey`. For backward compatibility, if a task has exactly one required output and creates exactly one artifact without an output key, the executor binds that artifact to the output automatically.
+If a task creates an artifact for a declared expected output, the run should pass the matching `outputKey`. For compatibility, if a task has exactly one required expected output and creates exactly one artifact without an output key, the executor may bind that artifact to the output automatically.
 
 ## Child Prompt
 
@@ -63,7 +63,8 @@ Agents are instructed to read required input artifacts before working and to pas
 ## Scheduling Semantics
 
 - A task with unresolved required inputs is skipped before launching.
-- A task that completes without required outputs is converted to `failed`.
+- Expected outputs are handoff metadata, not task completion gates.
+- Task completion is reported through `report_task_result`.
 - Optional inputs may be missing; the child prompt records them as missing.
 - Downstream tasks keep using the existing blocker logic.
 

@@ -67,3 +67,16 @@ AgentHub MUST provide a `deploy_artifact` tool that accepts a web app artifact i
 #### Scenario: Agent deploys a non-web artifact
 - **WHEN** `deploy_artifact` receives a document, image, or missing artifact id
 - **THEN** it returns a failed deployment record with a user-visible reason.
+
+### Requirement: Child tasks SHALL report semantic task outcomes
+
+AgentHub MUST provide a `report_task_result` tool for Orchestrator-dispatched child runs. The tool SHALL accept `status`, `summary`, optional `acceptanceResults`, and optional `blockers`, and SHALL not create artifacts or mutate workspace files.
+
+#### Scenario: Child reports completion
+- **WHEN** a child run calls `report_task_result` with `status="complete"`
+- **THEN** AgentRunner can use that structured report as the semantic task outcome.
+
+#### Scenario: Child reports blocked work
+- **WHEN** a child run calls `report_task_result` with `status="blocked"`
+- **THEN** the dispatch task is treated as not complete
+- **AND** blocker details remain available to aggregation.

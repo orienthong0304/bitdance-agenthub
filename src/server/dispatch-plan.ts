@@ -1,4 +1,4 @@
-import type { DispatchPlanItem, WritableArtifactType } from '@/shared/types'
+import type { DispatchExpectedOutput, DispatchPlanItem, WritableArtifactType } from '@/shared/types'
 
 /**
  * Orchestrator 派发计划的解析 + 校验 + 环检测。
@@ -146,6 +146,7 @@ export function validateDispatchPlan(
   plan: DispatchPlanItem[],
   availableAgents: readonly { id: string }[],
   orchestratorAgentId: string,
+  resolvedExternalTasks: readonly DispatchPlanItem[] = [],
 ): void {
   if (plan.length === 0) {
     throw new Error('Invalid dispatch plan: tasks must not be empty')
@@ -166,6 +167,7 @@ export function validateDispatchPlan(
   }
 
   const taskById = new Map(plan.map((task) => [task.id, task]))
+  const externalTaskById = new Map(resolvedExternalTasks.map((task) => [task.id, task]))
 
   for (const task of plan) {
     if (task.agentId === orchestratorAgentId) {
@@ -190,7 +192,7 @@ export function validateDispatchPlan(
         )
       }
       depIds.add(dep)
-      if (!taskIds.has(dep)) {
+      if (!taskIds.has(dep) && !externalTaskById.has(dep)) {
         throw new Error(
           `Invalid dispatch plan: task "${task.id}" depends on unknown task "${dep}"`,
         )
@@ -213,7 +215,7 @@ export function validateDispatchPlan(
           `Invalid dispatch plan: task "${task.id}" input cannot reference itself`,
         )
       }
-      const upstream = taskById.get(input.fromTaskId)
+      const upstream = taskById.get(input.fromTaskId) ?? externalTaskById.get(input.fromTaskId)
       if (!upstream) {
         throw new Error(
           `Invalid dispatch plan: task "${task.id}" input references unknown task "${input.fromTaskId}"`,
@@ -307,6 +309,10 @@ export function taskExpectsArtifact(task: DispatchPlanItem): boolean {
     /(?:类型为|type\s*[:=]).{0,24}(?:document|web_app|web app|diff|code_file|image|markdown)/i.test(text) ||
     /title\s*(?:为|:|=)/i.test(text)
   )
+}
+
+export function getRequiredExpectedOutputs(task: DispatchPlanItem): DispatchExpectedOutput[] {
+  return (task.expectedOutputs ?? []).filter((output) => output.required !== false)
 }
 
 export function assertAcyclicDispatchPlan(plan: DispatchPlanItem[]): void {
@@ -513,7 +519,7 @@ export function buildReplanContext(
   }
   lines.push(
     '',
-    '上一轮存在未完成任务或写冲突。请**只为未完成 / 冲突的部分**输出补救 plan_tasks：可换更合适的 agent、把写同一文件的任务用 dependsOn 串行化、或把任务拆得更细。已 complete 的任务不要重做。若判断无需或无法补救，就不要调用 plan_tasks（直接进入总结）。',
+    '上一轮存在未完成任务或写冲突。请**只为未完成 / 冲突的部分**输出补救 plan_tasks：可换更合适的 agent、把写同一文件的任务用 dependsOn 串行化、或把任务拆得更细。已 complete 的任务不要重做；补救任务需要基于已 complete 任务时，可以在 dependsOn / inputs 中引用上一轮的 task id，系统会把它当作已解析的外部依赖。若判断无需或无法补救，就不要调用 plan_tasks（直接进入总结）。',
   )
   return lines.join('\n')
 }

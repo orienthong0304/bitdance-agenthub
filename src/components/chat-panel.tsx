@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { MessageInput } from '@/components/message-input'
 import { MessageList } from '@/components/message-list'
 import { UsageBadge } from '@/components/usage-badge'
+import type { AgentRow } from '@/db/schema'
 import { fetchPendingDispatchPlans } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
@@ -100,11 +101,11 @@ export function ChatPanel() {
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="flex shrink-0 items-center gap-3 overflow-hidden border-b px-3 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {/* 移动端汉堡按钮：打开 sidebar 抽屉 */}
           <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
             title="打开会话列表"
@@ -112,23 +113,14 @@ export function ChatPanel() {
           >
             <Menu className="size-4" />
           </Button>
-          <div className="flex shrink-0 -space-x-2">
-            {participantAgents.map((a) => (
-              <AgentInfoPopover
-                key={a.id}
-                agent={a}
-                size="md"
-                avatarClassName="border-2 border-background"
-              />
-            ))}
-          </div>
-          <div className="min-w-0">
+          <ParticipantStack agents={participantAgents} />
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-medium">{conv.title}</span>
+              <span className="min-w-0 truncate text-sm font-medium">{conv.title}</span>
               {conv.workspaceMode === 'local' && conv.workspaceBoundPath && (
                 <span
                   title={`本地工作目录：${conv.workspaceBoundPath}`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
                 >
                   <AlertTriangle className="size-2.5" />
                   本地
@@ -137,19 +129,13 @@ export function ChatPanel() {
             </div>
             <div className="truncate text-xs text-muted-foreground">
               {conv.mode === 'single' ? '单聊' : '群聊'} · {participantAgents.length} 位 Agent
-              {conv.workspaceMode === 'local' && conv.workspaceBoundPath && (
-                <>
-                  {' · '}
-                  <code className="font-mono">{conv.workspaceBoundPath}</code>
-                </>
-              )}
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 max-w-[65%] shrink-0 items-center gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* 右侧面板切换（文件树 / 产物预览，互斥）。点同一个再关掉。 */}
           <Button
-            size="icon"
+            size="icon-sm"
             variant={fileExplorerOpen ? 'default' : 'ghost'}
             onClick={() => setFileExplorerOpen(!fileExplorerOpen)}
             title={fileExplorerOpen ? '关闭文件树' : '打开文件树'}
@@ -157,7 +143,7 @@ export function ChatPanel() {
             <FolderTree className="size-4" />
           </Button>
           <Button
-            size="icon"
+            size="icon-sm"
             variant={previewArtifactId ? 'default' : 'ghost'}
             onClick={() => {
               if (previewArtifactId) closeArtifactPreview()
@@ -168,7 +154,7 @@ export function ChatPanel() {
             <Layers className="size-4" />
           </Button>
           <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
             onClick={() => setFilesOpen(true)}
             title="会话文件库"
@@ -177,7 +163,7 @@ export function ChatPanel() {
           </Button>
           <ConversationOutline conversationId={conv.id} />
           <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
             onClick={() => setAddOpen(true)}
             title="添加 Agent"
@@ -185,7 +171,7 @@ export function ChatPanel() {
             <UserPlus className="size-4" />
           </Button>
           <UsageBadge conversationId={conv.id} />
-          <Badge variant={streamConnected ? 'default' : 'outline'} className="gap-1.5">
+          <Badge variant={streamConnected ? 'default' : 'outline'} className="gap-1 px-1.5 text-[11px]">
             <span
               className={`size-1.5 rounded-full ${streamConnected ? 'bg-green-500' : 'bg-zinc-400'}`}
             />
@@ -262,6 +248,33 @@ export function ChatPanel() {
 
       <AskUserQuestionDialog conversationId={conv.id} />
     </main>
+  )
+}
+
+function ParticipantStack({ agents }: { agents: AgentRow[] }) {
+  const visibleAgents = agents.slice(0, 3)
+  const hiddenAgents = agents.slice(3)
+  const title = agents.map((agent) => agent.name).join(' / ')
+
+  return (
+    <div className="flex shrink-0 -space-x-2 overflow-hidden pr-1" title={title}>
+      {visibleAgents.map((agent) => (
+        <AgentInfoPopover
+          key={agent.id}
+          agent={agent}
+          size="sm"
+          avatarClassName="border-2 border-background"
+        />
+      ))}
+      {hiddenAgents.length > 0 && (
+        <div
+          className="flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-[11px] font-semibold text-muted-foreground"
+          title={hiddenAgents.map((agent) => agent.name).join(' / ')}
+        >
+          +{hiddenAgents.length}
+        </div>
+      )}
+    </div>
   )
 }
 

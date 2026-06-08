@@ -13,7 +13,7 @@ AgentHub should make multi-agent collaboration more reliable by turning each dis
 - Compile `inputs` into `dependsOn` and validate that input references match upstream expected outputs.
 - Let `write_artifact` accept an optional `outputKey` that binds a produced artifact to an expected output id.
 - Inject required inputs, expected outputs, and acceptance criteria into child prompts.
-- Treat missing required outputs or unresolved required inputs as scheduling failures/skips.
+- Treat unresolved required inputs as scheduling skips; task completion itself is reported through `report_task_result`.
 - Show task contracts in the dispatch plan card.
 
 ## Impact

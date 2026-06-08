@@ -84,7 +84,7 @@ export const planTasksTool: ToolDef = {
             expectedOutputs: {
               type: 'array',
               description:
-                'Artifacts this task is expected to produce. Use stable ids such as prd, ui_spec, web_app, review_report. The child agent must pass the same id as write_artifact.outputKey.',
+                'Only artifacts this task must create for downstream handoff or user inspection. Omit for text-only work such as review, validation, diagnosis, status check, explanation, or summary. The child agent must pass the same id as write_artifact.outputKey.',
               items: {
                 type: 'object',
                 required: ['id', 'type'],
@@ -100,7 +100,8 @@ export const planTasksTool: ToolDef = {
                   },
                   required: {
                     type: 'boolean',
-                    description: 'Whether this output is required. Defaults to true.',
+                    description:
+                      'Whether this handoff output is expected by the plan. Defaults to true. This is not a hard task-completion gate; task completion is reported through report_task_result.',
                   },
                   description: {
                     type: 'string',
@@ -138,7 +139,8 @@ export const planTasksTool: ToolDef = {
             },
             acceptanceCriteria: {
               type: 'array',
-              description: 'Concrete checks the task result should satisfy.',
+              description:
+                'Concrete completion checks for this task. Use this for text-only/review/validation tasks instead of expectedOutputs. The child agent must report each item through report_task_result.acceptanceResults.',
               items: { type: 'string' },
             },
           },

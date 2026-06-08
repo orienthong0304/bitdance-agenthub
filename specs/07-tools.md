@@ -73,6 +73,7 @@ export const toolRegistry = buildRegistry()
 | `read_artifact` | 读已有产物的完整内容 | 读 DB | 跨任务复用产物的 agent（Orchestrator 派的子 agent 常用） |
 | `read_attachment` | 读用户上传附件 | 读文件系统 | 处理用户文档 / 文本附件的 agent |
 | `plan_tasks` | Orchestrator 拆解子任务 | 无（输出端工具） | **仅 Orchestrator** |
+| `report_task_result` | 子任务上报最终语义结果 | 无（输出端工具） | Orchestrator 派发的子 agent（AgentRunner 自动注入） |
 | `fs_read` | 读 workspace 内文本文件 | 读文件系统 | 需要看用户项目代码的 agent |
 | `fs_write` | 写 workspace 内文本文件 | 写文件系统 | 需要生成 / 修改文件的 agent |
 | `bash` | 在 workspace 内跑 shell 命令 | 进程 / 文件系统 | 需要 git / 编译 / 测试的 agent |
@@ -161,11 +162,55 @@ export const toolRegistry = buildRegistry()
     agentId: string         // 群里现有 agent id
     task: string            // 给该子 agent 的完整指令（自包含，子 agent 看不到群聊历史）
     dependsOn?: string[]    // 前置任务 id，省略 = 可立即开始
+    expectedOutputs?: Array<{
+      id: string            // 真实 artifact 输出的符号 key，不是 artifact id
+      type: 'web_app' | 'document' | 'image' | 'ppt'
+      required?: boolean    // 默认 true；用于标记交接意图，不直接决定任务状态
+      description?: string
+    }>
+    inputs?: Array<{
+      fromTaskId: string
+      outputId: string
+      required?: boolean    // 默认 true；required 输入缺失会让任务 skipped
+      description?: string
+    }>
+    acceptanceCriteria?: string[] // 非产物型任务的完成条件提示
   }>
 }
 ```
 
+`expectedOutputs` 只用于真实 artifact 交接：下游要读、用户要预览、或任务本身要求写入可独立产物时才声明。审查、验证、诊断、状态检查、解释、总结等文字型任务不要为了“完成状态”声明 `expectedOutputs`；这类任务用 `acceptanceCriteria` 描述完成条件，并由 child agent 通过 `report_task_result.acceptanceResults` 逐项上报。
+
 **装备约束**：只有 `isOrchestrator=true` 的 agent 才应装备 `plan_tasks`（service 层未强制，但前端 UI 不允许给非 Orchestrator agent 勾选）。
+
+### report_task_result
+
+源文件：`src/server/tools/report-task-result.ts`
+
+**特殊**：这是「输出端工具」——handler 只校验并回传结构化结果，不写 DB、不写 workspace、不创建 artifact。AgentRunner 只在 Orchestrator 派发的子任务 run 中自动注入该工具；普通单聊 agent 不需要手动装备。
+
+**参数**：
+
+```typescript
+{
+  status: 'complete' | 'failed' | 'blocked'
+  summary: string
+  acceptanceResults?: Array<{
+    criterion: string
+    passed: boolean
+    evidence: string
+  }>
+  blockers?: string[]
+}
+```
+
+**语义**：
+- 子任务结束前必须调用一次 `report_task_result`。普通文本回复不能单独证明任务成功。
+- `status='complete'` 只表示该子任务真的完成、`acceptanceCriteria` 已逐项通过；不要因为产出了一条普通回复或一个 artifact 就自动标 complete。
+- `status='failed'` 表示已尝试但未满足任务；`status='blocked'` 表示缺少外部输入 / 前置条件导致无法推进。
+- 如果测试失败、实现不完整、有未解决错误、找不到必要文件 / 依赖，必须上报 `failed` 或 `blocked`，不能上报 `complete`。
+- 当 plan 含 `acceptanceCriteria` 时，child agent 必须在 `acceptanceResults` 中复制每条 criterion 原文，并给出 `passed/evidence`。AgentRunner 缺项或发现 `passed=false` 时，把该任务判为 `failed`。
+- 由于 `DispatchTaskStatus` 当前没有 `blocked`，`blocked` report 在 dispatch 层映射为 `failed`，错误原因保留 blocked summary / blockers；下游任务照常 skipped。
 
 ### fs_read
 

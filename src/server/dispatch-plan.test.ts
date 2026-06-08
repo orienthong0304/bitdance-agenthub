@@ -149,6 +149,17 @@ describe('validateDispatchPlan', () => {
     ).toThrow('lists duplicate dependency "t1"')
   })
 
+  it('accepts dependencies on resolved external tasks during replan', () => {
+    expect(() =>
+      validateDispatchPlan(
+        [task('t4', 'ag_frontend', ['t2'])],
+        agents,
+        'ag_orchestrator',
+        [task('t2', 'ag_pm')],
+      ),
+    ).not.toThrow()
+  })
+
   it('rejects invalid task contracts', () => {
     expect(() =>
       validateDispatchPlan(
@@ -179,6 +190,22 @@ describe('validateDispatchPlan', () => {
         'ag_orchestrator',
       ),
     ).toThrow('input references unknown output "missing" from task "t1"')
+  })
+
+  it('accepts inputs from resolved external tasks during replan', () => {
+    expect(() =>
+      validateDispatchPlan(
+        [
+          {
+            ...task('t4', 'ag_frontend'),
+            inputs: [{ fromTaskId: 't2', outputId: 'prd' }],
+          },
+        ],
+        agents,
+        'ag_orchestrator',
+        [{ ...task('t2', 'ag_pm'), expectedOutputs: [{ id: 'prd', type: 'document' }] }],
+      ),
+    ).not.toThrow()
   })
 
   it('rejects circular dependencies', () => {

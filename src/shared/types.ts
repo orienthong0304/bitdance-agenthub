@@ -145,6 +145,21 @@ export interface DispatchTaskInput {
   description?: string
 }
 
+export type TaskResultReportStatus = 'complete' | 'failed' | 'blocked'
+
+export interface TaskAcceptanceResult {
+  criterion: string
+  passed: boolean
+  evidence: string
+}
+
+export interface TaskResultReport {
+  status: TaskResultReportStatus
+  summary: string
+  acceptanceResults?: TaskAcceptanceResult[]
+  blockers?: string[]
+}
+
 export type DispatchTaskStatus =
   | 'pending'
   | 'running'

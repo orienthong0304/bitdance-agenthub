@@ -82,12 +82,18 @@ Child prompts include:
 </acceptance_criteria>
 ```
 
-The child agent must read required input artifacts before working and pass the declared `outputKey` when creating each expected output.
+The child agent must read required input artifacts before working, pass the declared `outputKey` when creating each expected output, and call `report_task_result` at the end.
+
+When `acceptanceCriteria` is present, the child agent must copy each criterion into `report_task_result.acceptanceResults` with `passed` and `evidence`.
 
 ## Execution Semantics
 
 - A task with unresolved required inputs is skipped before launching a child run.
-- A task that completes without required expected outputs is converted to `failed`.
+- A task that completes without `report_task_result` is converted to `failed`.
+- A task whose `report_task_result.status` is `failed` or `blocked` is converted to dispatch `failed`; blocked details remain in the error/report summary because `DispatchTaskStatus` has no separate `blocked` state.
+- A task with acceptance criteria is converted to `failed` when any criterion is missing from `acceptanceResults` or has `passed=false`.
+- `expectedOutputs` / `outputKey` are artifact handoff metadata, not completion gates. A task can complete without producing artifacts when `report_task_result.status='complete'`.
+- If a downstream task declares a required `inputs` reference and the upstream result has no bound artifact for that output key, the downstream task is skipped before launch.
 - Optional inputs may be missing; the prompt records them as missing.
 - Downstream tasks follow existing skip behavior when dependencies are not complete.
 

@@ -10,6 +10,7 @@ import type {
   DispatchTaskEndStatus,
   MessagePart,
   StreamEvent,
+  TaskResultReport,
   WritableArtifactType,
 } from '@/shared/types'
 import { estimateTokens, getModelLimits } from '@/shared/model-registry'
@@ -35,9 +36,9 @@ import {
   buildReviseContext,
   collectDependencyClosure,
   compileDispatchPlan,
+  getRequiredExpectedOutputs,
   parseDispatchPlanToolArgs,
   shouldReplan,
-  taskExpectsArtifact,
   validateDispatchPlan,
   type ReplanConflictView,
   type ReplanTaskView,
@@ -46,6 +47,12 @@ import { eventBus } from './event-bus'
 import { newRunId } from './ids'
 import { pendingDispatchPlans, type PlanReviewOutcome } from './pending-dispatch-plans'
 import { getAppSettings } from './settings-service'
+import {
+  evaluateTaskResultReport,
+  isTaskResultReportToolName,
+  readTaskResultReportFromToolResult,
+  REPORT_TASK_RESULT_TOOL_NAME,
+} from './task-result-report'
 import { getEffectiveCwd } from './workspace-utils'
 
 /**
@@ -69,6 +76,8 @@ export interface RunArgs {
   overrideSystemPrompt?: string
   /** 覆盖工具集（Orchestrator aggregate 阶段不带 plan_tasks） */
   overrideToolNames?: string[]
+  /** 子任务运行必须通过 report_task_result 显式上报语义结果 */
+  requireTaskReport?: boolean
   /** 父 run 的 AbortSignal — 用于级联中止：parent abort → child abort */
   parentSignal?: AbortSignal
 }
@@ -80,12 +89,14 @@ export interface RunResult {
   artifactIds: string[]
   outputMessageIds: string[]
   outputArtifacts: Record<string, string>
+  taskReport?: TaskResultReport
 }
 
 interface RunExecutionResult {
   artifactIds: string[]
   outputMessageIds: string[]
   outputArtifacts: Record<string, string>
+  taskReport?: TaskResultReport
 }
 
 interface DispatchTaskResult {
@@ -95,6 +106,7 @@ interface DispatchTaskResult {
   artifactIds: string[]
   outputMessageIds: string[]
   outputArtifacts: Record<string, string>
+  taskReport?: TaskResultReport
 }
 
 interface BlockedDependency {
@@ -298,7 +310,10 @@ async function executeSimpleRun(
   prompt: string,
   attachments: AdapterAttachment[],
 ): Promise<RunExecutionResult> {
-  const toolNames = args.overrideToolNames ?? agent.toolNames
+  const baseToolNames = args.overrideToolNames ?? agent.toolNames
+  const toolNames = args.requireTaskReport
+    ? ensureIncludes(baseToolNames, REPORT_TASK_RESULT_TOOL_NAME)
+    : baseToolNames
 
   const adapter = agentRegistry.getAdapter(agent)
   const stream = adapter.stream(
@@ -367,6 +382,7 @@ async function executeOrchestratorRun(
       round === 1 ? attachments : [],
       signal,
       replanContext,
+      [...planItemsById.values()],
     )
     allArtifactIds.push(...planRun.artifactIds)
     allOutputMessageIds.push(...planRun.outputMessageIds)
@@ -397,6 +413,7 @@ async function executeOrchestratorRun(
         plan,
         availableAgents: otherAgents,
         orchestratorAgentId: agent.id,
+        resolvedExternalTasks: [...planItemsById.values()],
         signal,
       })
       if (outcome.kind === 'approve') {
@@ -416,6 +433,7 @@ async function executeOrchestratorRun(
           [],
           signal,
           buildReviseContext(plan, outcome.feedback),
+          [...planItemsById.values()],
         )
         allArtifactIds.push(...revised.planRun.artifactIds)
         allOutputMessageIds.push(...revised.planRun.outputMessageIds)
@@ -451,6 +469,8 @@ async function executeOrchestratorRun(
       conversationId: args.conversationId,
       triggerMessageId: args.triggerMessageId,
       signal,
+      seedResults: mergedResults,
+      externalPlanItems: [...planItemsById.values()],
     })
     for (const [taskId, r] of results) mergedResults.set(taskId, r)
     lastConflicts = conflicts
@@ -524,6 +544,7 @@ async function runPlanStage(
   attachments: AdapterAttachment[],
   signal: AbortSignal,
   replanContext: string | null,
+  resolvedExternalTasks: readonly DispatchPlanItem[] = [],
 ): Promise<{ plan: DispatchPlanItem[] | null; planRun: RunExecutionResult }> {
   const planSystemPrompt = buildOrchestratorPlanPrompt(agent.systemPrompt, otherAgents)
   const planToolNames = ensureIncludes(agent.toolNames, 'plan_tasks')
@@ -550,7 +571,9 @@ async function runPlanStage(
     }
   })
   const raw = planRef.value
-  const plan = raw ? compileAndValidateDispatchPlan(raw, otherAgents, agent.id) : null
+  const plan = raw
+    ? compileAndValidateDispatchPlan(raw, otherAgents, agent.id, resolvedExternalTasks)
+    : null
   return { plan, planRun }
 }
 
@@ -572,13 +595,24 @@ function toReplanConflicts(conflicts: FileWriteConflict[]): ReplanConflictView[]
 }
 
 // ─── DAG 调度 ──────────────────────────────────────────────
+function mergeExternalPlanItems(
+  externalItems: readonly DispatchPlanItem[],
+  currentPlan: readonly DispatchPlanItem[],
+): DispatchPlanItem[] {
+  const byId = new Map<string, DispatchPlanItem>()
+  for (const item of externalItems) byId.set(item.id, item)
+  for (const item of currentPlan) byId.set(item.id, item)
+  return [...byId.values()]
+}
+
 function compileAndValidateDispatchPlan(
   rawPlan: DispatchPlanItem[],
   availableAgents: readonly { id: string }[],
   orchestratorAgentId: string,
+  resolvedExternalTasks: readonly DispatchPlanItem[] = [],
 ): DispatchPlanItem[] {
   const { plan } = compileDispatchPlan(rawPlan)
-  validateDispatchPlan(plan, availableAgents, orchestratorAgentId)
+  validateDispatchPlan(plan, availableAgents, orchestratorAgentId, resolvedExternalTasks)
   return plan
 }
 
@@ -589,6 +623,7 @@ async function waitForDispatchPlanReview(args: {
   plan: DispatchPlanItem[]
   availableAgents: readonly { id: string }[]
   orchestratorAgentId: string
+  resolvedExternalTasks?: readonly DispatchPlanItem[]
   signal: AbortSignal
 }): Promise<PlanReviewOutcome> {
   const pending = pendingDispatchPlans.register({
@@ -597,7 +632,12 @@ async function waitForDispatchPlanReview(args: {
     runId: args.runId,
     plan: args.plan,
     validator: (plan) =>
-      compileAndValidateDispatchPlan(plan, args.availableAgents, args.orchestratorAgentId),
+      compileAndValidateDispatchPlan(
+        plan,
+        args.availableAgents,
+        args.orchestratorAgentId,
+        args.resolvedExternalTasks ?? [],
+      ),
   })
 
   return new Promise((resolve) => {
@@ -626,15 +666,23 @@ interface DagContext {
   conversationId: string
   triggerMessageId: string
   signal: AbortSignal
+  seedResults?: Map<string, DispatchTaskResult>
+  externalPlanItems?: readonly DispatchPlanItem[]
 }
 
 async function executeDag(
   plan: DispatchPlanItem[],
   ctx: DagContext,
 ): Promise<{ results: Map<string, DispatchTaskResult>; conflicts: FileWriteConflict[] }> {
-  const results = new Map<string, DispatchTaskResult>()
+  const currentTaskIds = new Set(plan.map((t) => t.id))
+  const results = new Map<string, DispatchTaskResult>(
+    [...(ctx.seedResults ?? new Map<string, DispatchTaskResult>())].filter(
+      ([taskId]) => !currentTaskIds.has(taskId),
+    ),
+  )
   const remaining = new Set(plan.map((t) => t.id))
   const conflicts: FileWriteConflict[] = []
+  const planContext = mergeExternalPlanItems(ctx.externalPlanItems ?? [], plan)
 
   while (remaining.size > 0) {
     if (ctx.signal.aborted) {
@@ -667,7 +715,7 @@ async function executeDag(
       throw new Error('Circular dependency or unresolved task in plan')
     }
 
-    const wave = await Promise.all(ready.map((t) => runChildTask(t, results, plan, ctx)))
+    const wave = await Promise.all(ready.map((t) => runChildTask(t, results, planContext, ctx)))
     for (let i = 0; i < ready.length; i++) {
       results.set(ready[i].id, wave[i])
       remaining.delete(ready[i].id)
@@ -691,11 +739,15 @@ async function executeDag(
   }
 
   // 释放本次 dispatch 各子 run 的写入记录（内存）
-  for (const r of results.values()) {
+  for (const [taskId, r] of results) {
+    if (!currentTaskIds.has(taskId)) continue
     if (r.runId) clearFileWrites(r.runId)
   }
 
-  return { results, conflicts }
+  return {
+    results: new Map([...results].filter(([taskId]) => currentTaskIds.has(taskId))),
+    conflicts,
+  }
 }
 
 async function runChildTask(
@@ -744,6 +796,7 @@ async function runChildTask(
       triggerMessageId: ctx.triggerMessageId,
       parentRunId: ctx.parentRunId,
       overridePrompt: subPrompt,
+      requireTaskReport: true,
       parentSignal: ctx.signal,
     })
 
@@ -757,7 +810,7 @@ async function runChildTask(
       agentId: task.agentId,
     })
 
-    const result = requireExpectedArtifact(task, await promise)
+    const result = evaluateChildTaskResult(task, await promise)
 
     publish({
       type: 'dispatch.end',
@@ -776,7 +829,7 @@ async function runChildTask(
   }
 }
 
-function requireExpectedArtifact(
+function evaluateChildTaskResult(
   task: DispatchPlanItem,
   result: DispatchTaskResult,
 ): DispatchTaskResult {
@@ -785,37 +838,17 @@ function requireExpectedArtifact(
   }
 
   const outputArtifacts = bindImplicitSingleOutput(task, result)
-  const requiredOutputs = getRequiredExpectedOutputs(task)
-  if (requiredOutputs.length > 0) {
-    const missing = requiredOutputs.filter((output) => !outputArtifacts[output.id])
-    if (missing.length === 0) {
-      return { ...result, outputArtifacts }
-    }
-
+  const reportEvaluation = evaluateTaskResultReport(task, result.taskReport)
+  if (!reportEvaluation.ok) {
     return {
       ...result,
       outputArtifacts,
       status: 'failed',
-      error: `Task "${task.id}" completed without required output(s): ${missing
-        .map((output) => output.id)
-        .join(', ')}`,
+      error: reportEvaluation.error,
     }
   }
 
-  if (result.artifactIds.length > 0 || !taskExpectsArtifact(task)) {
-    return { ...result, outputArtifacts }
-  }
-
-  return {
-    ...result,
-    outputArtifacts,
-    status: 'failed',
-    error: `Task "${task.id}" completed without creating the expected artifact output`,
-  }
-}
-
-function getRequiredExpectedOutputs(task: DispatchPlanItem): DispatchExpectedOutput[] {
-  return (task.expectedOutputs ?? []).filter((output) => output.required !== false)
+  return { ...result, outputArtifacts }
 }
 
 function bindImplicitSingleOutput(
@@ -961,10 +994,13 @@ async function consumeStream(
   const outputMessageIds: string[] = []
   const outputArtifacts: Record<string, string> = {}
   const outputKeyByArtifactId = new Map<string, string>()
+  const toolNameByCallId = new Map<string, string>()
+  let taskReport: TaskResultReport | undefined
   let currentMessageId: string | null = null
 
   for await (const event of stream) {
     if (event.type === 'message.start') currentMessageId = event.messageId
+    if (event.type === 'tool.call') toolNameByCallId.set(event.callId, event.toolName)
 
     await persistEvent(event, partsBuffer, runId, agentId, outputMessageIds, artifactIds)
     publish(event)
@@ -1017,6 +1053,11 @@ async function consumeStream(
 
     if (event.type === 'message.end') currentMessageId = null
     if (event.type === 'tool.result') {
+      const toolName = toolNameByCallId.get(event.callId)
+      if (toolName && !event.isError && isTaskResultReportToolName(toolName)) {
+        const report = readTaskResultReportFromToolResult(event.result)
+        if (report) taskReport = report
+      }
       const handoff = readArtifactHandoffResult(event.result)
       if (handoff) outputKeyByArtifactId.set(handoff.artifactId, handoff.outputKey)
     }
@@ -1051,7 +1092,7 @@ async function consumeStream(
     }
   }
 
-  return { artifactIds, outputMessageIds, outputArtifacts }
+  return { artifactIds, outputMessageIds, outputArtifacts, ...(taskReport ? { taskReport } : {}) }
 }
 
 function readArtifactHandoffResult(result: unknown): { artifactId: string; outputKey: string } | null {
@@ -1225,6 +1266,7 @@ async function finalize(
     artifactIds: result.artifactIds,
     outputMessageIds: result.outputMessageIds,
     outputArtifacts: result.outputArtifacts,
+    ...(result.taskReport ? { taskReport: result.taskReport } : {}),
   }
 }
 
@@ -1514,7 +1556,8 @@ function buildOrchestratorPlanPrompt(baseSystemPrompt: string, otherAgents: Agen
     '- 若任务 B 需要任务 A 的产物 / 结论 / 输出，你【必须】在 B 的 dependsOn 里写上 A 的 id。',
     '- 在 task 文本里写「先做 A」「基于上一步」之类【没有任何效果】——执行顺序只认 dependsOn 字段。',
     '- 只有彼此真正无关、可同时进行的任务才留空 dependsOn；拿不准时倾向加依赖（串行更安全）。',
-    '- If a task produces an artifact, declare expectedOutputs with a stable id such as prd, ui_spec, web_app, or review_report.',
+    '- Only declare expectedOutputs when the assigned agent must create a real artifact via write_artifact for downstream handoff or user inspection.',
+    '- Do NOT declare expectedOutputs for text-only tasks such as review, validation, diagnosis, status check, explanation, or summary; put their completion checks in acceptanceCriteria.',
     '- If a task needs an upstream artifact, declare inputs with fromTaskId and outputId; the system will compile these into dependencies.',
     '- For tasks with quality requirements, add concise acceptanceCriteria that the assigned agent can verify.',
     '',
@@ -1656,8 +1699,14 @@ async function buildSubAgentPrompt(
     '</your_task>',
     '',
     'Before working, read every required input artifact with read_artifact(artifactId).',
-    'When creating a declared expected output, call write_artifact with outputKey equal to that output id.',
+    'If expected_outputs are declared and your completed work creates an artifact, use write_artifact and pass outputKey equal to that output id.',
+    'If no expected_outputs are declared, complete the task with a normal message; do not create an artifact just to satisfy status tracking.',
     'Satisfy every acceptance_criteria item when present.',
+    'At the end, call report_task_result exactly once. A normal text response alone does not complete this dispatched task.',
+    'Use report_task_result.status="complete" only when you have FULLY accomplished the assigned task.',
+    'Never report complete if tests are failing, implementation is partial, unresolved errors remain, or you could not find necessary files/dependencies.',
+    'If acceptance_criteria are present, include acceptanceResults and copy each criterion string exactly with passed/evidence.',
+    'Use status="failed" when the task was attempted but did not satisfy the assignment; use status="blocked" when external input or unavailable prerequisites prevent progress.',
     '',
     '执行任务，必要时通过 read_artifact 获取上游产物详情。',
   ]
@@ -1746,7 +1795,9 @@ async function buildAggregatePrompt(
           return `    <artifact id="${a!.id}" type="${a!.type}"${outputAttr} title=${JSON.stringify(a!.title)} />`
         })
         .join('\n')
-      const inner = arts ? `\n${arts}\n  ` : ''
+      const report = r.taskReport ? renderTaskResultReportXml(r.taskReport) : ''
+      const innerContent = [report, arts].filter(Boolean).join('\n')
+      const inner = innerContent ? `\n${innerContent}\n  ` : ''
       const errAttr = r.error ? ` error=${JSON.stringify(r.error)}` : ''
       return `  <result task="${t.id}" agent="${t.agentId}" status="${r.status}"${errAttr}>${inner}</result>`
     })
@@ -1777,6 +1828,23 @@ async function buildAggregatePrompt(
 
   lines.push('', '请基于以上结果给用户输出最终总结消息。')
   return lines.join('\n')
+}
+
+function renderTaskResultReportXml(report: TaskResultReport): string {
+  const children = [`      <summary>${escapeXml(report.summary)}</summary>`]
+  for (const result of report.acceptanceResults ?? []) {
+    children.push(
+      `      <acceptance criterion=${xmlAttr(result.criterion)} passed=${xmlAttr(String(result.passed))}>${escapeXml(result.evidence)}</acceptance>`,
+    )
+  }
+  for (const blocker of report.blockers ?? []) {
+    children.push(`      <blocker>${escapeXml(blocker)}</blocker>`)
+  }
+  return [
+    `    <task_report status=${xmlAttr(report.status)}>`,
+    ...children,
+    '    </task_report>',
+  ].join('\n')
 }
 
 // ─── 杂项 ──────────────────────────────────────────────────

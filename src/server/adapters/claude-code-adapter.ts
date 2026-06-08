@@ -14,6 +14,7 @@ import { readIfExists } from '@/server/fs-service'
 import { newMessageId, newToolCallId } from '@/server/ids'
 import { pendingWrites } from '@/server/pending-writes'
 import { findBannedPattern } from '@/server/security'
+import { REPORT_TASK_RESULT_TOOL_NAME } from '@/server/task-result-report'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
 import { assertPathWithinWorkspace, getEffectiveCwd } from '@/server/workspace-utils'
@@ -102,15 +103,16 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',
       version: '1.0.0',
-      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成本地预览路径。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
+      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成本地预览路径。被分派为子任务时，结束前必须调用 report_task_result 上报真实任务结果。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
       tools: [
         tool(
           'write_artifact',
-          'Create a previewable artifact (web_app / document / image / ppt) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use this for content that should be previewed in a card — NOT for files in the workspace.',
+          'Create a previewable artifact (web_app / document / image / ppt) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use outputKey when a dispatched task declares expected_outputs. Use this for content that should be previewed in a card — NOT for files in the workspace.',
           {
             type: z.enum(['web_app', 'document', 'image', 'ppt']),
             title: z.string(),
             content: z.unknown(),
+            outputKey: z.string().optional(),
             parentArtifactId: z.string().optional(),
           },
           async (args) => {
@@ -159,6 +161,36 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
           { artifactId: z.string() },
           async (args) => {
             const result = await toolRegistry.execute('deploy_artifact', args, toolCtx)
+            if (!result.ok) {
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
+                isError: true,
+              }
+            }
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify(result.value) }],
+            }
+          },
+        ),
+        tool(
+          REPORT_TASK_RESULT_TOOL_NAME,
+          'Report the final semantic outcome of the current AgentHub sub-task. Call exactly once at the end of a dispatched child task. Use complete only when the assigned task is fully accomplished and every acceptance criterion passed; never report complete for partial work, failing tests, unresolved errors, or missing files/dependencies.',
+          {
+            status: z.enum(['complete', 'failed', 'blocked']),
+            summary: z.string(),
+            acceptanceResults: z
+              .array(
+                z.object({
+                  criterion: z.string(),
+                  passed: z.boolean(),
+                  evidence: z.string(),
+                }),
+              )
+              .optional(),
+            blockers: z.array(z.string()).optional(),
+          },
+          async (args) => {
+            const result = await toolRegistry.execute(REPORT_TASK_RESULT_TOOL_NAME, args, toolCtx)
             if (!result.ok) {
               return {
                 content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
@@ -229,7 +261,7 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       env: buildSdkEnv(input.apiKey, input.apiBaseUrl),
       ...(previousSessionId ? { resume: previousSessionId } : {}),
       canUseTool: (toolName, toolInput) =>
-        bridgePermission(toolName, toolInput, { workspace, approvalMode, input }),
+        bridgePermission(toolName, toolInput, { workspace, approvalMode, input, signal }),
     }
 
     try {
@@ -535,6 +567,7 @@ interface PermissionCtx {
   workspace: WorkspaceRow
   approvalMode: 'auto' | 'review'
   input: AdapterInput
+  signal: AbortSignal
 }
 
 async function bridgePermission(
@@ -605,7 +638,21 @@ async function bridgePermission(
     })
 
     const decision = await new Promise<{ applied: boolean }>((resolve) => {
-      pendingWrites.attachResolver(pending.id, resolve)
+      let settled = false
+      const finish = (decision: { applied: boolean }) => {
+        if (settled) return
+        settled = true
+        ctx.signal.removeEventListener('abort', onAbort)
+        resolve(decision)
+      }
+      const onAbort = () => {
+        pendingWrites.cancel(pending.id)
+        finish({ applied: false })
+      }
+
+      pendingWrites.attachResolver(pending.id, finish)
+      if (ctx.signal.aborted) onAbort()
+      else ctx.signal.addEventListener('abort', onAbort, { once: true })
     })
     if (!decision.applied) {
       return deny('User rejected the file change')

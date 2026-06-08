@@ -28,9 +28,9 @@ The compiler is deterministic and conservative:
 
 Validation still rejects duplicate ids, unknown dependencies, unavailable agents, self dependencies, and cycles after compilation.
 
-## Artifact Readiness
+## Artifact Handoff
 
-Task status `complete` is not sufficient when the task asks for an artifact. If an artifact-producing task completes with no artifact ids, the dispatch result is converted to `failed`, and downstream tasks are skipped by existing DAG logic.
+Artifact ids are used as dependency context and handoff data. Task completion is not inferred from artifact presence; child tasks must report semantic completion through the task result reporting contract. If a downstream task requires an artifact input that was not bound by the upstream result, the downstream task is skipped before launch.
 
 ## Dependency Context
 

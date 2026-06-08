@@ -18,19 +18,13 @@ The orchestration flow MUST produce a compiled and validated task plan before la
 
 ### Requirement: Child tasks SHALL respect dependency order
 
-AgentRunner MUST execute dispatch tasks as a DAG and skip dependent tasks when prerequisites fail, required inputs cannot be resolved, or required outputs are not produced.
+AgentRunner MUST execute dispatch tasks as a DAG and skip dependent tasks when prerequisites fail or required inputs cannot be resolved.
 
 #### Scenario: Required input is missing
 - **WHEN** a task declares a required input from an upstream output
 - **AND** the upstream task completed without binding an artifact to that output
 - **THEN** AgentRunner skips the downstream task
 - **AND** the dispatch end error explains the missing input.
-
-#### Scenario: Required expected output is missing
-- **WHEN** a child task declares a required expected output
-- **AND** the child run completes without creating an artifact bound to that output
-- **THEN** AgentRunner treats the child task as `failed`
-- **AND** dependent tasks are skipped.
 
 ### Requirement: Child task context SHALL include upstream artifacts
 

@@ -6,6 +6,7 @@ import { db, schema } from '@/db/client'
 import { verifyInternalToolToken } from '@/server/internal-tool-auth'
 import { deployArtifactTool } from '@/server/tools/deploy-artifact'
 import { readArtifactTool } from '@/server/tools/read-artifact'
+import { reportTaskResultTool } from '@/server/tools/report-task-result'
 import type { ToolContext } from '@/server/tools/types'
 import { writeArtifactTool } from '@/server/tools/write-artifact'
 import { getEffectiveCwd } from '@/server/workspace-utils'
@@ -16,6 +17,7 @@ const EXPOSED_TOOLS = {
   write_artifact: writeArtifactTool,
   read_artifact: readArtifactTool,
   deploy_artifact: deployArtifactTool,
+  report_task_result: reportTaskResultTool,
 }
 
 const BodySchema = z.object({

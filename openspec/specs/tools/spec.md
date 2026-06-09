@@ -46,7 +46,36 @@ Claude Code and Codex SDK adapters MUST document their built-in tool ownership a
 #### Scenario: Codex agent runs in review mode
 - **WHEN** a Codex agent is selected
 - **THEN** Codex uses read-only sandbox mode
-- **AND** AgentHub exposes only the allowlisted artifact MCP tools to Codex.
+- **AND** AgentHub exposes only the allowlisted AgentHub MCP tools to Codex.
+
+### Requirement: AgentHub SHALL inject tool-call guidance for available tools
+
+AgentHub MUST append usage guidance and concrete examples for the AgentHub-managed tools available to the current run. Guidance MUST be scoped to the actual tool set, and MUST call out common argument-shape mistakes for tools whose schemas are often confused.
+
+#### Scenario: Custom agent has file and artifact tools
+- **WHEN** a custom agent run is built with `fs_read`, `fs_write`, `read_artifact`, and `write_artifact`
+- **THEN** the injected system prompt includes examples for those tools
+- **AND** it does not instruct the agent to call unavailable tools such as `plan_tasks`.
+
+#### Scenario: SDK adapter receives AgentHub MCP tools
+- **WHEN** a Claude Code or Codex run is built
+- **THEN** the injected guidance includes the allowlisted AgentHub MCP tools exposed by that adapter
+- **AND** examples use the exact camelCase argument names accepted by the tool schemas.
+
+### Requirement: Agents SHALL be able to ask structured user questions
+
+AgentHub MUST provide an `ask_user` tool for finite user choices. The tool SHALL accept 1-4 questions, each with 2-4 options, and SHALL suspend the run until the user answers or the run is aborted.
+
+#### Scenario: Agent needs a blocking finite choice
+- **WHEN** an available agent tool call submits `ask_user` with valid questions
+- **THEN** AgentHub records a pending user question
+- **AND** emits the pending question through the conversation event stream
+- **AND** returns the selected answers to the agent after the user responds.
+
+#### Scenario: Orchestrator plan has a key ambiguity
+- **WHEN** the Orchestrator plan stage needs a blocking clarification expressible as 2-4 options
+- **THEN** the plan stage may call `ask_user` before `plan_tasks`
+- **AND** the aggregate stage does not expose `ask_user`.
 
 ### Requirement: Web app artifacts SHALL be deployable to preview URLs
 

@@ -42,13 +42,17 @@ CodexAdapter MUST use `@openai/codex-sdk` `runStreamed()` rather than treating C
 - **THEN** the adapter starts or resumes a Codex thread
 - **AND** translates thread, item, tool, and usage events into StreamEvent.
 
-### Requirement: SDK adapters SHALL expose AgentHub artifact tools through MCP
+### Requirement: SDK adapters SHALL expose allowlisted AgentHub tools through MCP
 
-Claude Code and Codex adapters MUST expose AgentHub artifact tools through adapter-owned MCP bridges rather than consuming per-agent `toolNames`.
+Claude Code and Codex adapters MUST expose allowlisted AgentHub tools through adapter-owned MCP bridges rather than consuming per-agent `toolNames`.
 
 #### Scenario: Codex creates and deploys an artifact
 - **WHEN** Codex calls the AgentHub MCP `write_artifact` or `deploy_artifact` tool
 - **THEN** the adapter translates the MCP result into `artifact.create` or `deploy.status`.
+
+#### Scenario: SDK agent asks a structured user question
+- **WHEN** Claude Code or Codex calls the AgentHub MCP `ask_user` tool
+- **THEN** AgentHub routes it through the shared pending question flow.
 
 ### Requirement: Codex Base URL SHALL be Responses compatible
 

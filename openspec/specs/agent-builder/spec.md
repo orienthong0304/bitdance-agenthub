@@ -31,6 +31,15 @@ Claude Code and Codex agents MUST persist `toolNames=[]` because their tools com
 - **WHEN** the form is submitted
 - **THEN** the saved agent has no custom tool names.
 
+### Requirement: Custom agents SHALL expose structured question tooling
+
+The agent builder MUST allow custom agents to enable `ask_user`, and newly created custom agents SHOULD include it in the default tool set.
+
+#### Scenario: User creates a custom agent
+- **WHEN** the create dialog opens for a Custom adapter agent
+- **THEN** `ask_user` is available in the tool checklist
+- **AND** it is selected by default.
+
 ### Requirement: Codex agent configuration SHALL reject unsupported base URLs
 
 The agent builder MUST validate known unsupported Codex base URLs before saving or running the agent.

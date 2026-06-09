@@ -72,6 +72,7 @@ export const toolRegistry = buildRegistry()
 | `deploy_artifact` | 为 web_app 生成部署发布状态 | 写 `.agenthub-data/deployments`；可选发布到用户配置的外部静态目录；返回 preview path 与下载路径 | 前端 / web app 产出 agent |
 | `read_artifact` | 读已有产物的完整内容 | 读 DB | 跨任务复用产物的 agent（Orchestrator 派的子 agent 常用） |
 | `read_attachment` | 读用户上传附件 | 读文件系统 | 处理用户文档 / 文本附件的 agent |
+| `ask_user` | 向用户发起结构化选择题 | 等待用户回答（in-memory pending） | 需要澄清范围 / 风格 / 平台 / 风险选择的 agent |
 | `plan_tasks` | Orchestrator 拆解子任务 | 无（输出端工具） | **仅 Orchestrator** |
 | `report_task_result` | 子任务上报最终语义结果 | 无（输出端工具） | Orchestrator 派发的子 agent（AgentRunner 自动注入） |
 | `fs_read` | 读 workspace 内文本文件 | 读文件系统 | 需要看用户项目代码的 agent |
@@ -146,6 +147,40 @@ export const toolRegistry = buildRegistry()
 - 其他二进制（PDF / docx / zip）：仅返回 metadata + note。**TODO**：PDF 文本抽取（标 P1，需引入 `pdf-parse` 类依赖，按 CLAUDE.md §6.2 要先讨论）
 
 **容量**：`MAX_TEXT_CHARS = 50_000`。
+
+### ask_user
+
+源文件：`src/server/tools/ask-user.ts`、`src/server/pending-questions.ts`
+
+**用途**：当 agent 继续执行前需要用户在有限方案中选择时，调用 `ask_user` 发起结构化问答。典型场景：需求范围、目标平台、设计风格、实现路线、破坏性操作、验收标准。开放式讨论、非关键细节，或 agent 能做出保守合理判断时，不应打断用户。
+
+**参数**：
+
+```typescript
+{
+  questions: Array<{
+    question: string
+    header: string
+    options: Array<{
+      label: string
+      description?: string
+      preview?: string
+    }>
+    multiSelect?: boolean
+  }>
+}
+```
+
+每次 1-4 个问题；每题 2-4 个选项。`header` 是短标签，`question` 是完整问题，`options[].description` 用来说明取舍。推荐方案应放在第一个选项，并在描述里解释原因。
+
+**返回值**：`{ answers: Record<question, string> }`，其中 value 是用户选择的 label 列表与可选 freeform note 拼接后的文本。
+
+**运行机制**：handler 注册 `PendingQuestion`，通过 SSE 推 `ask_user.pending`；桌面端 `AskUserQuestionDialog` 与移动端 pending question UI 都可以提交答案。答案提交后 `pendingQuestions.answer()` 唤醒工具调用并继续 agent run。
+
+**装备与注入**：
+- Custom agent 只有 `toolNames` 包含 `ask_user` 才能调用；内置 agents 与新建自定义 agent 默认装备。
+- Claude Code / Codex adapter 通过 AgentHub MCP 暴露 `ask_user`，不依赖 `Agent.toolNames`。
+- Orchestrator 计划阶段会强制注入 `ask_user`，用于关键歧义澄清；聚合阶段不带该工具，避免最终总结前再次打断用户。
 
 ### plan_tasks
 
@@ -398,7 +433,7 @@ LLM 决定调用 →  Adapter emit  tool.call (StreamEvent)
 
 **副作用**：sandbox 模式 quota（`SANDBOX_TOTAL_BYTES` / `SANDBOX_TOTAL_FILES`）对 Claude Code agent 失效（SDK 自己写盘绕过 quota 检查）。Claude Code agent 实际场景都是 `workspace.mode === 'local'`（绑真实项目），quota 不适用，可接受。
 
-**AgentHub MCP 工具**：Claude Code adapter 通过 SDK in-process MCP server 暴露 `write_artifact` / `read_artifact` / `deploy_artifact` / `ask_user`。其中 `write_artifact` 和 `deploy_artifact` 的结果会被 adapter 翻译为 `artifact.create` / `deploy.status`。
+**AgentHub MCP 工具**：Claude Code adapter 通过 SDK in-process MCP server 暴露 `write_artifact` / `read_artifact` / `deploy_artifact` / `ask_user` / `report_task_result`。其中 `write_artifact` 和 `deploy_artifact` 的结果会被 adapter 翻译为 `artifact.create` / `deploy.status`。
 
 ---
 
@@ -406,7 +441,7 @@ LLM 决定调用 →  Adapter emit  tool.call (StreamEvent)
 
 `adapterName === 'codex'` 的 agent 不消费上面的「内置工具清单」。它通过 `@openai/codex-sdk` 暴露 Codex 自身的本地命令、文件变更、MCP、web search、todo/plan 等事件。
 
-AgentHub 额外给 Codex 注入一个 stdio MCP bridge，只暴露 allowlist：`write_artifact` / `read_artifact` / `deploy_artifact`。bridge 通过受保护的内部 API 调用 `toolRegistry`，不会把 `bash` / `fs_write` 等 AgentHub 工具开放给 Codex。
+AgentHub 额外给 Codex 注入一个 stdio MCP bridge，只暴露 allowlist：`write_artifact` / `read_artifact` / `deploy_artifact` / `ask_user` / `report_task_result`。bridge 通过受保护的内部 API 调用 `toolRegistry`，不会把 `bash` / `fs_write` 等 AgentHub 工具开放给 Codex。
 
 **审批策略**：当前 Codex TypeScript SDK 没有 Claude `canUseTool` 等价 hook。AgentHub 因此不在 Review 模式下开放自动写盘：
 

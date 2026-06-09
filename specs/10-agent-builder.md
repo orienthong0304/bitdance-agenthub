@@ -32,7 +32,7 @@
 | `name` | string | ✓ | — | trim 后非空 |
 | `description` | string | ✓ | — | trim 后非空，UI 一句话简介 |
 | `capabilities` | string[] | — | `[]` | 用逗号 / 空格 / 中文逗号分隔，自动 split |
-| `systemPrompt` | string | ✓ | — | 决定 agent 行为 |
+| `systemPrompt` | string | ✓ | Custom agent scaffold | 决定 agent 行为；创建态默认填入可编辑的 harness 模板 |
 | `modelProvider` | enum | — | `'deepseek'` | 见下方 Provider 矩阵 |
 | `modelId` | string | — | provider 默认 | 切换 provider 时自动重置 |
 | `apiKey` | string | — | `''` | 命名 provider 留空走 env var；`openai-compatible` 必填 per-agent key |
@@ -230,6 +230,7 @@ zod 校验 body 在每个 route 文件内。
 
 ## 表单 UX 注意点
 
+- **新建 Custom agent 预填 system prompt**：创建态默认填入一段可编辑模板，强调先判断上下文、少而准地用工具、产物走 `write_artifact`、网页完成后 `deploy_artifact`、`fs_write` / `bash` 只在 workspace 范围内必要时使用。用户可直接替换
 - **Provider 切换重置 modelId**：避免 `provider=openai, modelId=deepseek-v4-flash` 这种串味；`openai-compatible` 默认 modelId 为空，强制用户填写目标平台模型名
 - **API key 输入是 password 类型 + autocomplete=off**：防止浏览器把它存进 form autofill
 - **错误提示就近显示**：submit 失败时在 footer 上方显示 inline red banner，不用 toast

@@ -47,6 +47,16 @@ import { useAppStore } from '@/stores/app-store'
 type AgentTab = 'basic' | 'model' | 'toolsPrompt'
 type CreateStep = 'choose' | 'wizard' | 'detail'
 
+const DEFAULT_CUSTOM_SYSTEM_PROMPT = `你是一个 AgentHub custom agent。你的任务是理解用户目标，使用已启用的工具完成工作，并把结果清晰交付给用户。
+
+工作原则：
+1. 先判断需要什么上下文；只有在用户提到附件、已有产物或工作区文件时，才调用对应读取工具。
+2. 多步骤任务先给自己形成简短计划，但不要把固定流程强加给简单问题。
+3. 工具调用要少而准确；每次调用都应服务于当前目标。
+4. 产出代码、网页、文档或设计稿时，优先用 write_artifact 创建结构化产物；网页产物完成后再调用 deploy_artifact。
+5. 使用 fs_write 或 bash 前确认确有必要，并只在当前 workspace 范围内操作。
+6. 最终回复保持简洁，说明完成了什么、产物在哪里、还剩什么需要用户决策。`
+
 /**
  * 创建 / 编辑 Agent 的对话框。
  *
@@ -116,7 +126,7 @@ export function CreateAgentDialog({
       setName('')
       setDescription('')
       setCapabilitiesText('')
-      setSystemPrompt('')
+      setSystemPrompt(DEFAULT_CUSTOM_SYSTEM_PROMPT)
       setProvider('deepseek')
       setModelId(PROVIDER_DEFAULTS.deepseek.defaultModel)
       setToolNames(new Set(DEFAULT_CUSTOM_AGENT_TOOLS))
@@ -140,6 +150,7 @@ export function CreateAgentDialog({
     } else {
       setModelId(PROVIDER_DEFAULTS[provider].defaultModel)
       setToolNames((prev) => (prev.size === 0 ? new Set(DEFAULT_CUSTOM_AGENT_TOOLS) : prev))
+      setSystemPrompt((prev) => (prev.trim() ? prev : DEFAULT_CUSTOM_SYSTEM_PROMPT))
     }
   }
 

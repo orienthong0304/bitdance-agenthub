@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "dist-electron/**",
+    ".tmp/**",
     "release/**",
     "apps/mobile/android/**/build/**",
     "apps/mobile/android/app/src/main/assets/**",

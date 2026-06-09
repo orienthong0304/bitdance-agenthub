@@ -15,6 +15,15 @@ New agents MUST default to `adapterName='custom'` unless the user selects Claude
 - **THEN** adapter kind defaults to Custom
 - **AND** provider defaults to DeepSeek.
 
+### Requirement: New custom agents SHALL start with an editable harness prompt
+
+The create dialog MUST prefill `systemPrompt` with a concise Custom agent scaffold that explains goal handling, context loading, tool use, artifact output, workspace safety, and final response expectations.
+
+#### Scenario: User opens create dialog
+- **WHEN** no existing agent is being edited
+- **THEN** the System Prompt field contains the default Custom agent scaffold
+- **AND** the user can edit or replace it before saving.
+
 ### Requirement: Custom agents SHALL require provider and model
 
 Custom agents MUST have `modelProvider` and a non-empty `modelId`; SDK agents SHALL ignore `modelProvider`.

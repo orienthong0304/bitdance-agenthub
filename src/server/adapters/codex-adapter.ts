@@ -169,6 +169,7 @@ function buildCodexDeveloperInstructions(systemPrompt: string): string {
     '',
     '## AgentHub MCP tools',
     'When you create a previewable web app, use the AgentHub MCP write_artifact tool with type "web_app". After that, call deploy_artifact with the artifactId so the user receives a deployment status card with open/copy/download actions.',
+    'When progress depends on the user choosing from a finite set of options, use ask_user to present structured choices instead of asking only in plain text. Do not use ask_user for open-ended discussion or non-blocking details.',
     'When you are executing an AgentHub dispatched sub-task, call report_task_result exactly once at the end to report whether the task is complete, failed, or blocked.',
     'deploy_artifact returns previewPath as a local relative path for the current AgentHub instance. Do not convert it into an absolute public URL and do not invent hostnames. In user-facing summaries, tell the user to use the deployment card buttons or quote previewPath exactly.',
   ].join('\n')

@@ -30,7 +30,7 @@ server.registerTool(
       outputKey: z
         .string()
         .optional()
-        .describe('Optional Orchestrator handoff key matching expected_outputs.id.'),
+        .describe('Optional Orchestrator handoff key matching the dispatched task expected output id.'),
       parentArtifactId: z.string().optional(),
     },
   },
@@ -58,6 +58,37 @@ server.registerTool(
     },
   },
   async (args) => callAgentHubTool('deploy_artifact', args),
+)
+
+server.registerTool(
+  'ask_user',
+  {
+    description:
+      'Ask the user one or more structured multiple-choice questions with 2-4 options. Prefer this over plain text when progress depends on a finite user choice, such as scope, target platform, design direction, implementation route, destructive action, or acceptance criteria. Do not use it for open-ended discussion or non-blocking details.',
+    inputSchema: {
+      questions: z
+        .array(
+          z.object({
+            question: z.string(),
+            header: z.string(),
+            multiSelect: z.boolean().optional(),
+            options: z
+              .array(
+                z.object({
+                  label: z.string(),
+                  description: z.string().optional(),
+                  preview: z.string().optional(),
+                }),
+              )
+              .min(2)
+              .max(4),
+          }),
+        )
+        .min(1)
+        .max(4),
+    },
+  },
+  async (args) => callAgentHubTool('ask_user', args),
 )
 
 server.registerTool(

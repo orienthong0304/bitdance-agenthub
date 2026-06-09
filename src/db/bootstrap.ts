@@ -22,6 +22,9 @@ import { BUILTIN_AGENTS } from './builtin-agents'
 
 const FRONTEND_DEPLOYMENT_PROMPT_HINT =
   'deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径，不要在文字总结里把它改写成公网域名或自造完整 URL；让用户点击部署卡片按钮，或原样引用 previewPath。'
+const BUILTIN_TOOL_UPGRADES = new Map(
+  BUILTIN_AGENTS.map((agent) => [agent.id, agent.toolNames] as const),
+)
 
 const DDL: string[] = [
   // ─── agents ────────────────────────────────────
@@ -227,41 +230,54 @@ function ensureBuiltinAgents(sqlite: Database.Database): void {
 }
 
 function upgradeBuiltinAgents(sqlite: Database.Database): void {
-  const frontend = sqlite
-    .prepare('SELECT id, tool_names, system_prompt FROM agents WHERE id = ? AND is_builtin = 1')
-    .get('ag_frontend') as { id: string; tool_names: string; system_prompt: string } | undefined
-  if (!frontend) return
+  const rows = sqlite
+    .prepare('SELECT id, tool_names, system_prompt FROM agents WHERE is_builtin = 1')
+    .all() as { id: string; tool_names: string; system_prompt: string }[]
 
-  let changed = false
-  let toolNames: string[]
-  try {
-    const parsed = JSON.parse(frontend.tool_names) as unknown
-    toolNames = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
-  } catch {
-    toolNames = []
-  }
-  if (!toolNames.includes('deploy_artifact')) {
-    const insertAfter = toolNames.indexOf('write_artifact')
-    if (insertAfter >= 0) toolNames.splice(insertAfter + 1, 0, 'deploy_artifact')
-    else toolNames.push('deploy_artifact')
-    changed = true
-  }
+  const update = sqlite.prepare(
+    'UPDATE agents SET tool_names = ?, system_prompt = ? WHERE id = ? AND is_builtin = 1',
+  )
 
-  let systemPrompt = frontend.system_prompt
-  if (!systemPrompt.includes('deploy_artifact')) {
-    systemPrompt +=
-      '\n\n完成 web_app 产物后必须调用 deploy_artifact，让用户在消息里拿到部署状态卡和可打开的本地预览路径。'
-    changed = true
-  }
-  if (!systemPrompt.includes('不要在文字总结里把它改写成公网域名')) {
-    systemPrompt += `\n\n${FRONTEND_DEPLOYMENT_PROMPT_HINT}`
-    changed = true
-  }
+  for (const row of rows) {
+    let changed = false
+    let toolNames: string[]
+    try {
+      const parsed = JSON.parse(row.tool_names) as unknown
+      toolNames = Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === 'string')
+        : []
+    } catch {
+      toolNames = []
+    }
 
-  if (!changed) return
-  sqlite
-    .prepare('UPDATE agents SET tool_names = ?, system_prompt = ? WHERE id = ? AND is_builtin = 1')
-    .run(JSON.stringify(toolNames), systemPrompt, frontend.id)
+    for (const toolName of BUILTIN_TOOL_UPGRADES.get(row.id) ?? []) {
+      if (toolNames.includes(toolName)) continue
+      if (toolName === 'deploy_artifact') {
+        const insertAfter = toolNames.indexOf('write_artifact')
+        if (insertAfter >= 0) toolNames.splice(insertAfter + 1, 0, toolName)
+        else toolNames.push(toolName)
+      } else {
+        toolNames.push(toolName)
+      }
+      changed = true
+    }
+
+    let systemPrompt = row.system_prompt
+    if (row.id === 'ag_frontend' && !systemPrompt.includes('deploy_artifact')) {
+      systemPrompt +=
+        '\n\n完成 web_app 产物后必须调用 deploy_artifact，让用户在消息里拿到部署状态卡和可打开的本地预览路径。'
+      changed = true
+    }
+    if (
+      row.id === 'ag_frontend' &&
+      !systemPrompt.includes('不要在文字总结里把它改写成公网域名')
+    ) {
+      systemPrompt += `\n\n${FRONTEND_DEPLOYMENT_PROMPT_HINT}`
+      changed = true
+    }
+
+    if (changed) update.run(JSON.stringify(toolNames), systemPrompt, row.id)
+  }
 }
 
 export function bootstrapDatabase(sqlite: Database.Database): void {

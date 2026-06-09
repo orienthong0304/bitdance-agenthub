@@ -45,8 +45,23 @@ const PROVIDER_DEFAULTS: Record<Provider, { label: string; defaultModel: string 
 const CLAUDE_CODE_DEFAULT_MODEL = 'claude-opus-4-7'
 const CODEX_DEFAULT_MODEL = 'gpt-5-codex'
 
-const AVAILABLE_TOOLS = ['write_artifact', 'deploy_artifact', 'read_artifact', 'read_attachment', 'fs_read', 'fs_write', 'bash'] as const
-const DEFAULT_CUSTOM_TOOLS = ['write_artifact', 'deploy_artifact', 'read_artifact', 'read_attachment'] as const
+const AVAILABLE_TOOLS = [
+  'write_artifact',
+  'deploy_artifact',
+  'read_artifact',
+  'read_attachment',
+  'ask_user',
+  'fs_read',
+  'fs_write',
+  'bash',
+] as const
+const DEFAULT_CUSTOM_TOOLS = [
+  'write_artifact',
+  'deploy_artifact',
+  'read_artifact',
+  'read_attachment',
+  'ask_user',
+] as const
 
 // 工具勾选项的「面向用户」文案：label 讲它能做什么，desc 讲授予的权限边界。
 // 新增工具时记得在这里补一条（详见 specs/10-agent-builder.md「工具勾选」）。
@@ -58,6 +73,7 @@ const TOOL_META: Record<
   deploy_artifact: { label: '部署网页', desc: '把网页产物发布为本地静态站点，生成预览链接与下载包' },
   read_artifact: { label: '读取产物', desc: '查看会话中已有产物的完整内容，便于在其基础上继续改' },
   read_attachment: { label: '读取附件', desc: '读取用户上传的文本 / 文件附件内容' },
+  ask_user: { label: '结构化提问', desc: '让用户在明确选项中选择，用于范围、风格、平台等关键澄清' },
   fs_read: { label: '读取文件', desc: '读取工作区内的文件（源码 / 配置等），仅限沙箱目录' },
   fs_write: { label: '写入文件', desc: '在工作区内新建 / 修改文件；review 模式下需用户批准' },
   bash: { label: '执行命令', desc: '在工作区内运行命令行；受命令黑名单与沙箱目录约束' },

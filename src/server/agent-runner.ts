@@ -179,6 +179,7 @@ class Semaphore {
 
 const SUB_AGENT_CONTEXT_RECENT_LIMIT = 5
 const MAX_CONCURRENT_SUB_AGENT_RUNS = 4
+const ASK_USER_TOOL_NAME = 'ask_user'
 /** Orchestrator 动态重规划上限：首轮 + 最多 (N-1) 轮补救（呼应 spec 06「不无限重试」）。 */
 const MAX_DISPATCH_ROUNDS = 2
 
@@ -501,8 +502,10 @@ async function executeOrchestratorRun(
     lastConflicts,
     workspace,
   )
-  // Aggregate 阶段不再带 plan_tasks 工具，避免重复拆解
-  const aggregateToolNames = agent.toolNames.filter((n) => n !== 'plan_tasks')
+  // Aggregate 阶段不再带 plan_tasks / ask_user，避免重复拆解或在最终总结前再次打断用户。
+  const aggregateToolNames = agent.toolNames.filter(
+    (n) => n !== 'plan_tasks' && n !== ASK_USER_TOOL_NAME,
+  )
 
   const aggStream = agentRegistry
     .getAdapter(agent)
@@ -547,7 +550,10 @@ async function runPlanStage(
   resolvedExternalTasks: readonly DispatchPlanItem[] = [],
 ): Promise<{ plan: DispatchPlanItem[] | null; planRun: RunExecutionResult }> {
   const planSystemPrompt = buildOrchestratorPlanPrompt(agent.systemPrompt, otherAgents)
-  const planToolNames = ensureIncludes(agent.toolNames, 'plan_tasks')
+  const planToolNames = ensureIncludes(
+    ensureIncludes(agent.toolNames, 'plan_tasks'),
+    ASK_USER_TOOL_NAME,
+  )
   // 补救轮：把上一轮结果摘要拼到 prompt 前，原始请求仍保留供 Orchestrator 参考
   const effectivePrompt = replanContext
     ? `${replanContext}\n\n<original_request>\n${userPrompt}\n</original_request>`
@@ -1368,6 +1374,8 @@ async function buildAdapterInput(
   const effectiveCwd = getEffectiveCwd(workspace)
   const baseSystemPrompt = systemPromptOverride ?? agent.systemPrompt
   let systemPromptWithWorkspace = buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
+  const toolGuidance = buildAgentHubToolGuidance(agent, toolNames)
+  if (toolGuidance) systemPromptWithWorkspace += '\n\n' + toolGuidance
 
   // Key 优先级：agent.apiKey (per-agent) > app_settings.* (用户全局自填) > adapter 内部 fallback env var
   // 只在 per-agent 字段为空时才注入全局 settings，避免覆盖用户的精细配置
@@ -1512,6 +1520,122 @@ function buildWorkspaceContextBlock(workspace: WorkspaceRow): string {
 
 // ─── Prompt 构造 ───────────────────────────────────────────
 
+function buildAgentHubToolGuidance(agent: AgentRow, toolNames: string[]): string {
+  const tools = new Set(toolNames)
+  if (agent.adapterName === 'claude-code' || agent.adapterName === 'codex') {
+    for (const toolName of [
+      'write_artifact',
+      'read_artifact',
+      'deploy_artifact',
+      ASK_USER_TOOL_NAME,
+      REPORT_TASK_RESULT_TOOL_NAME,
+    ]) {
+      tools.add(toolName)
+    }
+  }
+
+  const sections: string[] = []
+  const add = (lines: string[]) => sections.push(lines.join('\n'))
+
+  if (tools.size > 0) {
+    add([
+      '## AgentHub 工具调用规范',
+      '- 需要调用工具时，必须用工具调用通道提交结构化参数，不要把 JSON 示例写进普通回复里假装调用。',
+      '- 字段名必须严格使用工具 schema 里的 camelCase，例如 artifactId、attachmentId、parentArtifactId、outputKey、dependsOn、expectedOutputs、acceptanceCriteria、acceptanceResults。',
+      '- 不要编造 artifactId、attachmentId、outputKey、文件路径；只能使用上下文里明确给出的 id / 路径。',
+      '- 工具返回 ok:false 或 isError=true 时，先根据错误修正参数；不要继续基于失败结果推进。',
+    ])
+  }
+
+  if (tools.has(ASK_USER_TOOL_NAME)) {
+    add([
+      '### ask_user',
+      '用途：当继续执行前需要用户在有限方案中选择时，发起结构化问答；不要只在普通文本里问。',
+      '正确案例：产品范围不清，调用 ask_user({ questions: [{ header: "范围", question: "这次先做哪个范围?", options: [{ label: "核心流程", description: "先打通主路径，风险最低" }, { label: "完整后台", description: "覆盖更多页面，但耗时更长" }] }] })。',
+      '参数规则：每次 1-4 个 questions，每题 2-4 个 options；header 是短标签，question 是完整问题，label 是按钮短文本，description 写清选择后果。',
+      '错误案例：直接回复“你想做核心流程还是完整后台？”然后停止；这样 UI 不会出现结构化选择，也不会阻塞 run 等待答案。',
+      '不要滥用：开放式讨论、非关键细节、或可以保守决策时，直接说明假设并继续。',
+    ])
+  }
+
+  if (tools.has('read_attachment')) {
+    add([
+      '### read_attachment',
+      '用途：用户上传了文本/文件附件且任务依赖附件内容时，先读取附件；不要只凭文件名猜测。',
+      '正确案例：看到上下文有 attachmentId="att_123"，调用 read_attachment({ attachmentId: "att_123" }) 后再总结或实现。',
+      '常见错误：传 { id: "att_123" } 或把 art_* 产物 id 传给 read_attachment；产物必须用 read_artifact。',
+      '错误案例：把“需求.docx”文件名当作完整需求内容。',
+    ])
+  }
+
+  if (tools.has('read_artifact')) {
+    add([
+      '### read_artifact',
+      '用途：需要基于已有产物继续设计、实现、审查或修改时，先读取完整产物内容。',
+      '正确案例：上游只给出 <artifact id="art_123" />，调用 read_artifact({ artifactId: "art_123" })。',
+      '常见错误：传 { id: "art_123" }、{ artifact_id: "art_123" }，或把 att_* 附件 id 传给 read_artifact。',
+      '错误案例：只根据 artifact 标题或摘要判断内容，直接改写或审查。',
+    ])
+  }
+
+  if (tools.has('write_artifact')) {
+    add([
+      '### write_artifact',
+      '用途：创建用户需要预览、下载、交接或长期保存的产物；不要用它记录普通聊天结论。',
+      'web_app 正确参数：write_artifact({ type: "web_app", title: "登录页原型", content: { files: { "index.html": "<!doctype html>...", "style.css": "body { ... }", "script.js": "..." }, entry: "index.html" } })。',
+      'document 正确参数：write_artifact({ type: "document", title: "PRD", content: { format: "markdown", content: "# PRD\\n..." } })。',
+      '常见错误：把 content 作为 JSON 字符串传入，例如 content: "{\\"format\\":\\"markdown\\"}"；必须传原始对象。',
+      '字段名必须是 parentArtifactId、outputKey；不要写 parent_artifact_id、output_key。',
+      '如果子任务声明 expectedOutputs，创建对应产物时传 outputKey 等于 expectedOutputs.id。',
+    ])
+  }
+
+  if (tools.has('deploy_artifact')) {
+    add([
+      '### deploy_artifact',
+      '用途：web_app 产物完成后生成可打开的预览部署卡。',
+      '正确流程：先 write_artifact 得到 artifactId="art_123"，再 deploy_artifact({ artifactId: "art_123" })。',
+      '常见错误：传 { id: "art_123" }、传还没创建的 id、或对旧版本 id 误部署。',
+      '错误案例：自己编造 http://localhost:3000/... 或公网域名；只能引用工具返回的 previewPath，或让用户点击部署卡按钮。',
+      '不要对 document/image/ppt 调用 deploy_artifact；它只接受 web_app。',
+    ])
+  }
+
+  if (tools.has('fs_read') || tools.has('fs_write') || tools.has('bash')) {
+    add([
+      '### workspace 文件与命令工具',
+      '用途：只操作当前 workspace 内的真实文件；路径必须在 <workspace_info><cwd> 下。',
+      'fs_read 正确案例：fs_read({ path: "src/app/page.tsx" })，先看现有代码再改。',
+      'fs_write 正确案例：fs_write({ path: "src/app/page.tsx", content: "完整的新文件内容" })；content 是完整文件内容，不是 diff patch。',
+      'bash 正确案例：bash({ command: "pnpm typecheck" })，用于验证改动。',
+      '常见错误：fs_write 只写局部 diff、bash 里 cd 到 workspace 外、或在 Windows workspace 用 POSIX-only 参数。',
+      '错误案例：读取 ~/.ssh、/etc、仓库外路径，或在没有看文件的情况下覆盖代码。',
+    ])
+  }
+
+  if (tools.has('plan_tasks')) {
+    add([
+      '### plan_tasks',
+      '用途：Orchestrator 用结构化计划拆分子任务；执行顺序只认 dependsOn 字段。',
+      '正确案例：实现依赖设计时，t2.dependsOn=["t1"]，不要只在 task 文本里写“基于 t1”。',
+      '字段名必须是 agentId、dependsOn、expectedOutputs、acceptanceCriteria；不要写 agent_id、depends_on、expected_outputs、acceptance_criteria。',
+      '文字型审查/诊断任务不要声明 expectedOutputs；把完成条件写进 acceptanceCriteria。',
+    ])
+  }
+
+  if (tools.has(REPORT_TASK_RESULT_TOOL_NAME)) {
+    add([
+      '### report_task_result',
+      '用途：被 Orchestrator 分派的子任务结束前必须调用一次，报告真实语义结果。',
+      '正确案例：report_task_result({ status: "complete", summary: "已实现并通过类型检查", acceptanceResults: [{ criterion: "通过 typecheck", passed: true, evidence: "pnpm typecheck exited 0" }] })。',
+      '字段名必须是 acceptanceResults；不要写 acceptance_results。',
+      '错误案例：代码部分完成、测试失败、或缺少依赖时仍上报 complete；应使用 failed 或 blocked 并说明原因。',
+    ])
+  }
+
+  return sections.join('\n\n')
+}
+
 /**
  * 群聊场景追加到 system prompt 末尾的前缀语义说明。
  * 对应 conversation-context.ts 把别 agent 发言渲染成 `[名字] ...` user 消息的契约。
@@ -1540,8 +1664,9 @@ function buildOrchestratorPlanPrompt(baseSystemPrompt: string, otherAgents: Agen
     '',
     '## 你的工作流',
     '1. 阅读用户最新请求与上下文。',
-    '2. 调用 plan_tasks 工具，输出结构化 plan。',
-    '3. 系统会自动执行 plan 并把子任务结果回传给你，由你做最终总结。',
+    '2. 如果存在会阻塞正确规划的关键歧义，且能归纳为 2-4 个清晰选项，先调用 ask_user 让用户选择；拿到答案后继续。',
+    '3. 调用 plan_tasks 工具，输出结构化 plan。',
+    '4. 系统会自动执行 plan 并把子任务结果回传给你，由你做最终总结。',
     '',
     '## 可用 Agent',
     agentList.length > 0 ? agentList : '（无）',
@@ -1549,7 +1674,8 @@ function buildOrchestratorPlanPrompt(baseSystemPrompt: string, otherAgents: Agen
     '## 拆解原则',
     '- 充分利用每个 Agent 的 capabilities，不要把任务派给不合适的人。',
     '- 每个子任务必须独立可执行（被分派的 Agent 看不到完整群聊上下文，必要上下文要写进 task）。',
-    '- 你只能调用 plan_tasks 工具，不要直接给用户输出最终答案。',
+    '- 计划阶段只能调用 ask_user 和 plan_tasks；除关键澄清外，不要直接给用户输出最终答案。',
+    '- 若用户需求已足够明确，不要为了形式感提问，直接 plan_tasks。',
     '',
     '## 依赖关系（执行顺序的唯一来源，务必读完）',
     '- 系统【只】按每个任务的 dependsOn 决定顺序：dependsOn 为空的任务会【同时并发】启动。',

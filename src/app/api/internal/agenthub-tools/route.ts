@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { db, schema } from '@/db/client'
 import { verifyInternalToolToken } from '@/server/internal-tool-auth'
+import { askUserTool } from '@/server/tools/ask-user'
 import { deployArtifactTool } from '@/server/tools/deploy-artifact'
 import { readArtifactTool } from '@/server/tools/read-artifact'
 import { reportTaskResultTool } from '@/server/tools/report-task-result'
@@ -17,6 +18,7 @@ const EXPOSED_TOOLS = {
   write_artifact: writeArtifactTool,
   read_artifact: readArtifactTool,
   deploy_artifact: deployArtifactTool,
+  ask_user: askUserTool,
   report_task_result: reportTaskResultTool,
 }
 

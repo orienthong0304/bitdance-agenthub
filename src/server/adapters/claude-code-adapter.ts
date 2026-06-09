@@ -103,11 +103,11 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',
       version: '1.0.0',
-      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成本地预览路径。被分派为子任务时，结束前必须调用 report_task_result 上报真实任务结果。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
+      instructions: '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片），用 read_artifact 读其他 Agent 的产物，用 deploy_artifact 为 web_app 生成本地预览路径。需要用户在有限方案中选择时，用 ask_user 发起结构化问答，不要只在普通文本里提问。被分派为子任务时，结束前必须调用 report_task_result 上报真实任务结果。deploy_artifact 返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
       tools: [
         tool(
           'write_artifact',
-          'Create a previewable artifact (web_app / document / image / ppt) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use outputKey when a dispatched task declares expected_outputs. Use this for content that should be previewed in a card — NOT for files in the workspace.',
+          'Create a previewable artifact (web_app / document / image / ppt) in the current conversation, or a new version of an existing one (pass parentArtifactId; version auto-increments). Use outputKey when a dispatched task declares an expected output id. Use this for content that should be previewed in a card — NOT for files in the workspace.',
           {
             type: z.enum(['web_app', 'document', 'image', 'ppt']),
             title: z.string(),
@@ -204,22 +204,28 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
         ),
         tool(
           'ask_user',
-          'Ask the user one or more structured multiple-choice questions with 2-4 options. Use only when there is a clear set of choices — for open-ended questions, just ask in text. Returns answers keyed by question text.',
+          'Ask the user one or more structured multiple-choice questions with 2-4 options. Prefer this over plain text when progress depends on a finite user choice, such as scope, target platform, design direction, implementation route, destructive action, or acceptance criteria. Do not use it for open-ended discussion or non-blocking details. Returns answers keyed by question text.',
           {
-            questions: z.array(
-              z.object({
-                question: z.string(),
-                header: z.string(),
-                multiSelect: z.boolean().optional(),
-                options: z.array(
-                  z.object({
-                    label: z.string(),
-                    description: z.string().optional(),
-                    preview: z.string().optional(),
-                  }),
-                ),
-              }),
-            ),
+            questions: z
+              .array(
+                z.object({
+                  question: z.string(),
+                  header: z.string(),
+                  multiSelect: z.boolean().optional(),
+                  options: z
+                    .array(
+                      z.object({
+                        label: z.string(),
+                        description: z.string().optional(),
+                        preview: z.string().optional(),
+                      }),
+                    )
+                    .min(2)
+                    .max(4),
+                }),
+              )
+              .min(1)
+              .max(4),
           },
           async (args) => {
             const result = await toolRegistry.execute('ask_user', args, toolCtx)

@@ -4,6 +4,7 @@ import { CornerUpLeft, X } from 'lucide-react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import type { MessageRow } from '@/db/schema'
+import { getToolDisplayName } from '@/lib/tool-display'
 import { cn } from '@/lib/utils'
 import type { MessagePart } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -73,7 +74,7 @@ export function extractMessageSummary(parts: MessagePart[]): string {
   }
   for (const p of parts) {
     if (p.type === 'code') return `[代码块 ${p.language || ''}]`
-    if (p.type === 'tool_use') return `[调用 ${p.toolName}]`
+    if (p.type === 'tool_use') return `[调用 ${getToolDisplayName(p.toolName)}]`
     if (p.type === 'artifact_ref') return `[产物引用]`
     if (p.type === 'thinking' && p.content) return `[思考] ${p.content.slice(0, 60)}`
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Package, Presentation, Rocket, Sparkles, Terminal, XCircle } from 'lucide-react'
-import type { MouseEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,6 +11,7 @@ import { CodeBlock } from '@/components/code-block'
 import { Markdown } from '@/components/markdown'
 import { artifactPreviewPath } from '@/lib/artifact-preview'
 import { deployConversationArtifact, fetchArtifact } from '@/lib/api'
+import { getToolDisplayName, isBashToolName } from '@/lib/tool-display'
 import { cn } from '@/lib/utils'
 import type { MessagePart } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -276,10 +277,11 @@ function ToolUsePart({
   completion?: { result: unknown; isError: boolean }
 }) {
   const [showDetails, setShowDetails] = useState(false)
-  const command = toolName === 'bash' ? extractCommand(args) : null
+  const displayName = getToolDisplayName(toolName)
+  const command = isBashToolName(toolName) ? extractCommand(args) : null
   const remainingArgs = command ? omitCommand(args) : args
   const bashResult =
-    toolName === 'bash' && completion
+    isBashToolName(toolName) && completion
       ? extractBashResult(completion.result) ??
         (completion.isError && typeof completion.result === 'string'
           ? { output: completion.result }
@@ -310,25 +312,44 @@ function ToolUsePart({
     error: '失败',
   }[state]
 
+  const toggleDetails = () => setShowDetails((v) => !v)
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      toggleDetails()
+    }
+  }
+
   return (
-    <Card className={cn('min-w-0 overflow-hidden', styles)}>
-      <CardContent className="min-w-0 space-y-2 px-3 py-2">
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-expanded={showDetails}
+      title={showDetails ? '隐藏工具调用详情' : '展开工具调用详情'}
+      onClick={toggleDetails}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        'w-full cursor-pointer overflow-hidden py-0 transition hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+        styles,
+      )}
+    >
+      <CardContent className="min-w-0 space-y-1.5 px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-2 text-xs">
           {state === 'running' && <Loader2 className={cn('size-3.5 animate-spin', iconColor)} />}
           {state === 'success' && <Check className={cn('size-3.5', iconColor)} />}
           {state === 'error' && <XCircle className={cn('size-3.5', iconColor)} />}
-          <code className="min-w-0 max-w-[12rem] truncate rounded bg-black/5 px-1.5 py-0.5 font-mono text-[11px] dark:bg-white/10">
-            {toolName}
-          </code>
+          <span className="min-w-0 max-w-[12rem] truncate rounded bg-black/5 px-1.5 py-0.5 text-[11px] font-medium dark:bg-white/10">
+            {displayName}
+          </span>
           <span className="text-muted-foreground">·</span>
           <span className="shrink-0 font-medium">{label}</span>
-          <button
-            type="button"
-            onClick={() => setShowDetails((v) => !v)}
-            className="ml-auto shrink-0 text-[10px] text-muted-foreground hover:text-foreground"
-          >
-            {showDetails ? '隐藏详情' : '详情'}
-          </button>
+          <ChevronDown
+            className={cn(
+              'ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform',
+              !showDetails && '-rotate-90',
+            )}
+          />
         </div>
 
         {command && <CommandPreview command={command} expanded={showDetails} />}
@@ -352,7 +373,10 @@ function ToolUsePart({
                 tone={completion.isError ? 'error' : 'neutral'}
               />
             )}
-            <div className="font-mono text-[10px] text-muted-foreground">{callId}</div>
+            <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground">
+              <span>{toolName}</span>
+              <span>{callId}</span>
+            </div>
           </div>
         )}
       </CardContent>
@@ -426,7 +450,8 @@ function TerminalPreviewBlock({
 }) {
   const [copied, setCopied] = useState(false)
 
-  const copy = async () => {
+  const copy = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
     try {
       await navigator.clipboard.writeText(content)
       setCopied(true)
@@ -451,7 +476,7 @@ function TerminalPreviewBlock({
         {meta && <span className="min-w-0 truncate font-mono text-zinc-500">{meta}</span>}
         <button
           type="button"
-          onClick={copy}
+          onClick={(event) => void copy(event)}
           className="ml-auto inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
           title={copyTitle}
         >
@@ -546,7 +571,8 @@ function ToolCluster({
   let runningCount = 0
   let errorCount = 0
   for (const t of tools) {
-    counts.set(t.part.toolName, (counts.get(t.part.toolName) ?? 0) + 1)
+    const displayName = getToolDisplayName(t.part.toolName)
+    counts.set(displayName, (counts.get(displayName) ?? 0) + 1)
     const c = resultByCallId.get(t.part.callId)
     if (!c) runningCount++
     else if (c.isError) errorCount++
@@ -565,8 +591,8 @@ function ToolCluster({
   }[overallState]
 
   return (
-    <Card className={cn(styles)}>
-      <CardContent className="space-y-1 px-3 py-2">
+    <Card className={cn('w-full py-0', styles)}>
+      <CardContent className="space-y-1 px-3 py-1.5">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}

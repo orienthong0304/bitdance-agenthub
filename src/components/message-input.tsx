@@ -46,6 +46,7 @@ import {
   setFsWriteApprovalMode,
   uploadAttachment as uploadAttachmentAPI,
 } from '@/lib/api'
+import { getToolDisplayName } from '@/lib/tool-display'
 import { emitUiCommand } from '@/lib/ui-command-events'
 import { cn } from '@/lib/utils'
 import { useAppStore, usePendingAttachments, usePendingPlanReviewForConversation, useTopLevelRunningRuns } from '@/stores/app-store'
@@ -163,7 +164,7 @@ function renderMessagePartForExport(part: MessageRow['parts'][number]): string {
       return ['```' + (part.language ?? ''), part.content, '```'].join('\n')
     case 'tool_use':
       return [
-        `Tool Use: ${part.toolName}`,
+        `Tool Use: ${getToolDisplayName(part.toolName)} (${part.toolName})`,
         '```json',
         stringifyForExport(part.args),
         '```',

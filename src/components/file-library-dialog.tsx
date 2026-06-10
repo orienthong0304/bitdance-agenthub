@@ -105,7 +105,7 @@ export function FileLibraryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[85vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>会话文件库</DialogTitle>
             <DialogDescription>
@@ -136,8 +136,8 @@ export function FileLibraryDialog({
             </Button>
           </div>
 
-          <ScrollArea className="-mx-6 max-h-[55vh]">
-            <div className="space-y-5 px-6 py-2">
+          <ScrollArea className="-mx-6 max-h-[55vh] overflow-x-hidden">
+            <div className="min-w-0 space-y-5 overflow-hidden px-6 py-2">
               {/* 图片分组 */}
               <Section title="图片" icon={<ImageIcon className="size-4" />} count={images.length}>
                 {loading ? (
@@ -168,7 +168,7 @@ export function FileLibraryDialog({
                 ) : files.length === 0 ? (
                   <EmptyHint>没有文件</EmptyHint>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="min-w-0 space-y-1 overflow-hidden">
                     {files.map((a) => (
                       <FileRow
                         key={a.id}
@@ -191,8 +191,14 @@ export function FileLibraryDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>删除附件</DialogTitle>
-            <DialogDescription>
-              确定删除「{deleteTarget?.fileName}」吗？已发送消息中对此附件的引用会显示「已删除」。
+            <DialogDescription className="min-w-0">
+              <span>确定删除「</span>
+              <span className="inline-block max-w-full align-bottom">
+                <span className="block max-w-[min(28rem,70vw)] truncate" title={deleteTarget?.fileName}>
+                  {deleteTarget?.fileName}
+                </span>
+              </span>
+              <span>」吗？已发送消息中对此附件的引用会显示「已删除」。</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -226,7 +232,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2 overflow-hidden">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         <span>{title}</span>
@@ -283,7 +289,10 @@ function ImageGridItem({
           className="size-full object-cover"
         />
       </a>
-      <div className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100">
+      <div
+        className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100"
+        title={attachment.fileName}
+      >
         {attachment.fileName}
       </div>
       <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition group-hover:opacity-100">
@@ -331,7 +340,7 @@ function FileRow({
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 rounded-md border bg-card px-3 py-2 transition hover:border-foreground/20',
+        'group grid w-full min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 overflow-hidden rounded-md border bg-card px-3 py-2 transition hover:border-foreground/20',
         attached && 'border-primary/40 bg-primary/5',
       )}
     >
@@ -341,11 +350,13 @@ function FileRow({
         target="_blank"
         rel="noopener noreferrer"
         download={attachment.fileName}
-        className="min-w-0 flex-1"
+        className="block min-w-0 overflow-hidden"
         title={attachment.fileName}
       >
-        <div className="truncate text-xs font-medium">{attachment.fileName}</div>
-        <div className="text-[10px] text-muted-foreground">
+        <div className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium">
+          {attachment.fileName}
+        </div>
+        <div className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-muted-foreground">
           {formatSize(attachment.size)} · {attachment.mimeType}
         </div>
       </a>

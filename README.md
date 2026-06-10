@@ -129,7 +129,11 @@ Optional provider setup:
 
 ```bash
 pnpm install
+
+# Optional
 cp .env.example .env.local
+
+# Run dev
 pnpm dev
 ```
 

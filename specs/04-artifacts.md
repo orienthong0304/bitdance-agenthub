@@ -28,7 +28,9 @@ type ArtifactContent =
   | { type: 'document'; format: 'markdown'; content: string }
   | { type: 'image'; url: string; alt: string; width?: number; height?: number }
   | { type: 'ppt'; title?: string; theme?: PptTheme; slides: PptSlide[] }
-  // PptSlide: { title?, bullets?: string[], notes?, layout?: 'title'|'title-bullets'|'section'|'blank' }
+  // PptSlide: { title?, subtitle?, bullets?: string[], blocks?: PptBlock[], notes?, layout? }
+  // PptLayout: 'title'|'title-bullets'|'section'|'blank'|'content'|'two-column'|'metrics'|'timeline'|'quote'
+  // PptBlock: heading | paragraph | bullets | metric | quote | timeline | columns | callout | divider | spacer
   // PptTheme（全可选 hex 视觉 token）: { primary, background, surface, textBody, textMuted, accentPositive, accentNegative, divider, fontHeading, fontBody }；渲染经 resolvePptTheme 填默认（src/shared/ppt-theme.ts）
 ```
 
@@ -41,7 +43,7 @@ type ArtifactContent =
 | `image` | **DB JSON 列**（url + alt + 可选尺寸） | URL 或 data URI | `write_artifact` |
 | `diff` | **DB JSON 列**（hunks 列表 + 目标 artifactId） | 历史兼容：只读双栏预览，不再作为 Agent 新产物类型 | legacy/internal |
 | `code_file` | **仅 workspacePath 入 DB**，文件本身在 workspace 文件系统 | 大代码文件 / 多文件项目，面板可从 workspace 加载 | workspace/fs + 用户面板编辑 |
-| `ppt` | **DB JSON 列**（slides 数组：title/bullets/notes/layout） | 幻灯片，分页预览 + 导出真 .pptx | `write_artifact` |
+| `ppt` | **DB JSON 列**（slides 数组：legacy title/bullets 或 semantic blocks） | 幻灯片，分页预览 + 导出真 .pptx | `write_artifact` |
 
 **为什么 code_file 不入 DB**：代码文件可能 MB 级，塞 SQLite JSON 列会卡。改为 workspace 引用 + checksum 校验。`code_file` 当前由 workspace 文件读写路径承载，产物面板根据 `artifact.conversationId + content.workspacePath` 读取文件内容；用户在面板内保存时，先写回 workspace 文件，再创建一个新的 `code_file` 版本记录更新 size/checksum。
 
@@ -105,6 +107,8 @@ handler 接受 4 种 `content` 形状，归一化到标准 `ArtifactContent`：
 document 类似：`{ content }` / `{ markdown }` / `{ text }` / 裸字符串都接受。
 
 image 接受 `{ url, alt? }` 或裸 URL 字符串。
+
+ppt 接受旧版 `{ title, bullets, notes?, layout? }` slide，也接受新版 block DSL：`subtitle`、`layout: 'content'|'two-column'|'metrics'|'timeline'|'quote'` 等，以及 `blocks`。支持的 block 类型固定为 `heading` / `paragraph` / `bullets` / `metric` / `quote` / `timeline` / `columns` / `callout` / `divider` / `spacer`；`columns` 子 block 只允许 `paragraph` / `bullets` / `metric` / `callout`。旧版 bullets 在渲染/导出边界由 `src/shared/ppt-normalize.ts` 归一化为 `{ type: 'bullets', items }`，不迁移历史 DB 行。PPT JSON 不允许直接嵌入 `data:*;base64,...` 这类无界二进制 payload；图片等大资产必须走可安全解析的 URL / 附件 / workspace 引用（当前 PPT 首版不实现图片 block）。
 
 diff 解析逻辑仍保留在 `buildArtifactContent('diff', ...)`，用于旧 DB 行和内部兼容路径，但 `write_artifact` 的 zod schema / JSON Schema / LLM 描述不再接受 `diff`。
 
@@ -238,9 +242,11 @@ store.previewArtifactId → ArtifactPreviewPanel
 
 ### ppt
 
-`SlideDeckView`（`artifact-preview-panel.tsx`）：从 slides JSON 渲染分页幻灯片（◀▶ 翻页 + 页码 + 全屏）；`layout: 'title' | 'section'` 用主色背景居中大标题，内容页冷白背景 + 顶部色条 + 主色标题 + 分割线 + **要点卡片化**（每要点一张 surface 卡片条，按 `detectBulletTone` 启发式着色 + 图标：▲ 正面墨绿 / ▼ 警示深红 / ▪ 中性主色）。**预览与 pptx 导出同源消费 `resolvePptTheme`**（`src/shared/ppt-theme.ts`：把完整视觉 token 填默认后用于背景/主色/正文/字体/字号），反映设计的整套配色而非单一主色。要点纯文本（非 markdown，与导出一致）。「编辑 JSON」视图用 CodeMirror 改 slides JSON → 提交新版本。
+`SlideDeckView`（`artifact-preview-panel.tsx`）：先调用 `normalizePptDeck`，再从 canonical slides 渲染分页幻灯片（◀▶ 翻页 + 页码 + 全屏）。旧版 `title/bullets/layout` 仍显示为原有「标题 + 卡片化要点」风格；新版 `blocks` 支持 heading、paragraph、bullets、metric、quote、timeline、columns、callout、divider、spacer。所有文本容器用固定 slide 边界内的 line clamp / overflow hidden / anywhere wrap，避免长文本撑破预览或全屏画布。**预览与 pptx 导出同源消费 `resolvePptTheme`**（`src/shared/ppt-theme.ts`：把完整视觉 token 填默认后用于背景/主色/正文/字体/字号），反映设计的整套配色而非单一主色。要点纯文本（非 markdown，与导出一致）。「编辑 JSON」视图展示 `toEditablePptContent` 生成的 block-based JSON，保存后提交新版本。
 
-**导出真 .pptx**：`GET /api/artifacts/:id/export` 的 ppt 分支调 `src/server/ppt-export.ts` 的 `slidesToPptxBuffer`，用 `pptxgenjs`（动态 import；next.config `serverExternalPackages` 已登记）把 slides JSON 转成 Office 可打开的 .pptx 二进制。预览近似、导出为交付物（浏览器难像素级预览 pptx）。content 不含图片字段（规避 base64 入 DB JSON 列）。
+**导出真 .pptx**：`GET /api/artifacts/:id/export` 的 ppt 分支默认等价于 `?mode=editable`，调 `src/server/ppt-export.ts` 的 `slidesToPptxBuffer`，用 `pptxgenjs`（动态 import；next.config `serverExternalPackages` 已登记）把 canonical blocks 转成 Office 可打开、可继续编辑的 .pptx 二进制。预览近似、导出为交付物（浏览器难像素级预览 pptx）。
+
+**visual-priority 导出**：接口接受 `?mode=visual` 作为显式高保真/图片型导出意图；当前首版未启用 HTML/CSS 截图渲染器，返回 501 且提示改用默认 editable 导出。没有 `mode` 参数时必须保持 editable `.pptx` 行为，保证旧下载 URL 兼容。
 
 ---
 

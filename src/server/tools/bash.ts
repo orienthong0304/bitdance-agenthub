@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { userInfo } from 'node:os'
+import { basename } from 'node:path'
 
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -18,10 +21,43 @@ const ArgsSchema = z.object({
 const TIMEOUT_MS = 30_000
 const MAX_OUTPUT_CHARS = 10_000
 const POSIX_ORPHANED_STDIO_GRACE_MS = 500
+const POSIX_LOGIN_INTERACTIVE_SHELLS = new Set(['bash', 'zsh'])
 
 interface ShellInvocation {
   cmd: string
   args: string[]
+}
+
+function readUserInfoShell(): string | null {
+  try {
+    return userInfo().shell ?? null
+  } catch {
+    return null
+  }
+}
+
+function resolvePosixUserShell(): string | null {
+  const candidates = [process.env.SHELL, readUserInfoShell()]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.startsWith('/') && existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
+
+function buildPosixShellInvocation(command: string): ShellInvocation {
+  const userShell = resolvePosixUserShell()
+  if (!userShell) {
+    return { cmd: 'sh', args: ['-c', command] }
+  }
+
+  const shellName = basename(userShell)
+  if (POSIX_LOGIN_INTERACTIVE_SHELLS.has(shellName)) {
+    return { cmd: userShell, args: ['-l', '-i', '-c', command] }
+  }
+
+  return { cmd: 'sh', args: ['-c', command] }
 }
 
 function buildShellInvocation(command: string, platform: Platform): ShellInvocation {
@@ -35,7 +71,7 @@ function buildShellInvocation(command: string, platform: Platform): ShellInvocat
       args: ['-NoProfile', '-NonInteractive', '-Command', `${preamble} ${command}`],
     }
   }
-  return { cmd: 'sh', args: ['-c', command] }
+  return buildPosixShellInvocation(command)
 }
 
 function killProcessTree(
@@ -67,7 +103,7 @@ function killProcessTree(
 const PLATFORM = currentPlatform()
 
 const DESCRIPTION_POSIX =
-  'Run a shell command (sh -c) inside the workspace (cwd is set automatically). Use POSIX syntax: ls, grep, cat, git, npm, python, etc. Output is stdout + stderr combined, truncated to 10000 chars, 30s timeout. Destructive commands (rm -rf /, sudo, fork bombs, curl | sh) are blocked. No interactive stdin. Do not leave persistent background servers running; start test servers only inside a command that cleans them up.'
+  'Run a shell command inside the workspace (cwd is set automatically). POSIX uses the user login shell for zsh/bash ($SHELL -l -i -c) when available, otherwise sh -c. Use POSIX syntax: ls, grep, cat, git, npm, python, etc. Output is stdout + stderr combined, truncated to 10000 chars, 30s timeout. Destructive commands (rm -rf /, sudo, fork bombs, curl | sh) are blocked. No interactive stdin. Do not leave persistent background servers running; start test servers only inside a command that cleans them up.'
 
 const DESCRIPTION_WINDOWS =
   'Run a Windows PowerShell 5.1 command inside the workspace (cwd is set automatically). ' +

@@ -18,7 +18,7 @@
  */
 import type Database from 'better-sqlite3'
 
-import { BUILTIN_AGENTS } from './builtin-agents'
+import { BUILTIN_AGENTS, UI_DESIGNER_ARTIFACT_PROMPT_HINT } from './builtin-agents'
 
 const FRONTEND_DEPLOYMENT_PROMPT_HINT =
   'deploy_artifact / deploy_workspace 返回的 previewPath 是当前 AgentHub 实例下的相对路径，不要在文字总结里把它改写成公网域名或自造完整 URL；让用户点击部署卡片按钮，或原样引用 previewPath。'
@@ -289,6 +289,10 @@ function upgradeBuiltinAgents(sqlite: Database.Database): void {
     }
     if (row.id === 'ag_reviewer' && !systemPrompt.includes('本地代码审查先用 fs_read')) {
       systemPrompt += `\n\n${REVIEWER_LOCAL_WORKSPACE_PROMPT_HINT}`
+      changed = true
+    }
+    if (row.id === 'ag_designer' && !systemPrompt.includes('禁止 write_artifact({})')) {
+      systemPrompt += `\n\n${UI_DESIGNER_ARTIFACT_PROMPT_HINT}`
       changed = true
     }
 

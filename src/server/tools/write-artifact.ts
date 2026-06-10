@@ -35,7 +35,7 @@ const ArgsSchema = z.object({
 export const writeArtifactTool: ToolDef = {
   name: 'write_artifact',
   description:
-    'Create a new artifact, or a new version of an existing one. Pass parentArtifactId to create a version that links to the prior; version auto-increments. Use this to produce code/web/docs/images/PPT decks/diagrams that the user can preview.',
+    'Create a new artifact, or a new version of an existing one. Never call with empty args: type, title, and content are required in the same tool call. Pass parentArtifactId to create a version that links to the prior; version auto-increments. Use this to produce code/web/docs/images/PPT decks/diagrams that the user can preview.',
   parameters: {
     type: 'object',
     required: ['type', 'title', 'content'],

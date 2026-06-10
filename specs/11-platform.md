@@ -24,8 +24,14 @@ export function currentPlatform(): Platform {
 
 | Platform | 命令 | 参数 | 说明 |
 |---|---|---|---|
-| `posix` | `sh` | `['-c', command]` | macOS / Linux 默认 |
+| `posix` | 用户 login shell（`zsh` / `bash`）优先，回退 `sh` | `['-l', '-i', '-c', command]` 或 `['-c', command]` | macOS / Linux 默认优先继承用户 shell 初始化出的 PATH |
 | `windows` | `powershell.exe` | `['-NoProfile', '-NonInteractive', '-Command', '<chcp> ; <command>']` | 用系统自带 PS 5.1（不依赖 pwsh 7） |
+
+**POSIX 细节**：
+- 优先从 `process.env.SHELL` 解析用户 shell；缺失时回退 `os.userInfo().shell`
+- 仅当解析到的绝对路径存在且 shell basename 是 `zsh` 或 `bash` 时，使用 `-l -i -c <command>`。这样桌面版从 Finder / Dock 启动时，也能加载用户 `.zprofile` / `.zshrc` / `.bash_profile` / `.bashrc` 中配置的 Node、pnpm、Homebrew、nvm 等 PATH
+- 其它 shell 或无法解析用户 shell 时回退 `sh -c <command>`，保持 POSIX 命令语法稳定
+- 仍然直接 `spawn(shell.cmd, shell.args)`，不使用 `shell: true`
 
 **Windows 细节**：
 - 子进程启动选项加 `windowsHide: true`，避免闪现控制台
@@ -118,7 +124,7 @@ const SHARED_BANNED: RegExp[] = [
 
 `src/server/tools/bash.ts` 的 `description` 字段从静态字符串改为基于 `currentPlatform()` 生成：
 
-- **POSIX**：`"Run a shell command (sh -c) inside workspace. Use POSIX syntax: ls, grep, cat, git, npm. Output: stdout+stderr merged, 10000 char limit, 30s timeout. Blocked: rm -rf /, sudo, fork bombs, curl | sh."`
+- **POSIX**：`"Run a shell command inside workspace. POSIX uses the user login shell for zsh/bash ($SHELL -l -i -c) when available, otherwise sh -c. Use POSIX syntax: ls, grep, cat, git, npm. Output: stdout+stderr merged, 10000 char limit, 30s timeout. Blocked: rm -rf /, sudo, fork bombs, curl | sh."`
 - **Windows**：`"Run a PowerShell 5.1 command inside workspace. Use PowerShell syntax: Get-ChildItem, Select-String, Get-Content, git, npm. Output is UTF-8 (chcp 65001), stdout+stderr merged, 10000 char limit, 30s timeout. Blocked: Remove-Item -Recurse -Force, format, shutdown, iex(iwr ...), reg delete."`
 
 **注**：CustomAgentAdapter 与 ClaudeCodeAdapter 不共用同一工具实例；ClaudeCodeAdapter 走 SDK 原生 Bash 工具，描述由 SDK 控制，但 `canUseTool` 钩子里的黑名单走同一份 `getBannedPatterns`。

@@ -82,6 +82,11 @@ AgentHub MUST append usage guidance and concrete examples for the AgentHub-manag
 - **THEN** the injected system prompt includes examples for those tools
 - **AND** it does not instruct the agent to call unavailable tools such as `plan_tasks`.
 
+#### Scenario: Agent can write artifacts
+- **WHEN** a run includes `write_artifact`
+- **THEN** the injected guidance warns against empty `write_artifact({})` calls
+- **AND** includes a complete document artifact template with `type`, `title`, and `content`.
+
 #### Scenario: SDK adapter receives AgentHub MCP tools
 - **WHEN** a Claude Code or Codex run is built
 - **THEN** the injected guidance includes the allowlisted AgentHub MCP tools exposed by that adapter

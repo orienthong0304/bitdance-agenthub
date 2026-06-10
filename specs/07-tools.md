@@ -97,6 +97,19 @@ export const toolRegistry = buildRegistry()
 
 `document` 接受 `{ content }` / `{ markdown }` / `{ text }` / 裸字符串；`image` 接受 `{ url, alt? }` 或裸 URL 字符串；`ppt` 接受 `{ title?, theme?, slides }`。历史 `diff` 内容归一化逻辑仍保留在 `src/server/artifact-content.ts` 给旧数据兼容，但不在 `write_artifact` 的 zod schema、JSON Schema 或 LLM 描述中暴露。
 
+**提示词约束**：`write_artifact` 的工具描述与 AgentRunner 工具规范必须明确禁止空参数调用。Agent 调用前必须一次性准备好 `type` / `title` / `content` 三个必填字段，严禁 `write_artifact({})` 或先空调用工具再补参数。文档产物提示必须给出完整模板：
+
+```typescript
+write_artifact({
+  type: "document",
+  title: "PRD",
+  content: {
+    format: "markdown",
+    content: "# PRD\n\n## 1. 背景\n...\n\n## 2. 目标\n...\n\n## 3. 方案\n..."
+  }
+})
+```
+
 **返回值**：`{ artifactId, title, type }`。**不发布 `artifact.create` 事件**，由 Adapter 在 tool_result 后统一发，AgentRunner 接住后注入 `artifact_ref` part（见 Spec 02 的「artifact_ref 注入路径」）。
 
 ### deploy_artifact
@@ -337,7 +350,7 @@ export const toolRegistry = buildRegistry()
 2. 命中关键命令审批规则 → 注册 `PendingBashCommand`，发 `bash_command.pending` SSE，等待用户批准；拒绝则不执行命令并返回错误
 3. `child_process.spawn(shell.cmd, shell.args(command), { cwd: getEffectiveCwd(workspace), windowsHide: true, detached: platform !== 'windows' })`
    - 跨平台 shell（详见 Spec 11 「Shell 选择」节）：
-     - POSIX：`sh -c <command>`
+     - POSIX：优先用用户 `zsh` / `bash` login+interactive shell：`$SHELL -l -i -c <command>`；无法确认时回退 `sh -c <command>`
      - Windows：`powershell.exe -NoProfile -NonInteractive -Command "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); <command>"`（用系统自带 PS 5.1，并强制 UTF-8 输出）
 4. stdout + stderr 合并截断 **10000 字符**
 5. **30s 超时**：进程清理走 `killProcessTree`
@@ -362,7 +375,7 @@ curl -s http://127.0.0.1:3000/health
 
 **运行机制**：handler 注册 `PendingBashCommand`，通过 SSE 推 `bash_command.pending`；桌面端 `PendingBashCommandsPanel` 展示命令、cwd、Agent 与原因。用户批准 / 拒绝后 `pendingBashCommands.approve/reject()` 唤醒工具调用并发 `bash_command.resolved`；run abort 也会发 resolved 清掉 UI。pending 队列是进程内存单例，刷新页面时前端通过 `GET /api/conversations/[id]/pending-bash-commands` 兜底恢复。
 
-**工具 description 按平台变体**（详见 Spec 11 「工具描述按平台变体」节）：description 字段在模块加载时根据 `currentPlatform()` 拼接，POSIX 展示 sh 示例与 POSIX 黑名单文案，Windows 展示 PowerShell 示例与 Windows 黑名单文案。这是 LLM 选择命令语法的关键提示。
+**工具 description 按平台变体**（详见 Spec 11 「工具描述按平台变体」节）：description 字段在模块加载时根据 `currentPlatform()` 拼接，POSIX 展示用户 login shell 回退策略、POSIX 命令示例与 POSIX 黑名单文案，Windows 展示 PowerShell 示例与 Windows 黑名单文案。这是 LLM 选择命令语法的关键提示。
 
 **返回**：`{ cwd, command, exitCode, output, truncated, timedOut }`
 
@@ -396,6 +409,11 @@ LLM 决定调用 →  Adapter emit  tool.call (StreamEvent)
 ## 工具提示注入
 
 AgentRunner 在构造 `AdapterInput.systemPrompt` 时会追加按可用工具生成的 `AgentHub 工具调用规范`。这段提示只注入当前 run 实际可用的工具，避免让 LLM 调用不存在的能力。
+
+`write_artifact` 注入必须包含：
+- 禁止 `write_artifact({})` 等空参数调用
+- 调用前自检 `type` / `title` / `content` 必填字段是否齐全
+- 至少一个完整 document 模板，避免模型只记住工具名却漏传必填字段
 
 当 `workspace.mode === 'local'` 且 agent 具备 AgentHub 文件工具（`fs_read` / `fs_write` / `bash`）或 SDK 本地文件工具（Claude Code / Codex）时，会额外注入「本地项目模式」：
 

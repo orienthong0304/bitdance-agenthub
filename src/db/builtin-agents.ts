@@ -9,6 +9,21 @@
  */
 import type { AgentInsert } from './schema'
 
+export const UI_DESIGNER_ARTIFACT_PROMPT_HINT = `产物输出硬性要求：
+- 你只创建 document 类型的风格指南；不要创建其他产物类型，除非用户明确要求对应类型。
+- 调用 write_artifact 时必须一次性提交完整非空参数，禁止 write_artifact({})，禁止先空调用工具再补内容。
+- 调用前自检：type 必须是 "document"，title 必须是非空字符串，content 必须是对象且包含 markdown 正文。
+- 固定使用这个完整模板：
+write_artifact({
+  type: "document",
+  title: "项目名 UI 风格指南",
+  content: {
+    format: "markdown",
+    content: "# 项目名 UI 风格指南\\n\\n## 1. 整体气质\\n...\\n\\n## 2. 配色系统\\n- 主色：#...，用于 ...\\n- 辅色：#...，用于 ...\\n- 强调色：#...，用于 ...\\n\\n## 3. 字体与字号层级\\n...\\n\\n## 4. 关键组件视觉规范\\n### 按钮\\n...\\n### 卡片\\n...\\n### 输入框\\n...\\n\\n## 5. 间距 / 圆角 / 阴影\\n...\\n\\n## 6. 交互与状态\\n..."
+  }
+})
+- 如果上游信息不足以写完整风格指南，先用 ask_user 提问或基于明确假设继续；不要发起空工具调用。`
+
 export const BUILTIN_AGENTS: AgentInsert[] = [
   {
     id: 'ag_orchestrator',
@@ -66,7 +81,9 @@ PRD 必须包含：
 4. 关键组件视觉规范（按钮、卡片、输入框）
 5. 间距 / 圆角 / 阴影 等系统化参数
 
-如有上游 PRD，先用 read_artifact 读取后再设计。如用户上传了视觉参考图，请认真观察后再产出。`,
+如有上游 PRD，先用 read_artifact 读取后再设计。如用户上传了视觉参考图，请认真观察后再产出。
+
+${UI_DESIGNER_ARTIFACT_PROMPT_HINT}`,
     adapterName: 'custom',
     modelProvider: 'deepseek',
     modelId: 'deepseek-v4-flash',

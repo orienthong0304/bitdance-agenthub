@@ -1680,8 +1680,10 @@ function buildAgentHubToolGuidance(
     add([
       '### write_artifact',
       '用途：创建用户需要预览、下载、交接或长期保存的产物；不要用它记录普通聊天结论。',
+      '硬性要求：调用前必须已经准备好完整参数；严禁 write_artifact({})，严禁先空调用工具再补参数。',
+      '调用前自检：type 必须是工具 schema 允许的枚举值，title 必须是非空字符串，content 必须是对应类型的原始对象。',
       'web_app 正确参数：write_artifact({ type: "web_app", title: "登录页原型", content: { files: { "index.html": "<!doctype html>...", "style.css": "body { ... }", "script.js": "..." }, entry: "index.html" } })。',
-      'document 正确参数：write_artifact({ type: "document", title: "PRD", content: { format: "markdown", content: "# PRD\\n..." } })。',
+      'document 完整模板：write_artifact({ type: "document", title: "PRD", content: { format: "markdown", content: "# PRD\\n\\n## 1. 背景\\n...\\n\\n## 2. 目标\\n...\\n\\n## 3. 方案\\n..." } })。',
       'diagram 正确参数：write_artifact({ type: "diagram", title: "系统调用流程", content: { syntax: "mermaid", source: "flowchart TD\\n  U[\\"用户\\"] --> A[\\"AgentHub\\"]\\n  A --> LLM[\\"LLM\\"]\\n  LLM --> T[\\"工具调用\\"]", theme: "default" } })。适合流程图、时序图、架构图、依赖关系图；不要把 Mermaid 放进 document 代码块里冒充图产物。',
       'diagram 规则：中文、数学公式、括号、冒号、斜杠等 label 一律写成 A["..."]；一行只写一条边；不要把 ```mermaid fence 传给 source。write_artifact 会校验 Mermaid，若返回 Invalid Mermaid diagram，必须根据错误修正 source 后重新调用工具。',
       'ppt 正确参数：write_artifact({ type: "ppt", title: "Q2 复盘", content: { title: "Q2 复盘", theme: { primary: "1A3C6E", background: "F8F9FA", surface: "FFFFFF", textBody: "2C3E50", textMuted: "6B7280", accentPositive: "2B7A4B", accentNegative: "C0392B", divider: "E0E4E8", fontHeading: "Inter", fontBody: "Inter" }, slides: [{ title: "Q2 复盘", subtitle: "关键指标", layout: "metrics", blocks: [{ type: "metric", label: "ARR", value: "$12M", change: "+18%", tone: "positive" }, { type: "callout", title: "下一步", text: "聚焦企业客户扩张", tone: "info" }] }] } })。',

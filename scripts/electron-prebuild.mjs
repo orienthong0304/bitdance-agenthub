@@ -5,10 +5,11 @@
 //       打包后跟着 .exe 散落到用户机，绝对路径就废了 → 编译产物 require('<pkg>-<hash>') 直接崩。
 //       修：把这些 symlink **物化**成真目录（dereference + 拷贝），运行时 / 打包都安心。
 //
-//   (2) pnpm 的依赖 hoist 跟 Next tracer 配合不好，导致 next build 漏拷应用直接依赖
-//       （@next/env / @swc/helpers / react / openai / drizzle-orm ...）以及它们的间接依赖。
-//       修：遍历 package.json + 已存在包的 deps，对每个未在 standalone/node_modules 里的包，
-//       从 node_modules/.pnpm 抓真身拷过来。
+//   (2) pnpm 的依赖 hoist 跟 Next tracer 配合不好，导致 next build 漏拷少量 server runtime
+//       依赖（@next/env / @swc/helpers / openai / drizzle-orm ...）以及它们的间接依赖。
+//       修：以 Next 已 trace 到 standalone 的包 + 明确 server runtime allowlist 为种子补齐。
+//       不从 root package.json 全量遍历，避免把 Mermaid / CodeMirror / UI 等纯前端依赖塞进
+//       Electron Node runtime，撑大 .next/standalone 和 DMG。
 //
 // 另外保留：
 //   - .next/static → standalone/.next/static / public → standalone/public 拷贝
@@ -24,6 +25,28 @@ const root = process.cwd()
 const standaloneDir = path.join(root, '.next', 'standalone')
 const standaloneNodeModules = path.join(standaloneDir, 'node_modules')
 const pnpmDir = path.join(root, 'node_modules', '.pnpm')
+
+const SERVER_RUNTIME_PACKAGE_ALLOWLIST = [
+  'next',
+  'react',
+  'react-dom',
+  '@next/env',
+  '@swc/helpers',
+  'better-sqlite3',
+  'drizzle-orm',
+  'openai',
+  '@anthropic-ai/sdk',
+  '@anthropic-ai/claude-agent-sdk',
+  '@openai/codex-sdk',
+  '@openai/codex',
+  '@modelcontextprotocol/sdk',
+  'jszip',
+  'nanoid',
+  'zod',
+  'pptxgenjs',
+  'pdf-parse',
+  'pdfjs-dist',
+]
 
 if (!fs.existsSync(standaloneDir)) {
   console.error('✗ No .next/standalone — 先跑 `next build`')
@@ -102,6 +125,51 @@ function readDependencyEntries(pkgJsonPath) {
   }
 }
 
+function listTopLevelPackageNames(nodeModulesDir) {
+  let entries
+  try {
+    entries = fs.readdirSync(nodeModulesDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const names = []
+  for (const entry of entries) {
+    if (entry.name === '.bin' || entry.name === '.pnpm') continue
+    const p = path.join(nodeModulesDir, entry.name)
+    if (entry.name.startsWith('@')) {
+      let scoped
+      try {
+        scoped = fs.readdirSync(p, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const child of scoped) {
+        names.push(`${entry.name}/${child.name}`)
+      }
+      continue
+    }
+    names.push(entry.name)
+  }
+  return names
+}
+
+function listExistingStandalonePackageJsons() {
+  const packageJsons = []
+  for (const name of listTopLevelPackageNames(standaloneNodeModules)) {
+    packageJsons.push(path.join(standaloneNodeModules, ...name.split('/'), 'package.json'))
+  }
+
+  // Next may put hashed helper packages under .next/node_modules. They are not addressable by
+  // package name, but their package.json dependency declarations still matter for runtime closure.
+  const nextNodeModules = path.join(standaloneDir, '.next', 'node_modules')
+  for (const name of listTopLevelPackageNames(nextNodeModules)) {
+    packageJsons.push(path.join(nextNodeModules, ...name.split('/'), 'package.json'))
+  }
+
+  return packageJsons
+}
+
 // 拷完之后递归删除嵌套的 node_modules 目录（standalone 走平铺布局，nested deps 由我们的队列保证）。
 // 走「先拷再删」不走 cpSync filter —— filter 只看路径串里有没有 'node_modules'，但 src 自己
 // 就在 .pnpm/<pkg>@<ver>/node_modules/<pkg> 里，filter 会把 src 根本身拒掉，cpSync 返回成功
@@ -124,9 +192,88 @@ function pruneNestedNodeModules(dir) {
   }
 }
 
+function shouldSkipOptionalDependency(name) {
+  if (name.startsWith('@openai/codex-')) {
+    return !isCurrentPlatformPackage(name, '@openai/codex')
+  }
+  if (name.startsWith('@anthropic-ai/claude-agent-sdk-')) {
+    return !isCurrentPlatformPackage(name, '@anthropic-ai/claude-agent-sdk')
+  }
+  if (name.startsWith('@napi-rs/canvas-')) {
+    return !isCurrentPlatformPackage(name, '@napi-rs/canvas')
+  }
+  return false
+}
+
+function isCurrentPlatformPackage(name, baseName) {
+  const suffix = name.slice(baseName.length + 1)
+  const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : process.arch
+  const platform = process.platform
+
+  if (platform === 'darwin') return suffix === `darwin-${arch}`
+  if (platform === 'win32') return suffix === `win32-${arch}` || suffix === `win32-${arch}-msvc`
+  if (platform === 'linux') {
+    return (
+      suffix === `linux-${arch}` ||
+      suffix === `linux-${arch}-gnu` ||
+      suffix === `linux-${arch}-musl`
+    )
+  }
+  return false
+}
+
+function directorySize(dir) {
+  let total = 0
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  for (const entry of entries) {
+    const p = path.join(dir, entry.name)
+    try {
+      if (entry.isSymbolicLink()) continue
+      if (entry.isDirectory()) total += directorySize(p)
+      else if (entry.isFile()) total += fs.statSync(p).size
+    } catch {
+      // ignore best-effort diagnostics
+    }
+  }
+  return total
+}
+
+function printLargestAddedPackages(packages) {
+  const largest = packages
+    .filter((pkg) => pkg.bytes > 0)
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 8)
+  if (largest.length === 0) return
+  console.log(
+    `✓ deps: largest added package(s): ${largest
+      .map((pkg) => `${pkg.name} ${formatBytes(pkg.bytes)}`)
+      .join(', ')}`,
+  )
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes}B`
+  const kib = bytes / 1024
+  if (kib < 1024) return `${kib.toFixed(1)}KB`
+  const mib = kib / 1024
+  if (mib < 1024) return `${mib.toFixed(1)}MB`
+  return `${(mib / 1024).toFixed(1)}GB`
+}
+
 const seen = new Map()
 const queue = []
+const skippedPlatformOptional = new Set()
 function enqueueDependency(entry) {
+  if (entry.optional && shouldSkipOptionalDependency(entry.name)) {
+    skippedPlatformOptional.add(entry.name)
+    return
+  }
+
   const existingOptional = seen.get(entry.name)
   if (existingOptional === undefined) {
     seen.set(entry.name, entry.optional)
@@ -141,11 +288,25 @@ function enqueueDependency(entry) {
   }
 }
 
-for (const entry of readDependencyEntries(path.join(root, 'package.json'))) {
-  enqueueDependency(entry)
+const tracedPackageNames = listTopLevelPackageNames(standaloneNodeModules)
+for (const name of tracedPackageNames) {
+  enqueueDependency({ name, optional: false })
+}
+for (const pkgJsonPath of listExistingStandalonePackageJsons()) {
+  for (const entry of readDependencyEntries(pkgJsonPath)) {
+    enqueueDependency(entry)
+  }
+}
+for (const name of SERVER_RUNTIME_PACKAGE_ALLOWLIST) {
+  enqueueDependency({ name, optional: false })
 }
 
+console.log(
+  `✓ deps: seeded ${tracedPackageNames.length} traced package(s) + ${SERVER_RUNTIME_PACKAGE_ALLOWLIST.length} server runtime package(s)`,
+)
+
 let addedDeps = 0
+let addedPackages = []
 let unresolvedRequired = []
 let unresolvedOptional = []
 let cleanedBrokenSymlinks = 0
@@ -193,6 +354,7 @@ while (queue.length > 0) {
   fs.cpSync(src, dest, { recursive: true, dereference: true })
   // 拷完后剪掉 nested node_modules（pnpm 的依赖通过 symlink 接通，平铺布局下这些都是废链接）
   pruneNestedNodeModules(dest)
+  addedPackages.push({ name, bytes: directorySize(dest) })
   addedDeps++
   for (const childDep of readDependencyEntries(path.join(src, 'package.json'))) {
     enqueueDependency(childDep)
@@ -202,6 +364,7 @@ console.log(
   `✓ deps: added ${addedDeps} missing package(s) to standalone/node_modules` +
     (cleanedBrokenSymlinks > 0 ? ` (cleaned ${cleanedBrokenSymlinks} unfollowable symlink(s) en route)` : ''),
 )
+printLargestAddedPackages(addedPackages)
 if (unresolvedRequired.length > 0) {
   console.warn(
     `  ! missing required package(s) in .pnpm (${unresolvedRequired.length}): ${unresolvedRequired.slice(0, 5).join(', ')}${unresolvedRequired.length > 5 ? ' ...' : ''}`,
@@ -212,6 +375,13 @@ if (optionalOnly.length > 0) {
   console.log(
     `✓ optional deps: skipped ${optionalOnly.length} platform-specific package(s) not installed for ${process.platform}/${process.arch}` +
       ` (${optionalOnly.slice(0, 5).join(', ')}${optionalOnly.length > 5 ? ' ...' : ''})`,
+  )
+}
+if (skippedPlatformOptional.size > 0) {
+  const names = Array.from(skippedPlatformOptional)
+  console.log(
+    `✓ optional deps: ignored ${names.length} non-current platform package(s) while seeding` +
+      ` (${names.slice(0, 5).join(', ')}${names.length > 5 ? ' ...' : ''})`,
   )
 }
 

@@ -10,6 +10,11 @@ Defines cross-platform shell, path, sandbox, and process safety rules. Detailed 
 
 AgentHub MUST select shell command conventions and tool descriptions based on the current host platform.
 
+#### Scenario: Host is POSIX
+- **WHEN** AgentHub executes an AgentHub-managed bash command
+- **THEN** it SHOULD use the user's login zsh/bash shell when available
+- **AND** it MUST fall back to a POSIX-compatible shell invocation when the user shell cannot be resolved safely.
+
 #### Scenario: Host is Windows
 - **WHEN** bash-like tool descriptions are built
 - **THEN** they use PowerShell-oriented examples and Windows blacklist language.

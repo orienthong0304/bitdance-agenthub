@@ -1,3 +1,4 @@
+import { normalizeBlocks } from '@/shared/ppt-normalize'
 import type { ArtifactContent, ArtifactType, DiffHunk, PptLayout, PptSlide, PptTheme } from '@/shared/types'
 
 /**
@@ -142,6 +143,7 @@ export function buildArtifactContent(type: ArtifactType, rawInput: unknown): Art
       raw && typeof raw === 'object' && !Array.isArray(raw)
         ? (raw as Record<string, unknown>)
         : null
+    if (containsUnboundedBinaryPayload(raw)) return null
     const rawSlides = Array.isArray(raw)
       ? raw
       : Array.isArray(obj?.slides)
@@ -154,6 +156,7 @@ export function buildArtifactContent(type: ArtifactType, rawInput: unknown): Art
       if (!item || typeof item !== 'object' || Array.isArray(item)) continue
       const s = item as Record<string, unknown>
       const title = readString(s.title) ?? undefined
+      const subtitle = readString(s.subtitle) ?? undefined
       let bullets: string[] | undefined
       if (Array.isArray(s.bullets)) {
         bullets = s.bullets.filter((b): b is string => typeof b === 'string')
@@ -162,12 +165,21 @@ export function buildArtifactContent(type: ArtifactType, rawInput: unknown): Art
       } else if (Array.isArray(s.points)) {
         bullets = s.points.filter((b): b is string => typeof b === 'string')
       }
+      const blocks = normalizeBlocks(s.blocks)
       const notes = readString(s.notes) ?? undefined
       const layout = normalisePptLayout(s.layout)
-      if (!title && (!bullets || bullets.length === 0)) continue
+      if (
+        !title &&
+        !subtitle &&
+        (!bullets || bullets.length === 0) &&
+        blocks.length === 0 &&
+        layout !== 'blank'
+      ) continue
       slides.push({
         ...(title ? { title } : {}),
+        ...(subtitle ? { subtitle } : {}),
         ...(bullets && bullets.length > 0 ? { bullets } : {}),
+        ...(blocks.length > 0 ? { blocks } : {}),
         ...(notes ? { notes } : {}),
         ...(layout ? { layout } : {}),
       })
@@ -210,6 +222,8 @@ const CONTENT_WRAPPER_KEYS = [
   'sizeBytes',
   'checksum',
   'slides',
+  'blocks',
+  'subtitle',
 ]
 
 /**
@@ -262,7 +276,7 @@ function isWrapperObject(v: unknown): v is Record<string, unknown> {
 
 /** content 串里出现包装字段名 —— 用于决定是否值得做容错解析(避免误伤正常内容)。 */
 function hasWrapperSignature(s: string): boolean {
-  return /"(?:format|content|markdown|text|files|entry|html|targetArtifactId|targetId|hunks|diff|patch|workspacePath|path|slides)"\s*:/.test(s)
+  return /"(?:format|content|markdown|text|files|entry|html|targetArtifactId|targetId|hunks|diff|patch|workspacePath|path|slides|blocks|subtitle)"\s*:/.test(s)
 }
 
 /** 把非法 JSON 转义 `\X`(X ∉ `"\/bfnrtu`)改成合法的 `\\X`,修掉模型常见的 `\|` 等。 */
@@ -387,7 +401,17 @@ function guessLanguage(workspacePath: string): string {
 
 function normalisePptLayout(value: unknown): PptLayout | null {
   const v = readString(value)
-  return v === 'title' || v === 'title-bullets' || v === 'section' || v === 'blank' ? v : null
+  return v === 'title' ||
+    v === 'title-bullets' ||
+    v === 'section' ||
+    v === 'blank' ||
+    v === 'content' ||
+    v === 'two-column' ||
+    v === 'metrics' ||
+    v === 'timeline' ||
+    v === 'quote'
+    ? v
+    : null
 }
 
 function normalisePptTheme(value: unknown): PptTheme | undefined {
@@ -418,4 +442,13 @@ function normalisePptTheme(value: unknown): PptTheme | undefined {
   const fontBody = readString(obj.fontBody) ?? readString(obj.bodyFont) ?? readString(obj.font)
   if (fontBody) theme.fontBody = fontBody
   return Object.keys(theme).length > 0 ? theme : undefined
+}
+
+function containsUnboundedBinaryPayload(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return /^data:[^,]+;base64,/i.test(value.trim())
+  }
+  if (!value || typeof value !== 'object') return false
+  if (Array.isArray(value)) return value.some(containsUnboundedBinaryPayload)
+  return Object.values(value as Record<string, unknown>).some(containsUnboundedBinaryPayload)
 }

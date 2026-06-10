@@ -35,7 +35,7 @@ const ArgsSchema = z.object({
 export const writeArtifactTool: ToolDef = {
   name: 'write_artifact',
   description:
-    'Create a new artifact, or a new version of an existing one. Pass parentArtifactId to create a version that links to the prior; version auto-increments. Use this to produce code/web/docs/images that the user can preview.',
+    'Create a new artifact, or a new version of an existing one. Pass parentArtifactId to create a version that links to the prior; version auto-increments. Use this to produce code/web/docs/images/PPT decks that the user can preview.',
   parameters: {
     type: 'object',
     required: ['type', 'title', 'content'],
@@ -50,7 +50,7 @@ export const writeArtifactTool: ToolDef = {
       content: {
         type: 'object',
         description:
-          'Artifact body — pass as a JSON OBJECT, do NOT JSON-stringify it into a quoted string. For web_app: { files: { "index.html": "...", "style.css"?, "script.js"? }, entry: "index.html" }. For document: { format: "markdown", content: "...markdown text..." }. For image: { url: "...", alt: "..." }. For ppt: { title?, theme?: { primary?: "1A3C6E", background?: "F8F9FA", surface?: "FFFFFF", textBody?: "2C3E50", textMuted?: "95A5A6", accentPositive?: "2B7A4B", accentNegative?: "C0392B", divider?: "E0E4E8", fontHeading?: "Inter", fontBody?: "Inter" } (all optional; supply the FULL color system + fonts from the design spec, not just one color), slides: [{ title, bullets: ["point 1", "point 2"], notes?, layout?: "title"|"title-bullets"|"section" }] } — one slide per page, "title" for the cover and "title-bullets" (default) for content; bullets are plain text (no markdown); hex colors WITHOUT "#". Common mistake to avoid: sending content as a string like "{\\"format\\":\\"markdown\\",...}" — send the raw object, not its JSON text.',
+          'Artifact body — pass as a JSON OBJECT, do NOT JSON-stringify it into a quoted string. For web_app: { files: { "index.html": "...", "style.css"?, "script.js"? }, entry: "index.html" }. For document: { format: "markdown", content: "...markdown text..." }. For image: { url: "...", alt: "..." }. For ppt: { title?, theme?: { primary?: "1A3C6E", background?: "F8F9FA", surface?: "FFFFFF", textBody?: "2C3E50", textMuted?: "95A5A6", accentPositive?: "2B7A4B", accentNegative?: "C0392B", divider?: "E0E4E8", fontHeading?: "Inter", fontBody?: "Inter" }, slides: [{ title?, subtitle?, layout?: "title"|"title-bullets"|"section"|"blank"|"content"|"two-column"|"metrics"|"timeline"|"quote", blocks?: [{ type: "heading", text, level? }, { type: "paragraph", text }, { type: "bullets", items, ordered? }, { type: "metric", label, value, change?, tone? }, { type: "quote", text, attribution? }, { type: "timeline", items: [{ label, title?, text? }] }, { type: "columns", columns: [{ title?, blocks: [{ type: "paragraph"|"bullets"|"metric"|"callout", ... }] }] }, { type: "callout", title?, text, tone? }, { type: "divider" }, { type: "spacer", size? }], notes? }] }. Legacy slides with bullets are still accepted, but prefer blocks for polished decks. Hex colors have no "#"; ppt JSON must not embed raw base64/data URI assets. Common mistake to avoid: sending content as a string like "{\\"format\\":\\"markdown\\",...}" — send the raw object, not its JSON text.',
       },
       parentArtifactId: {
         type: 'string',

@@ -76,11 +76,53 @@ export type ArtifactContent =
       slides: PptSlide[]
     }
 
-export type PptLayout = 'title' | 'title-bullets' | 'section' | 'blank'
+export type PptLayout =
+  | 'title'
+  | 'title-bullets'
+  | 'section'
+  | 'blank'
+  | 'content'
+  | 'two-column'
+  | 'metrics'
+  | 'timeline'
+  | 'quote'
+
+export type PptTone = 'neutral' | 'positive' | 'negative' | 'info' | 'warning'
+
+export type PptBlock =
+  | { type: 'heading'; text: string; level?: 1 | 2 }
+  | { type: 'paragraph'; text: string }
+  | { type: 'bullets'; items: string[]; ordered?: boolean }
+  | { type: 'metric'; label: string; value: string; change?: string; tone?: PptTone }
+  | { type: 'quote'; text: string; attribution?: string }
+  | { type: 'timeline'; items: PptTimelineItem[] }
+  | { type: 'columns'; columns: PptColumn[] }
+  | { type: 'callout'; title?: string; text: string; tone?: PptTone }
+  | { type: 'divider' }
+  | { type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
+
+export interface PptTimelineItem {
+  label: string
+  title?: string
+  text?: string
+}
+
+export interface PptColumn {
+  title?: string
+  blocks?: PptColumnBlock[]
+}
+
+export type PptColumnBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'bullets'; items: string[]; ordered?: boolean }
+  | { type: 'metric'; label: string; value: string; change?: string; tone?: PptTone }
+  | { type: 'callout'; title?: string; text: string; tone?: PptTone }
 
 export interface PptSlide {
   title?: string
+  subtitle?: string
   bullets?: string[]
+  blocks?: PptBlock[]
   notes?: string
   layout?: PptLayout
 }

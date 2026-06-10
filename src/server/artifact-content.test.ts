@@ -283,6 +283,58 @@ describe('buildArtifactContent', () => {
     })
   })
 
+  it('ppt: 接受增强 blocks 并过滤不支持的 block', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        slides: [
+          {
+            title: 'Metrics',
+            subtitle: 'Q2',
+            layout: 'metrics',
+            blocks: [
+              { type: 'metric', label: '收入', value: '1200万', change: '+18%', tone: 'positive' },
+              { type: 'unknown', text: 'ignored' },
+              {
+                type: 'timeline',
+                items: [
+                  { label: 'Q1', title: '启动', text: '完成验证' },
+                  { label: '', title: 'ignored' },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual({
+      type: 'ppt',
+      slides: [
+        {
+          title: 'Metrics',
+          subtitle: 'Q2',
+          layout: 'metrics',
+          blocks: [
+            { type: 'metric', label: '收入', value: '1200万', change: '+18%', tone: 'positive' },
+            { type: 'timeline', items: [{ label: 'Q1', title: '启动', text: '完成验证' }] },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('ppt: 拒绝内联 data URI 二进制 payload', () => {
+    expect(
+      buildArtifactContent('ppt', {
+        slides: [
+          {
+            title: 'Image',
+            blocks: [{ type: 'paragraph', text: 'ok' }],
+            image: 'data:image/png;base64,AAAA',
+          },
+        ],
+      }),
+    ).toBeNull()
+  })
+
   it('非法输入返回 null', () => {
     expect(buildArtifactContent('document', 123)).toBeNull()
     expect(buildArtifactContent('diff', { targetArtifactId: 'art_target', hunks: [] })).toBeNull()

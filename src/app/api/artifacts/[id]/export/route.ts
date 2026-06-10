@@ -16,11 +16,15 @@ interface RouteContext {
  *  - web_app  → ZIP 含所有源码文件，文件名 `<title>-v<version>.zip`
  *  - document → 单 Markdown 文件 `<title>-v<version>.md`
  *  - image    → 302 跳转到 image.url（外部图片）
- *  - ppt      → pptxgenjs 生成真 .pptx 二进制
+ *  - ppt      → pptxgenjs 生成真 .pptx 二进制；mode=visual 预留给图片型高保真导出
  *  - code_file / diff / 其它 → JSON dump
  */
-export async function GET(_req: Request, ctx: RouteContext) {
+export async function GET(req: Request, ctx: RouteContext) {
   const { id } = await ctx.params
+  const exportMode = new URL(req.url).searchParams.get('mode') ?? 'editable'
+  if (exportMode !== 'editable' && exportMode !== 'visual') {
+    return NextResponse.json({ error: `Unsupported export mode: ${exportMode}` }, { status: 400 })
+  }
 
   const row = await db.query.artifacts.findFirst({
     where: eq(schema.artifacts.id, id),
@@ -69,6 +73,15 @@ export async function GET(_req: Request, ctx: RouteContext) {
   }
 
   if (content.type === 'ppt') {
+    if (exportMode === 'visual') {
+      return NextResponse.json(
+        {
+          error:
+            'Visual-priority PPTX export is not enabled yet. Use the default editable PPTX export instead.',
+        },
+        { status: 501 },
+      )
+    }
     const { slidesToPptxBuffer } = await import('@/server/ppt-export')
     const buf = await slidesToPptxBuffer(content, row.title)
     return new NextResponse(new Uint8Array(buf), {

@@ -16,8 +16,10 @@ import { artifactPreviewPath } from '@/lib/artifact-preview'
 import { normalizeLang } from '@/lib/highlighter'
 import { cn } from '@/lib/utils'
 import { buildArtifactVersionDiff } from '@/shared/artifact-version-diff'
+import { normalizePptDeck, toEditablePptContent } from '@/shared/ppt-normalize'
 import { detectBulletTone, resolvePptTheme } from '@/shared/ppt-theme'
-import type { ArtifactContent, DiffHunk, PptSlide, PptTheme } from '@/shared/types'
+import type { ArtifactContent, DiffHunk, PptBlock, PptColumnBlock, PptTheme, PptTone } from '@/shared/types'
+import type { NormalizedPptSlide } from '@/shared/ppt-normalize'
 import { useAppStore } from '@/stores/app-store'
 
 // 编辑器仅在用户点「编辑」时懒加载（重型 client 库；CodeMirror 无 worker、离线 OK）
@@ -176,7 +178,7 @@ export function ArtifactPreviewPanel() {
           <a
             href={`/api/artifacts/${artifact.id}/export`}
             download
-            title={`下载${artifact.type === 'web_app' ? ' .zip' : artifact.type === 'document' ? ' .md' : ''}`}
+            title={`下载${artifact.type === 'web_app' ? ' .zip' : artifact.type === 'document' ? ' .md' : artifact.type === 'ppt' ? '可编辑 .pptx' : ''}`}
             className="inline-flex size-8 items-center justify-center rounded-lg text-foreground/70 transition hover:bg-muted hover:text-foreground"
           >
             <Download className="size-4" />
@@ -481,7 +483,8 @@ function SlideDeckView({
   content: Extract<ArtifactContent, { type: 'ppt' }>
   onSaveVersion: SaveVersionFn
 }) {
-  const serialized = useMemo(() => JSON.stringify(content, null, 2), [content])
+  const serialized = useMemo(() => JSON.stringify(toEditablePptContent(content), null, 2), [content])
+  const deck = useMemo(() => normalizePptDeck(content), [content])
   const [view, setView] = useState<'render' | 'edit'>('render')
   const [idx, setIdx] = useState(0)
   const [draft, setDraft] = useState(serialized)
@@ -497,9 +500,9 @@ function SlideDeckView({
     setError(null)
   }, [serialized])
 
-  const total = content.slides.length
+  const total = deck.slides.length
   const safeIdx = Math.min(idx, Math.max(0, total - 1))
-  const current = content.slides[safeIdx]
+  const current = deck.slides[safeIdx]
   const dirty = draft !== serialized
 
   const save = async () => {
@@ -570,7 +573,7 @@ function SlideDeckView({
         {view === 'render' ? (
           <div ref={containerRef} className="size-full bg-zinc-100 dark:bg-zinc-900">
             {current ? (
-              <SlideView slide={current} deckTitle={content.title} theme={content.theme} />
+              <SlideView slide={current} theme={deck.theme} />
             ) : (
               <Empty>没有幻灯片</Empty>
             )}
@@ -597,17 +600,14 @@ function SlideDeckView({
 
 function SlideView({
   slide,
-  deckTitle,
   theme,
 }: {
-  slide: PptSlide
-  deckTitle?: string
+  slide: NormalizedPptSlide
   theme?: PptTheme
 }) {
   const t = resolvePptTheme(theme)
-  const layout = slide.layout ?? 'title-bullets'
-  const centered = layout === 'title' || layout === 'section'
-  const heading = slide.title ?? (centered ? deckTitle : undefined)
+  const centered = slide.layout === 'title' || slide.layout === 'section'
+  const heading = slide.title
   const hx = (c: string) => `#${c}`
 
   return (
@@ -624,78 +624,335 @@ function SlideView({
       >
         {centered ? (
           <div
-            className="flex size-full flex-col items-center justify-center gap-5 p-12 text-center"
+            className="flex size-full flex-col items-center justify-center gap-5 overflow-hidden p-12 text-center"
             style={{ background: hx(t.primary) }}
           >
             {heading && (
               <h2
-                className="text-3xl font-bold leading-tight"
+                className="line-clamp-3 max-w-full break-words text-3xl font-bold leading-tight [overflow-wrap:anywhere]"
                 style={{ color: '#FFFFFF', fontFamily: `${t.fontHeading}, system-ui, sans-serif` }}
               >
                 {heading}
               </h2>
             )}
-            {slide.bullets && slide.bullets.length > 0 && (
-              <div className="space-y-1 text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                {slide.bullets.map((b, i) => (
-                  <div key={i}>{b}</div>
-                ))}
+            {slide.subtitle && (
+              <div className="line-clamp-2 max-w-2xl break-words text-base [overflow-wrap:anywhere]" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                {slide.subtitle}
               </div>
             )}
+            <SlideBlocks blocks={slide.blocks} theme={t} layout={slide.layout} centered />
           </div>
         ) : (
           <div className="flex size-full flex-col" style={{ background: hx(t.surface) }}>
             <div className="h-1.5 shrink-0" style={{ background: hx(t.primary) }} />
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-10">
-              {heading && (
-                <h2
-                  className="border-b pb-3 text-2xl font-bold"
-                  style={{
-                    color: hx(t.primary),
-                    borderColor: hx(t.divider),
-                    fontFamily: `${t.fontHeading}, system-ui, sans-serif`,
-                  }}
-                >
-                  {heading}
-                </h2>
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-10">
+              {(heading || slide.subtitle) && (
+                <div className="min-w-0 border-b pb-3" style={{ borderColor: hx(t.divider) }}>
+                  {heading && (
+                    <h2
+                      className="line-clamp-2 break-words text-2xl font-bold leading-tight [overflow-wrap:anywhere]"
+                      style={{
+                        color: hx(t.primary),
+                        fontFamily: `${t.fontHeading}, system-ui, sans-serif`,
+                      }}
+                    >
+                      {heading}
+                    </h2>
+                  )}
+                  {slide.subtitle && (
+                    <div className="mt-1 line-clamp-1 break-words text-sm [overflow-wrap:anywhere]" style={{ color: hx(t.textMuted) }}>
+                      {slide.subtitle}
+                    </div>
+                  )}
+                </div>
               )}
-              {slide.bullets && slide.bullets.length > 0 && (
-                <ul className="space-y-2">
-                  {slide.bullets.map((b, i) => {
-                    const tone = detectBulletTone(b)
-                    const toneColor =
-                      tone === 'positive'
-                        ? hx(t.accentPositive)
-                        : tone === 'negative'
-                          ? hx(t.accentNegative)
-                          : hx(t.primary)
-                    const icon = tone === 'positive' ? '▲' : tone === 'negative' ? '▼' : '▪'
-                    return (
-                      <li
-                        key={i}
-                        className="flex items-start gap-2.5 rounded-md px-3 py-2 text-[15px] leading-relaxed"
-                        style={{
-                          background: hx(t.background),
-                          border: `1px solid ${hx(t.divider)}`,
-                          borderLeft: `3px solid ${toneColor}`,
-                          color: hx(t.textBody),
-                        }}
-                      >
-                        <span className="mt-0.5 select-none text-xs" style={{ color: toneColor }}>
-                          {icon}
-                        </span>
-                        <span>{b}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+              <SlideBlocks blocks={slide.blocks} theme={t} layout={slide.layout} />
             </div>
           </div>
         )}
       </div>
     </div>
   )
+}
+
+type ResolvedPptTheme = ReturnType<typeof resolvePptTheme>
+
+function SlideBlocks({
+  blocks,
+  theme,
+  layout,
+  centered = false,
+}: {
+  blocks: PptBlock[]
+  theme: ResolvedPptTheme
+  layout: NormalizedPptSlide['layout']
+  centered?: boolean
+}) {
+  if (blocks.length === 0) return null
+
+  const metricOnly = layout === 'metrics' && blocks.every((block) => block.type === 'metric')
+  if (metricOnly) {
+    return (
+      <div className="grid min-h-0 w-full grid-cols-2 gap-3 overflow-hidden">
+        {blocks.map((block, index) =>
+          block.type === 'metric' ? <MetricBlock key={index} block={block} theme={theme} /> : null,
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('min-h-0 min-w-0 space-y-2 overflow-hidden', centered && 'max-w-2xl text-left')}>
+      {blocks.map((block, index) => (
+        <SlideBlock key={index} block={block} theme={theme} centered={centered} />
+      ))}
+    </div>
+  )
+}
+
+function SlideBlock({
+  block,
+  theme,
+  centered,
+}: {
+  block: PptBlock
+  theme: ResolvedPptTheme
+  centered?: boolean
+}) {
+  const hx = (c: string) => `#${c}`
+  switch (block.type) {
+    case 'heading':
+      return (
+        <div
+          className={cn(
+            'line-clamp-2 break-words font-semibold leading-tight [overflow-wrap:anywhere]',
+            block.level === 1 ? 'text-xl' : 'text-base',
+          )}
+          style={{ color: centered ? '#FFFFFF' : hx(theme.primary), fontFamily: `${theme.fontHeading}, system-ui, sans-serif` }}
+        >
+          {block.text}
+        </div>
+      )
+    case 'paragraph':
+      return (
+        <p
+          className="line-clamp-4 break-words text-sm leading-relaxed [overflow-wrap:anywhere]"
+          style={{ color: centered ? 'rgba(255,255,255,0.86)' : hx(theme.textBody) }}
+        >
+          {block.text}
+        </p>
+      )
+    case 'bullets':
+      return <BulletsBlock items={block.items} ordered={block.ordered} theme={theme} centered={centered} />
+    case 'metric':
+      return <MetricBlock block={block} theme={theme} />
+    case 'quote':
+      return <QuoteBlock block={block} theme={theme} centered={centered} />
+    case 'timeline':
+      return <TimelineBlock block={block} theme={theme} />
+    case 'columns':
+      return <ColumnsBlock block={block} theme={theme} />
+    case 'callout':
+      return <CalloutBlock block={block} theme={theme} centered={centered} />
+    case 'divider':
+      return <div className="h-px w-full" style={{ background: centered ? 'rgba(255,255,255,0.28)' : hx(theme.divider) }} />
+    case 'spacer':
+      return <div className={block.size === 'lg' ? 'h-5' : block.size === 'sm' ? 'h-1' : 'h-3'} />
+  }
+}
+
+function BulletsBlock({
+  items,
+  ordered,
+  theme,
+  centered,
+}: {
+  items: string[]
+  ordered?: boolean
+  theme: ResolvedPptTheme
+  centered?: boolean
+}) {
+  const hx = (c: string) => `#${c}`
+  const Tag = ordered ? 'ol' : 'ul'
+  return (
+    <Tag className="min-w-0 space-y-1.5 overflow-hidden">
+      {items.slice(0, 7).map((text, index) => {
+        const tone = detectBulletTone(text)
+        const color = tone === 'positive' ? hx(theme.accentPositive) : tone === 'negative' ? hx(theme.accentNegative) : hx(theme.primary)
+        const icon = ordered ? `${index + 1}.` : tone === 'positive' ? '▲' : tone === 'negative' ? '▼' : '▪'
+        return (
+          <li
+            key={`${text}-${index}`}
+            className="flex min-w-0 items-start gap-2 rounded-md px-3 py-1.5 text-sm leading-relaxed"
+            style={{
+              background: centered ? 'rgba(255,255,255,0.10)' : hx(theme.background),
+              border: centered ? '1px solid rgba(255,255,255,0.16)' : `1px solid ${hx(theme.divider)}`,
+              color: centered ? 'rgba(255,255,255,0.88)' : hx(theme.textBody),
+            }}
+          >
+            <span className="mt-0.5 shrink-0 select-none text-xs font-semibold" style={{ color: centered ? '#FFFFFF' : color }}>
+              {icon}
+            </span>
+            <span className="line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]">{text}</span>
+          </li>
+        )
+      })}
+    </Tag>
+  )
+}
+
+function MetricBlock({
+  block,
+  theme,
+}: {
+  block: Extract<PptBlock, { type: 'metric' }>
+  theme: ResolvedPptTheme
+}) {
+  const hx = (c: string) => `#${c}`
+  const color = hx(toneColor(block.tone, theme))
+  return (
+    <div
+      className="min-w-0 rounded-lg border px-3 py-2"
+      style={{ background: hx(theme.background), borderColor: hx(theme.divider) }}
+    >
+      <div className="line-clamp-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: hx(theme.textMuted) }}>
+        {block.label}
+      </div>
+      <div className="mt-1 line-clamp-1 break-words text-2xl font-bold [overflow-wrap:anywhere]" style={{ color }}>
+        {block.value}
+      </div>
+      {block.change && (
+        <div className="mt-0.5 line-clamp-1 break-words text-xs [overflow-wrap:anywhere]" style={{ color }}>
+          {block.change}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function QuoteBlock({
+  block,
+  theme,
+  centered,
+}: {
+  block: Extract<PptBlock, { type: 'quote' }>
+  theme: ResolvedPptTheme
+  centered?: boolean
+}) {
+  const hx = (c: string) => `#${c}`
+  return (
+    <blockquote
+      className="min-w-0 rounded-lg border-l-4 px-4 py-3"
+      style={{
+        background: centered ? 'rgba(255,255,255,0.10)' : hx(theme.background),
+        borderColor: centered ? '#FFFFFF' : hx(theme.primary),
+      }}
+    >
+      <div className="line-clamp-4 break-words text-base font-medium leading-relaxed [overflow-wrap:anywhere]" style={{ color: centered ? '#FFFFFF' : hx(theme.textBody) }}>
+        “{block.text}”
+      </div>
+      {block.attribution && (
+        <div className="mt-2 line-clamp-1 text-xs" style={{ color: centered ? 'rgba(255,255,255,0.72)' : hx(theme.textMuted) }}>
+          {block.attribution}
+        </div>
+      )}
+    </blockquote>
+  )
+}
+
+function TimelineBlock({
+  block,
+  theme,
+}: {
+  block: Extract<PptBlock, { type: 'timeline' }>
+  theme: ResolvedPptTheme
+}) {
+  const hx = (c: string) => `#${c}`
+  return (
+    <div className="grid min-w-0 grid-cols-2 gap-2 overflow-hidden">
+      {block.items.slice(0, 6).map((item, index) => (
+        <div key={`${item.label}-${index}`} className="min-w-0 rounded-md border px-3 py-2" style={{ background: hx(theme.background), borderColor: hx(theme.divider) }}>
+          <div className="line-clamp-1 text-[11px] font-semibold" style={{ color: hx(theme.primary) }}>{item.label}</div>
+          {item.title && <div className="line-clamp-1 text-sm font-medium" style={{ color: hx(theme.textBody) }}>{item.title}</div>}
+          {item.text && <div className="mt-0.5 line-clamp-2 break-words text-xs [overflow-wrap:anywhere]" style={{ color: hx(theme.textMuted) }}>{item.text}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ColumnsBlock({
+  block,
+  theme,
+}: {
+  block: Extract<PptBlock, { type: 'columns' }>
+  theme: ResolvedPptTheme
+}) {
+  const hx = (c: string) => `#${c}`
+  return (
+    <div
+      className="grid min-w-0 gap-2 overflow-hidden"
+      style={{ gridTemplateColumns: `repeat(${Math.max(1, block.columns.length)}, minmax(0, 1fr))` }}
+    >
+      {block.columns.map((column, index) => (
+        <div key={index} className="min-w-0 rounded-lg border p-3" style={{ background: hx(theme.background), borderColor: hx(theme.divider) }}>
+          {column.title && <div className="mb-2 line-clamp-1 text-sm font-semibold" style={{ color: hx(theme.primary) }}>{column.title}</div>}
+          <div className="space-y-1.5 overflow-hidden">
+            {(column.blocks ?? []).slice(0, 4).map((child, childIndex) => (
+              <ColumnBlock key={childIndex} block={child} theme={theme} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ColumnBlock({ block, theme }: { block: PptColumnBlock; theme: ResolvedPptTheme }) {
+  const hx = (c: string) => `#${c}`
+  if (block.type === 'paragraph') {
+    return <div className="line-clamp-3 break-words text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: hx(theme.textBody) }}>{block.text}</div>
+  }
+  if (block.type === 'bullets') {
+    return <BulletsBlock items={block.items.slice(0, 4)} ordered={block.ordered} theme={theme} />
+  }
+  if (block.type === 'metric') {
+    return <MetricBlock block={block} theme={theme} />
+  }
+  return <CalloutBlock block={block} theme={theme} />
+}
+
+function CalloutBlock({
+  block,
+  theme,
+  centered,
+}: {
+  block: Extract<PptBlock, { type: 'callout' }>
+  theme: ResolvedPptTheme
+  centered?: boolean
+}) {
+  const hx = (c: string) => `#${c}`
+  const color = hx(toneColor(block.tone, theme))
+  return (
+    <div
+      className="min-w-0 rounded-lg border px-3 py-2"
+      style={{
+        background: centered ? 'rgba(255,255,255,0.10)' : hx(theme.background),
+        borderColor: centered ? 'rgba(255,255,255,0.18)' : color,
+      }}
+    >
+      {block.title && <div className="line-clamp-1 text-xs font-semibold" style={{ color: centered ? '#FFFFFF' : color }}>{block.title}</div>}
+      <div className="line-clamp-3 break-words text-sm leading-relaxed [overflow-wrap:anywhere]" style={{ color: centered ? 'rgba(255,255,255,0.88)' : hx(theme.textBody) }}>
+        {block.text}
+      </div>
+    </div>
+  )
+}
+
+function toneColor(tone: PptTone | undefined, theme: ResolvedPptTheme): string {
+  if (tone === 'positive') return theme.accentPositive
+  if (tone === 'negative' || tone === 'warning') return theme.accentNegative
+  return theme.primary
 }
 
 // ─── image ─────────────────────────────────────────────

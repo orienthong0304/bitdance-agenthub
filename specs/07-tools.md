@@ -168,8 +168,9 @@ export const toolRegistry = buildRegistry()
 
 **按 MIME 分支**：
 - 文本类（`text/*` / `application/json` / `application/xml` / `application/javascript` / `application/x-yaml`）：直接 `readFileSync(utf8)`，截断到 50,000 字符（防 prompt 爆炸）
+- PDF（`application/pdf` / `.pdf` / `%PDF-` 文件头）：本地用 `pdf-parse` 懒抽取文本，返回 `content` / `pageCount` / `truncated`；扫描版或图片型 PDF 抽不到文本时返回 note，提示需要 OCR
 - 图片：返回 metadata + note，告知 LLM 图片已通过 multimodal channel 投递（见 Spec 05 multimodal 部分）
-- 其他二进制（PDF / docx / zip）：仅返回 metadata + note。**TODO**：PDF 文本抽取（标 P1，需引入 `pdf-parse` 类依赖，按 CLAUDE.md §6.2 要先讨论）
+- 其他二进制（docx / zip 等）：仅返回 metadata + note，不把原始二进制塞进 prompt
 
 **容量**：`MAX_TEXT_CHARS = 50_000`。
 

@@ -14,6 +14,16 @@ AgentHub-managed tools MUST be registered through `toolRegistry` with name, desc
 - **WHEN** an agent's `toolNames` includes `fs_read`
 - **THEN** CustomAgentAdapter resolves the tool definition from `toolRegistry`.
 
+### Requirement: Attachments SHALL be read through safe tool extraction
+
+`read_attachment` MUST read user-uploaded attachments scoped to the current conversation. Text-like files and PDFs with extractable text SHALL return plain text with bounded length; unsupported binary formats SHALL return metadata instead of raw bytes.
+
+#### Scenario: Agent reads a PDF attachment
+- **WHEN** `read_attachment` receives an attachment whose MIME type, filename, or file header identifies it as a PDF
+- **THEN** AgentHub extracts local PDF text before returning the tool result
+- **AND** truncates the returned text at the same bounded length used for text files
+- **AND** returns a clear note when the PDF has no extractable text and likely needs OCR.
+
 ### Requirement: File tools SHALL enforce workspace boundaries
 
 `fs_read`, `fs_write`, and `bash` MUST resolve paths under the conversation effective cwd and reject access outside that tree.

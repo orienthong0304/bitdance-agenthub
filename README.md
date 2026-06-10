@@ -9,12 +9,16 @@
   <img alt="pnpm" src="https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white">
 </p>
 
+<p align="center">
+  <b>English</b> · <a href="./README.zh-CN.md">简体中文</a>
+</p>
+
 AgentHub is a local-first multi-agent workspace that turns AI collaboration into an IM-style experience.
 
 Instead of treating every agent run as an isolated terminal transcript, AgentHub organizes work around conversations: agents are contacts, a conversation is a workspace, files and artifacts are shared context, and the Orchestrator can split work across multiple agents.
 
 <p align="center">
-    <img src="docs/images/agenthub-preview.png" alt="AgentHub 多 Agent 协作与产物预览" width="100%" />
+    <img src="docs/images/agenthub-preview.png" alt="AgentHub multi-agent collaboration and artifact preview" width="100%" />
 </p>
 
 > Current status: active local development. The app is usable as a web app and Electron desktop app; the mobile companion app is under development.

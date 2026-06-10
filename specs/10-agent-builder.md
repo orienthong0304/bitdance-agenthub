@@ -2,13 +2,13 @@
 
 > 用户在前端通过表单创建 / 编辑 Agent，不需要改代码。本 spec 定义可配置字段、Provider 支持矩阵、API key 优先级、内置 vs 自建的差异。
 
-源文件：`src/components/create-agent-dialog.tsx`、`src/server/agent-service.ts`、`src/db/seed.ts`、`src/app/api/agents/`
+源文件：`src/components/create-agent-dialog.tsx`、`src/components/agent-create-wizard.tsx`、`src/shared/agent-builder-config.ts`、`src/server/agent-draft-service.ts`、`src/server/agent-service.ts`、`src/db/seed.ts`、`src/app/api/agents/`
 
 ---
 
 ## 定位
 
-自建 Agent 默认 `adapterName='custom'`，也可以选择 `claude-code` 或 `codex` SDK adapter（详见 Spec 05）。用户配置：
+自建 Agent 默认 `adapterName='custom'`，也可以选择 `claude-code` 或 `codex` SDK adapter（详见 Spec 05）。新建入口统一为 Agent 列表顶部的「创建 Agent」按钮；点击后第一步选择「对话创建」或「详细配置」，编辑已有 Agent 时直接进入详细配置。用户配置：
 
 - 身份：name / avatar / description / capabilities
 - 行为：systemPrompt
@@ -102,26 +102,26 @@ Custom provider 实现在 `custom-provider-client.ts` 的 `resolveCustomProvider
 
 ## 工具勾选
 
-源：`create-agent-dialog.tsx:35`
+源：`src/shared/agent-builder-config.ts`
 
 ```typescript
-const AVAILABLE_TOOLS = ['write_artifact', 'deploy_artifact', 'deploy_workspace', 'read_artifact', 'read_attachment', 'ask_user', 'fs_read', 'fs_write', 'bash'] as const
+const AVAILABLE_AGENT_TOOLS = ['write_artifact', 'deploy_artifact', 'deploy_workspace', 'read_artifact', 'read_attachment', 'ask_user', 'fs_read', 'fs_write', 'bash'] as const
 ```
 
 UI 当前允许勾选产物、附件和 workspace 相关常用工具。`plan_tasks` 不在列表里 —— 因为它是 Orchestrator 专用，自建 agent 不应装备。
 
-每个勾选项展示面向用户的中文 label + 一句权限说明 + 原始工具名（来自同文件的 `TOOL_META`），而不是只露裸工具名。
+每个勾选项展示面向用户的中文 label + 一句权限说明 + 原始工具名（来自同文件的 `AGENT_TOOL_META`），而不是只露裸工具名。
 
 工具区提供 4 个一键预设：
 
 | 预设 | 工具 | 用途 |
 |---|---|---|
-| 全栈通用 | 全部 `AVAILABLE_TOOLS` | 默认；既能创建 artifact，也能直接读写本地 workspace 并运行命令 |
+| 全栈通用 | 全部 `AVAILABLE_AGENT_TOOLS` | 默认；既能创建 artifact，也能直接读写本地 workspace 并运行命令 |
 | 本地代码 | `deploy_workspace` / `read_artifact` / `read_attachment` / `ask_user` / `fs_read` / `fs_write` / `bash` | 读取上游产物，直接在当前 workspace 初始化、修改、验证项目源码，并部署已构建静态目录 |
 | 产物交付 | `write_artifact` / `deploy_artifact` / `deploy_workspace` / `read_artifact` / `read_attachment` / `ask_user` | PRD、设计稿、网页原型、文档等聊天内交付；也可发布已有 workspace 静态目录 |
 | 审查验证 | `read_artifact` / `read_attachment` / `ask_user` / `fs_read` / `bash` | 读取产物或本地代码并运行检查，不默认写文件 |
 
-**新增工具时**：除了在 `src/server/tools/registry.ts` 注册，还要在这里 `AVAILABLE_TOOLS` 加上、并在 `TOOL_META` 补一条文案，才能在 UI 正常勾选（详见 Spec 07 「新增工具步骤」）。
+**新增工具时**：除了在 `src/server/tools/registry.ts` 注册，还要在 `src/shared/agent-builder-config.ts` 的 `AVAILABLE_AGENT_TOOLS` 加上、并在 `AGENT_TOOL_META` 补一条文案，才能在 UI 正常勾选（详见 Spec 07 「新增工具步骤」）。
 
 ---
 
@@ -142,7 +142,7 @@ UI 当前允许勾选产物、附件和 workspace 相关常用工具。`plan_tas
 
 ## 创建 / 编辑流程
 
-源：`create-agent-dialog.tsx`（UI）+ `agent-service.ts`（service）+ `app/api/agents/`（API）
+源：`create-agent-dialog.tsx` / `agent-create-wizard.tsx`（UI）+ `agent-draft-service.ts` / `agent-service.ts`（service）+ `app/api/agents/`（API）
 
 ### 创建
 
@@ -151,6 +151,23 @@ UI 当前允许勾选产物、附件和 workspace 相关常用工具。`plan_tas
        │
        ▼
 CreateAgentDialog (open, agent=undefined)
+       │
+       ▼
+第一步：选择创建方式
+       ├─ 对话创建 → AgentCreateWizard
+       │             │ 输入意图 / 可选偏好
+       │             ▼
+       │       POST /api/agents/draft
+       │             │
+       │             ▼
+       │       createAgentConfigDraft: 生成 AgentConfigDraft（不落库）
+       │             │
+       │             ▼
+       │       Review：身份 / 模型 / 工具权限 / 假设 / System Prompt
+       │             ├─ 创建 → POST /api/agents
+       │             └─ 编辑详细配置 → 预填详细表单
+       │
+       └─ 详细配置 → 直接显示原表单
        │
        │ 填表 → submit
        ▼
@@ -162,6 +179,13 @@ createCustomAgent: avatar='🤖' 默认，adapterName='custom'，isBuiltin=false
        ▼
 返回 AgentRow → upsertAgent(row) 入 store
 ```
+
+**对话创建约束**：
+- draft 只是一份 `AgentConfigDraft`，不会直接写 `agents` 表
+- 保存仍走现有 `POST /api/agents` + `createCustomAgent`
+- 工具权限来自 `src/shared/agent-builder-config.ts` 中的确定性预设推断，review 页逐项展示权限说明
+- 默认生成普通自建 Agent，不包含 `plan_tasks` 等 Orchestrator 专用工具
+- 用户可从 review 页切到详细配置继续调整 provider / model / toolNames / systemPrompt
 
 ### 编辑
 
@@ -195,6 +219,7 @@ updateCustomAgent: 部分更新；切到 SDK adapter 时 modelProvider=null、to
 | Method | Path | 用途 |
 |---|---|---|
 | `GET` | `/api/agents` | 列出全部 agent（按 is_builtin desc + created_at desc） |
+| `POST` | `/api/agents/draft` | 根据用户描述生成创建草稿；只返回 `AgentConfigDraft`，不落库 |
 | `POST` | `/api/agents` | 创建自建 agent |
 | `PATCH` | `/api/agents/[id]` | 更新（内置也可） |
 | `DELETE` | `/api/agents/[id]` | 删除（内置拒绝） |

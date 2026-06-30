@@ -18,14 +18,8 @@
  */
 import type Database from 'better-sqlite3'
 
-import { BUILTIN_AGENTS, UI_DESIGNER_ARTIFACT_PROMPT_HINT } from './builtin-agents'
+import { BUILTIN_AGENTS } from './builtin-agents'
 
-const FRONTEND_DEPLOYMENT_PROMPT_HINT =
-  'deploy_artifact / deploy_workspace 返回的 previewPath 是当前 AgentHub 实例下的相对路径，不要在文字总结里把它改写成公网域名或自造完整 URL；让用户点击部署卡片按钮，或原样引用 previewPath。'
-const FRONTEND_LOCAL_WORKSPACE_PROMPT_HINT =
-  '当 workspace_info mode=local 且用户要求创建 / 修改 / 初始化 / 调试前端项目、源码文件、依赖或构建配置时，优先使用 fs_read / fs_write / bash 直接操作本地文件并运行验证；不要用 write_artifact 代替应该落盘的源码。构建出 dist/build/out 等静态目录后，可用 deploy_workspace 生成部署预览卡。只有用户明确要求网页产物、可预览原型、artifact 或独立 demo 时，才用 write_artifact + deploy_artifact。'
-const REVIEWER_LOCAL_WORKSPACE_PROMPT_HINT =
-  '本地代码审查先用 fs_read 查看关键文件，必要时用 bash 运行检查命令；不要只根据文件名、任务摘要或 artifact 占位做判断。'
 const BUILTIN_TOOL_UPGRADES = new Map(
   BUILTIN_AGENTS.map((agent) => [agent.id, agent.toolNames] as const),
 )
@@ -235,15 +229,14 @@ function ensureBuiltinAgents(sqlite: Database.Database): void {
 
 function upgradeBuiltinAgents(sqlite: Database.Database): void {
   const rows = sqlite
-    .prepare('SELECT id, tool_names, system_prompt FROM agents WHERE is_builtin = 1')
-    .all() as { id: string; tool_names: string; system_prompt: string }[]
+    .prepare('SELECT id, tool_names FROM agents WHERE is_builtin = 1')
+    .all() as { id: string; tool_names: string }[]
 
   const update = sqlite.prepare(
-    'UPDATE agents SET tool_names = ?, system_prompt = ? WHERE id = ? AND is_builtin = 1',
+    'UPDATE agents SET tool_names = ? WHERE id = ? AND is_builtin = 1',
   )
 
   for (const row of rows) {
-    let changed = false
     let toolNames: string[]
     try {
       const parsed = JSON.parse(row.tool_names) as unknown
@@ -254,49 +247,14 @@ function upgradeBuiltinAgents(sqlite: Database.Database): void {
       toolNames = []
     }
 
+    let changed = false
     for (const toolName of BUILTIN_TOOL_UPGRADES.get(row.id) ?? []) {
       if (toolNames.includes(toolName)) continue
-      if (toolName === 'deploy_artifact') {
-        const insertAfter = toolNames.indexOf('write_artifact')
-        if (insertAfter >= 0) toolNames.splice(insertAfter + 1, 0, toolName)
-        else toolNames.push(toolName)
-      } else {
-        toolNames.push(toolName)
-      }
+      toolNames.push(toolName)
       changed = true
     }
 
-    let systemPrompt = row.system_prompt
-    if (row.id === 'ag_frontend' && !systemPrompt.includes('deploy_artifact')) {
-      systemPrompt +=
-        '\n\n完成 web_app 产物后必须调用 deploy_artifact，让用户在消息里拿到部署状态卡和可打开的本地预览路径。'
-      changed = true
-    }
-    if (
-      row.id === 'ag_frontend' &&
-      !systemPrompt.includes('不要在文字总结里把它改写成公网域名')
-    ) {
-      systemPrompt += `\n\n${FRONTEND_DEPLOYMENT_PROMPT_HINT}`
-      changed = true
-    }
-    if (
-      row.id === 'ag_frontend' &&
-      (!systemPrompt.includes('不要用 write_artifact 代替应该落盘的源码') ||
-        !systemPrompt.includes('deploy_workspace'))
-    ) {
-      systemPrompt += `\n\n${FRONTEND_LOCAL_WORKSPACE_PROMPT_HINT}`
-      changed = true
-    }
-    if (row.id === 'ag_reviewer' && !systemPrompt.includes('本地代码审查先用 fs_read')) {
-      systemPrompt += `\n\n${REVIEWER_LOCAL_WORKSPACE_PROMPT_HINT}`
-      changed = true
-    }
-    if (row.id === 'ag_designer' && !systemPrompt.includes('禁止 write_artifact({})')) {
-      systemPrompt += `\n\n${UI_DESIGNER_ARTIFACT_PROMPT_HINT}`
-      changed = true
-    }
-
-    if (changed) update.run(JSON.stringify(toolNames), systemPrompt, row.id)
+    if (changed) update.run(JSON.stringify(toolNames), row.id)
   }
 }
 

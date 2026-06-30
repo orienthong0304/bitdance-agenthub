@@ -40,7 +40,7 @@ function seedLegacyDevAgents(db: Database.Database): void {
   for (const id of ids) {
     insert.run(
       id, '旧' + id, '🤖', '旧开发角色', JSON.stringify(['dev']),
-      '你是软件开发团队的一员，输出 PRD / web_app。', // 注意：不含写作标记
+      '你是软件开发团队的一员，输出 PRD / web_app。', // 旧 prompt 不含写作标记，确保迁移的幂等判据会触发改写
       'custom', 'deepseek', 'deepseek-v4-flash', JSON.stringify(['write_artifact']),
       id === 'ag_orchestrator' ? 1 : 0, 100,
     )

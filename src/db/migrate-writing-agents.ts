@@ -13,6 +13,11 @@ import { BUILTIN_AGENTS } from './builtin-agents'
 /** 出现在写作版 Orchestrator systemPrompt 中、开发版没有的标记短语。 */
 export const WRITING_AGENTS_MARKER = '资料简报'
 
+/**
+ * 前置条件：必须在 `ensureBuiltinAgents` 之后调用（bootstrap 已保证此顺序）。
+ * 函数假设 agents 表存在且 6 个内置行已插入；不支持脱离 bootstrap、在缺失内置行的
+ * 残缺库上单独调用（幂等判据落空时 INSERT 可能因 PRIMARY KEY 重复而出错）。
+ */
 export function rewriteBuiltinAgentsForWriting(sqlite: Database.Database): void {
   const orch = sqlite
     .prepare("SELECT system_prompt FROM agents WHERE id = 'ag_orchestrator'")

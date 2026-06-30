@@ -149,7 +149,7 @@ const planTasksTool: ToolDef = {
 - AgentRunner 必须在校验前运行确定性的 `compileDispatchPlan`：
   - 保留显式 `dependsOn`
   - 仅从同一 plan 中排在当前任务之前的任务推断缺失依赖
-  - 识别 `t1 产物`、`读取 PRD`、`基于 UI 设计`、`审查前端实现`、`上游产物` 等高置信依赖信号
+  - 识别 `t1 产物`、`读取资料简报`、`基于写作Brief`、`审查初稿`、`上游产物` 等高置信依赖信号
   - 审查 / 验收类任务默认依赖前面所有产物型任务
 - `dispatch.plan` 事件发布编译后的 plan，而不是原始 LLM 输出。
 

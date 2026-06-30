@@ -150,7 +150,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | `schema.ts` | **9 张表**：`agents` · `conversations` · `messages` · `artifacts` · `workspaces` · `attachments` · `agent_runs` · `context_summaries` · `app_settings`（`specs/08`） |
 | `client.ts` | better-sqlite3 + Drizzle 实例 |
 | `bootstrap.ts` | 首次启动自动建表 + seed |
-| `builtin-agents.ts` · `seed.ts` | 5 个内置 Agent（Orchestrator / PM 小灰 / UI 设计师 / 前端工程师 / Reviewer） |
+| `builtin-agents.ts` · `seed.ts` · `migrate-writing-agents.ts` | 6 个内置写作 Agent（主编 / 资料研究员 / 内容策划 / 主笔 / 润色编辑 / 审校）；资料研究员走 claude-code adapter 联网 |
 | `migrate-add-*.ts` | 增量迁移脚本（usage / bookmarks / workspace-mode / app-settings 等） |
 
 DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/<conv_xxx>/`（sandbox 模式）。

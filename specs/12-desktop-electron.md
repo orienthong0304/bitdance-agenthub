@@ -247,7 +247,7 @@ export const db = drizzle(sqlite, { schema })
 
 **为什么用 raw DDL 字符串而不是从 schema.ts 反推**：drizzle-orm 没有「读 schema 转 DDL」的运行时 API；drizzle-kit 才有，但 drizzle-kit 是 CLI 工具，不该 require 进 standalone bundle。改 schema.ts 字段时**必须同步改 bootstrap.ts 的 DDL** —— 这是契约，违反的话第一次 packaged 启动会撞「no such column」。
 
-**内置 Agent 数据**：`src/db/builtin-agents.ts` 导出 `BUILTIN_AGENTS: AgentInsert[]`，被 `bootstrap.ts`（packaged 启动）与 `src/db/seed.ts`（dev 用 `pnpm db:seed`）共用。当前 5 个内置：Orchestrator / PM 小灰 / UI 设计师 / 前端工程师 / Reviewer。改 builtin agent 列表 = 改 builtin-agents.ts 一处。
+**内置 Agent 数据**：`src/db/builtin-agents.ts` 导出 `BUILTIN_AGENTS: AgentInsert[]`，被 `bootstrap.ts`（packaged 启动）与 `src/db/seed.ts`（dev 用 `pnpm db:seed`）共用。当前 6 个内置：主编 / 资料研究员 / 内容策划 / 主笔 / 润色编辑 / 审校。改 builtin agent 列表 = 改 builtin-agents.ts 一处。
 
 ---
 
@@ -479,11 +479,11 @@ Spec 12 把 in-process 作为首选；回退方案保留入口（同一份 main 
 ## 12. 验证清单
 
 **ABI / DB bootstrap（本次主要验证项）**：
-- [x] dev server 起得来、`GET /api/agents` 返回 200 + 5 个内置 agent(自动 seed 通过)。**注:`pnpm dev` 现为纯 Node(Node ABI);electron-as-node 下会挂死,见 §6.1 更新**
+- [x] dev server 起得来、`GET /api/agents` 返回 200 + 6 个内置 agent(自动 seed 通过)。**注:`pnpm dev` 现为纯 Node(Node ABI);electron-as-node 下会挂死,见 §6.1 更新**
 - [x] `pnpm test` 先跑 Node ABI preflight,即使上一条命令把 native binding 切到 Electron ABI,也会自动切回 Node ABI
 - [x] `pnpm build` / `pnpm db:*` 先跑 Electron ABI preflight,即使上一条命令把 native binding 切到 Node ABI,也会自动切回 Electron ABI
 - [x] `pnpm electron:build` 日志包含 `skipped dependencies rebuild reason=npmRebuild is set to false`（确认没有 npm rebuild 反复污染 source store）
-- [x] packaged `Contents/MacOS/AgentHub` 从终端启动无错误，`~/Library/Application Support/AgentHub/data/agenthub.db` 8 张表全建好，5 个内置 agent 已自动 seed
+- [x] packaged `Contents/MacOS/AgentHub` 从终端启动无错误，`~/Library/Application Support/AgentHub/data/agenthub.db` 8 张表全建好，6 个内置 agent 已自动 seed
 - [x] packaged app 内 `app.asar.unpacked/.next/standalone/.../better_sqlite3.node` 是 arm64（standalone 自带的那份就是 ABI 130，无需 afterPack 覆盖）
 
 **功能等价（macOS / Windows 都需通过）**：

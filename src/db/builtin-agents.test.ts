@@ -72,4 +72,14 @@ describe('BUILTIN_AGENTS (写作编辑部)', () => {
     const orch = BUILTIN_AGENTS.find((a) => a.id === 'ag_orchestrator')!
     expect(orch.systemPrompt).toContain('资料简报')
   })
+
+  it('写作角色不含开发向工具（bash/fs_write/deploy）', () => {
+    const devTools = ['bash', 'fs_write', 'deploy_artifact', 'deploy_workspace']
+    for (const id of ['ag_frontend', 'ag_designer', 'ag_reviewer']) {
+      const agent = BUILTIN_AGENTS.find((a) => a.id === id)!
+      for (const t of devTools) {
+        expect(agent.toolNames).not.toContain(t)
+      }
+    }
+  })
 })

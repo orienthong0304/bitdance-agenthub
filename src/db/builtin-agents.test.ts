@@ -25,6 +25,7 @@ describe('BUILTIN_AGENTS (写作编辑部)', () => {
     const researcher = BUILTIN_AGENTS.find((a) => a.id === 'ag_researcher')!
     expect(researcher.adapterName).toBe('claude-code')
     expect(researcher.modelProvider).toBe('anthropic')
+    expect(researcher.modelId).toBe('claude-sonnet-4-6')
     for (const a of BUILTIN_AGENTS) {
       if (a.id === 'ag_researcher') continue
       expect(a.adapterName).toBe('custom')
@@ -48,6 +49,7 @@ describe('BUILTIN_AGENTS (写作编辑部)', () => {
     expect(researcher.toolNames).toContain('write_artifact')
     // 原生 WebSearch/WebFetch 不在 toolNames 里（由 claude-code adapter 默认放行）
     expect(researcher.toolNames).not.toContain('WebSearch')
+    expect(researcher.toolNames).not.toContain('WebFetch')
   })
 
   it('主笔与润色编辑用质量更高的 deepseek-v4', () => {
@@ -55,6 +57,15 @@ describe('BUILTIN_AGENTS (写作编辑部)', () => {
     const editor = BUILTIN_AGENTS.find((a) => a.id === 'ag_designer')!
     expect(writer.modelId).toBe('deepseek-v4')
     expect(editor.modelId).toBe('deepseek-v4')
+  })
+
+  it('其余角色用 deepseek-v4-flash', () => {
+    const orch = BUILTIN_AGENTS.find((a) => a.id === 'ag_orchestrator')!
+    const planner = BUILTIN_AGENTS.find((a) => a.id === 'ag_pm')!
+    const reviewer = BUILTIN_AGENTS.find((a) => a.id === 'ag_reviewer')!
+    expect(orch.modelId).toBe('deepseek-v4-flash')
+    expect(planner.modelId).toBe('deepseek-v4-flash')
+    expect(reviewer.modelId).toBe('deepseek-v4-flash')
   })
 
   it('Orchestrator prompt 含写作链标记（迁移幂等性依赖）', () => {

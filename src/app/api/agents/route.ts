@@ -24,6 +24,7 @@ const CreateBody = z
     supportsVision: z.boolean().optional(),
     apiKey: z.string().optional(),
     apiBaseUrl: z.string().optional(),
+    effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   })
   .refine(
     (d) => d.adapterName !== 'custom' || (d.modelProvider && d.modelId),

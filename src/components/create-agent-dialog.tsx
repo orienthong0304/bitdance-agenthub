@@ -24,6 +24,7 @@ import {
   type UpdateAgentBody,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { EFFORT_LEVELS, type EffortLevel } from '@/shared/types'
 import {
   AGENT_BUILDER_PROVIDER_DEFAULTS as PROVIDER_DEFAULTS,
   AGENT_TOOL_META as TOOL_META,
@@ -86,6 +87,8 @@ export function CreateAgentDialog({
   const [supportsVision, setSupportsVision] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
+  // 思考深度（仅 claude-code）；'' = 默认（high）
+  const [effort, setEffort] = useState<EffortLevel | ''>('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -121,6 +124,7 @@ export function CreateAgentDialog({
       setSupportsVision(agent.supportsVision)
       setApiKey(agent.apiKey ?? '')
       setApiBaseUrl(agent.apiBaseUrl ?? '')
+      setEffort((agent.effort as EffortLevel | null) ?? '')
     } else {
       setAdapterKind('custom')
       setName('')
@@ -133,6 +137,7 @@ export function CreateAgentDialog({
       setSupportsVision(true)
       setApiKey('')
       setApiBaseUrl('')
+      setEffort('')
       setCreateStep('choose')
     }
     if (agent) setCreateStep('detail')
@@ -143,6 +148,7 @@ export function CreateAgentDialog({
 
   const handleAdapterKindChange = (kind: AdapterKind) => {
     setAdapterKind(kind)
+    if (kind !== 'claude-code') setEffort('') // effort 仅 claude-code 有意义
     if (kind === 'claude-code') {
       setModelId(CLAUDE_CODE_DEFAULT_MODEL)
     } else if (kind === 'codex') {
@@ -286,6 +292,7 @@ export function CreateAgentDialog({
           supportsVision,
           apiKey: trimmedApiKey || null,
           apiBaseUrl: trimmedApiBaseUrl || null,
+          effort: isClaudeCode ? (effort || null) : null,
         }
         const updated = await updateAgent(agent.id, patch)
         upsertAgent(updated)
@@ -303,6 +310,7 @@ export function CreateAgentDialog({
           supportsVision,
           apiKey: trimmedApiKey || undefined,
           apiBaseUrl: trimmedApiBaseUrl || undefined,
+          effort: isClaudeCode && effort ? effort : undefined,
         }
         const created = await createAgent(body)
         upsertAgent(created)
@@ -519,6 +527,29 @@ export function CreateAgentDialog({
                             Codex 模型 id，例 <code className="font-mono">gpt-5-codex</code>。留空走 SDK 默认。
                           </>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {adapterKind === 'claude-code' && (
+                  <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+                    <Label>思考深度</Label>
+                    <div>
+                      <select
+                        value={effort}
+                        onChange={(e) => setEffort(e.target.value as EffortLevel | '')}
+                        className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                      >
+                        <option value="">默认（high）</option>
+                        {EFFORT_LEVELS.map((lv) => (
+                          <option key={lv} value={lv}>
+                            {lv}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        控制 Claude 的思考深度（effort）。档位越高越能深入推理、质量越好，但更慢更费 token。留「默认」走 SDK 默认（high）。
                       </div>
                     </div>
                   </div>

@@ -438,6 +438,8 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       settingSources: ['project'],
       permissionMode: 'default', // 自己 canUseTool 接管
       env: buildSdkEnv(input.apiKey, input.apiBaseUrl),
+      // 思考深度：agent.effort 非空时传给 SDK；为空走 SDK 默认（high）
+      ...(input.effort ? { effort: input.effort } : {}),
       ...(previousSessionId ? { resume: previousSessionId } : {}),
       canUseTool: (toolName, toolInput) =>
         bridgePermission(toolName, toolInput, { workspace, approvalMode, input, signal }),
@@ -706,13 +708,6 @@ function recordClaudeSdkFileWrite(
 
 // ─── canUseTool 桥 ────────────────────────────────────────
 
-/**
- * 构造给 SDK 子进程的 env：
- *  - 配了 apiBaseUrl（第三方网关如 anyrouter）：设 ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN，
- *    并清空 ANTHROPIC_API_KEY（避免 process env 覆盖 AUTH_TOKEN）
- *  - 只配了 apiKey：当 ANTHROPIC_API_KEY 传给 SDK
- *  - 都没配：透传 process.env，SDK fallback 到 env / ~/.claude OAuth
- */
 function parseArtifactIdFromMcpResult(content: unknown): string | null {
   // MCP tool_result.content 可能是字符串 / 数组 of {type:'text', text} / object
   // 我们在 handler 里返回的是 [{type:'text', text: JSON.stringify(value)}]
@@ -775,11 +770,26 @@ function isDeployStatusRecord(value: unknown): value is DeployStatusRecord {
   )
 }
 
-function buildSdkEnv(
+/** Claude OAuth 订阅令牌前缀（`claude setup-token` / Pro·Max 登录生成）。 */
+const OAUTH_TOKEN_PREFIX = 'sk-ant-oat'
+
+/**
+ * 构造给 SDK 子进程的 env：
+ *  - apiKey 是 OAuth 订阅令牌（sk-ant-oat...）：走 CLAUDE_CODE_OAUTH_TOKEN，清空 ANTHROPIC_API_KEY
+ *    （这类令牌不能当 x-api-key 用，否则官方 API 报 Invalid API key · Fix external API key）
+ *  - 配了 apiBaseUrl（第三方网关如 anyrouter）：设 ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN，
+ *    并清空 ANTHROPIC_API_KEY（避免 process env 覆盖 AUTH_TOKEN）
+ *  - 只配了 apiKey：当 ANTHROPIC_API_KEY 传给 SDK
+ *  - 都没配：透传 process.env，SDK fallback 到 env / ~/.claude OAuth
+ */
+export function buildSdkEnv(
   apiKey: string | null,
   apiBaseUrl: string | null,
 ): Record<string, string | undefined> {
   const base: Record<string, string | undefined> = buildChildProcessEnv()
+  if (apiKey?.startsWith(OAUTH_TOKEN_PREFIX)) {
+    return { ...base, CLAUDE_CODE_OAUTH_TOKEN: apiKey, ANTHROPIC_API_KEY: '' }
+  }
   if (apiBaseUrl) {
     return {
       ...base,

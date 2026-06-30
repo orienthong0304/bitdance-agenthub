@@ -187,6 +187,11 @@ export interface DiffHunk {
 // ─── Adapter 名称 ──────────────────────────────────────────
 export type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
 
+// ─── 思考深度（reasoning effort）──────────────────────────
+/** Anthropic 模型的思考深度档位。仅 claude-code adapter 消费；NULL = 走 SDK 默认（high）。 */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
 export type ModelProvider =
   | 'anthropic'
   | 'openai'

@@ -6,7 +6,7 @@
 
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import type { ArtifactContent, ArtifactType, AdapterName, MessagePart, ModelProvider } from '@/shared/types'
+import type { ArtifactContent, ArtifactType, AdapterName, EffortLevel, MessagePart, ModelProvider } from '@/shared/types'
 
 // ─── Agents ──────────────────────────────────────────────────
 export const agents = sqliteTable('agents', {
@@ -40,6 +40,9 @@ export const agents = sqliteTable('agents', {
   isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
   isOrchestrator: integer('is_orchestrator', { mode: 'boolean' }).notNull().default(false),
   supportsVision: integer('supports_vision', { mode: 'boolean' }).notNull().default(false),
+
+  /** 思考深度档位（仅 claude-code adapter 消费）。NULL = SDK 默认（high）。 */
+  effort: text('effort').$type<EffortLevel>(),
 
   createdAt: integer('created_at').notNull(),
 })

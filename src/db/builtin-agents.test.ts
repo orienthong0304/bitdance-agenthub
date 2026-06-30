@@ -25,7 +25,7 @@ describe('BUILTIN_AGENTS (写作编辑部)', () => {
     const researcher = BUILTIN_AGENTS.find((a) => a.id === 'ag_researcher')!
     expect(researcher.adapterName).toBe('claude-code')
     expect(researcher.modelProvider).toBe('anthropic')
-    expect(researcher.modelId).toBe('claude-sonnet-4-6')
+    expect(researcher.modelId).toBe('claude-opus-4-8')
     for (const a of BUILTIN_AGENTS) {
       if (a.id === 'ag_researcher') continue
       expect(a.adapterName).toBe('custom')

@@ -140,7 +140,7 @@ AgentHub 现状是一个**多 Agent 软件开发协作平台**：内置的 5 个
 
 「高质量」是核心诉求，建议（均可在 Agent 库改）：
 - **主笔 / 润色编辑**：DeepSeek 用**非 flash 的 v4**（写作质量明显更好）；主编/审校可留 flash 省钱。
-- **研究员**：Claude Code adapter，需 **Anthropic key**（走现有三层 key 机制，缺 key 时仅该角色报错，不影响其它角色）。
+- **研究员**：Claude Code adapter，模型用 `claude-opus-4-8`。**默认复用本地 Claude Code 登录**——三层 key（agent / app_settings / env）全空时，adapter 透传 `process.env`，由 Claude Agent SDK 回退到 `~/.claude` OAuth 凭证；三层 key 仅作覆盖（换账号 / 第三方网关 / headless 部署时才填）。本机完全无 Anthropic 凭证时，仅该角色在运行时报错，不影响其它角色。
 
 ---
 

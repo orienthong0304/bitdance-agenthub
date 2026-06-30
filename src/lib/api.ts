@@ -11,6 +11,7 @@ import type {
   AskUserAnswer,
   DeployCandidateRecord,
   DeployStatusRecord,
+  EffortLevel,
   PendingBashCommand,
   PendingDispatchPlan,
   PendingQuestion,
@@ -62,6 +63,8 @@ export interface CreateAgentBody {
   apiKey?: string
   /** 自定义 API base URL。Claude/Codex 对 endpoint 协议兼容性要求不同；空走默认 */
   apiBaseUrl?: string
+  /** 思考深度（仅 claude-code adapter）；省略 = SDK 默认 high */
+  effort?: EffortLevel
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {
@@ -95,6 +98,8 @@ export type UpdateAgentBody = Partial<
   apiKey?: string | null
   // 同上
   apiBaseUrl?: string | null
+  // 思考深度：null 清除（回退 SDK 默认 high）；undefined 不改
+  effort?: EffortLevel | null
 }
 
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {

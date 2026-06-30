@@ -2038,6 +2038,7 @@ async function buildAdapterInput(
     apiBaseUrl: effectiveApiBaseUrl,
     modelId: agent.modelId,
     toolNames,
+    effort: agent.effort ?? undefined,
     attachments: attachments.length > 0 ? attachments : undefined,
     history: history.length > 0 ? history : undefined,
     customConfig:

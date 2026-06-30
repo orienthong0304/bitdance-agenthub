@@ -57,7 +57,7 @@ export const BUILTIN_AGENTS: AgentInsert[] = [
 对用户的回复一段话即可，正文放进产物。`,
     adapterName: 'claude-code',
     modelProvider: 'anthropic',
-    modelId: 'claude-sonnet-4-6',
+    modelId: 'claude-opus-4-8',
     toolNames: ['write_artifact', 'read_artifact', 'read_attachment', 'ask_user', 'fs_list', 'fs_read'],
     isBuiltin: true,
     isOrchestrator: false,

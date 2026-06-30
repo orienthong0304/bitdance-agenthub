@@ -62,3 +62,6 @@ next-env.d.ts
 # IDE
 .vscode/
 .idea/
+
+# Understand-Anything generated knowledge graph
+/.understand-anything/

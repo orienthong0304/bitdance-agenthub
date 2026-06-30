@@ -19,6 +19,7 @@
 import type Database from 'better-sqlite3'
 
 import { BUILTIN_AGENTS } from './builtin-agents'
+import { rewriteBuiltinAgentsForWriting } from './migrate-writing-agents'
 
 const BUILTIN_TOOL_UPGRADES = new Map(
   BUILTIN_AGENTS.map((agent) => [agent.id, agent.toolNames] as const),
@@ -261,5 +262,6 @@ function upgradeBuiltinAgents(sqlite: Database.Database): void {
 export function bootstrapDatabase(sqlite: Database.Database): void {
   ensureSchema(sqlite)
   ensureBuiltinAgents(sqlite)
+  rewriteBuiltinAgentsForWriting(sqlite)
   upgradeBuiltinAgents(sqlite)
 }

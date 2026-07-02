@@ -92,7 +92,7 @@ export function SkillLibraryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>技能包管理</DialogTitle>
+          <DialogTitle className="text-base font-bold">技能包管理</DialogTitle>
           <DialogDescription>
             浏览已安装的 Agent Skills 技能包，或从 GitHub / 本地目录导入新包。技能仅对 Claude Code
             agent 生效。
@@ -107,7 +107,7 @@ export function SkillLibraryDialog({
                 type="button"
                 onClick={() => setImportMode('github')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30',
+                  'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30 hover:bg-muted/60',
                   importMode === 'github' && 'border-primary bg-primary/5',
                 )}
               >
@@ -118,7 +118,7 @@ export function SkillLibraryDialog({
                 type="button"
                 onClick={() => setImportMode('local')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30',
+                  'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30 hover:bg-muted/60',
                   importMode === 'local' && 'border-primary bg-primary/5',
                 )}
               >
@@ -135,12 +135,17 @@ export function SkillLibraryDialog({
                     ? 'https://github.com/<owner>/<repo>'
                     : '/absolute/path/to/skill-package'
                 }
-                className="flex-1 font-mono text-xs"
+                className="h-9 flex-1 font-mono text-xs focus:border-primary"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void handleImport()
                 }}
               />
-              <Button size="sm" onClick={() => void handleImport()} disabled={importing || !importSource.trim()}>
+              <Button
+                size="sm"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => void handleImport()}
+                disabled={importing || !importSource.trim()}
+              >
                 {importing ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
                 导入
               </Button>
@@ -189,7 +194,7 @@ export function SkillLibraryDialog({
                     <button
                       type="button"
                       onClick={() => void handleDelete(pkg)}
-                      className="shrink-0 rounded p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                      className="shrink-0 rounded-[7px] p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
                       title="移除技能包"
                     >
                       <Trash2 className="size-3" />

@@ -67,10 +67,11 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 平台抽象（Win/POSIX） | ✅ | shell 选择 · 多盘符 DirPicker · 子进程清理 |
 | Electron 桌面版 | ✅ | DMG / EXE 打包 · userData 路径迁移 |
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
+| 跨会话任务看板（openspec task-board） | ✅ | IconRail 第五导航「任务」(open+blocked badge) · 手动建单/拖动状态(select 循环) · Orchestrator dispatch 子任务自动登记+单向状态同步 · Agent `create_task` 工具主动立单 · 看板不反向触发 run（v1 无 `task.update` StreamEvent，面板挂载时 fetch 兜底） |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
 | UI 重设计（teal 体系） | ✅ | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒/弹窗族全部落地（设计稿 `docs/design/`）；主区 880px 用量页+成本自算另行立项 |
-| 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度**（mock agent 走真实 write_artifact / plan_tasks / report_task_result 协议） |
+| 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service / task-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度 + 任务看板**（mock agent 走真实 write_artifact / plan_tasks / report_task_result / create_task 协议） |
 
 ---
 
@@ -90,6 +91,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 区域 | 文件 |
 |---|---|
 | 应用壳（图标栏+二级面板） | `icon-rail.tsx` · `sidebar.tsx` |
+| 任务看板 | `task-board-panel.tsx` |
 | 聊天主面板 | `chat-panel.tsx` · `message-list.tsx` · `message-item.tsx` · `message-parts.tsx` |
 | 输入框（附件/审批模式/选区引用/斜杠命令） | `message-input.tsx` · `edit-message-input.tsx` |
 | Orchestrator 调度卡 | `dispatch-plan-card.tsx` |
@@ -112,6 +114,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | `conversations/route.ts` · `conversations/[id]/**` | 会话 CRUD · 消息 · `fs/{listdir,read,write}` · `pending-writes` · `pending-questions` · `attachments` · `regenerate` |
 | `messages/[id]/{edit,pin,bookmark,withdraw}` | 消息操作 |
 | `agents/**` · `artifacts/**`（含 `/versions` `/export`） · `deployments/**` · `attachments/**` | 实体 CRUD / 部署包下载 |
+| `tasks/**` | 任务看板 CRUD（list / create / patch / delete） |
 | `deployments/[id]/[[...path]]` | 本地静态发布预览 URL |
 | `runs/[id]/abort` | 中止 run（级联） |
 | `usage/summary` | Token 分析聚合 |
@@ -129,6 +132,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 产物服务 | `artifact-service.ts` · `deployment-service.ts` · `ppt-export.ts` | 产物 CRUD + 版本链（parentArtifactId）· 本地静态发布与下载包 · slides JSON → 真 .pptx（pptxgenjs） |
 | Agent / 附件 / 文件 | `agent-service.ts` · `attachment-service.ts` · `fs-service.ts` | |
 | Agent Skills | `skills-service.ts` | 技能包发现/导入/注册 + per-agent 解析（openspec agent-skills；builtin 包在 `resources/agent-skills/`） |
+| 任务看板 | `task-service.ts` | CRUD + dispatch 状态单向同步（`upsertDispatchTask` / `syncDispatchTaskStatus`，openspec task-board） |
 | 审批中转 store | `pending-writes.ts` · `pending-questions.ts` | fs_write 审批 / ask_user 的内存中转 |
 | 设置 / Key | `settings-service.ts` | 三层 key 优先级解析 |
 | 安全 / 平台 / 沙箱 | `security.ts`（黑名单 `getBannedPatterns`） · `platform.ts`（shell 选择） · `workspace-utils.ts`（路径校验/配额） | `specs/11` |
@@ -145,12 +149,12 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | `mock-adapter.ts` | 假事件流,开发用 |
 
 ### 工具系统（`src/server/tools/`）
-`types.ts`（工具签名） · `registry.ts`（注册） · `write-artifact.ts` · `read-artifact.ts` · `read-attachment.ts` · `fs-read.ts` · `fs-write.ts` · `bash.ts` · `plan-tasks.ts`（Orchestrator DAG） · `ask-user.ts`。详见 `specs/07`。
+`types.ts`（工具签名） · `registry.ts`（注册） · `write-artifact.ts` · `read-artifact.ts` · `read-attachment.ts` · `fs-read.ts` · `fs-write.ts` · `fs-list.ts` · `bash.ts` · `plan-tasks.ts`（Orchestrator DAG） · `report-task-result.ts` · `ask-user.ts` · `create-task.ts`（跨会话任务看板立单）。详见 `specs/07`。
 
 ### L1 持久化（`src/db/`）
 | 文件 | 说明 |
 |---|---|
-| `schema.ts` | **9 张表**：`agents` · `conversations` · `messages` · `artifacts` · `workspaces` · `attachments` · `agent_runs` · `context_summaries` · `app_settings`（`specs/08`） |
+| `schema.ts` | **11 张表**：`agents` · `conversations` · `messages` · `artifacts` · `workspaces` · `attachments` · `agent_runs` · `context_summaries` · `skill_packages` · `tasks` · `app_settings`（`specs/08`） |
 | `client.ts` | better-sqlite3 + Drizzle 实例 |
 | `bootstrap.ts` | 首次启动自动建表 + seed |
 | `builtin-agents.ts` · `seed.ts` · `migrate-writing-agents.ts` | 6 个内置写作 Agent（主编 / 资料研究员 / 内容策划 / 主笔 / 润色编辑 / 审校）；资料研究员走 claude-code adapter 联网 |
@@ -166,14 +170,15 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - 移动：`apps/mobile/`（Capacitor 伴随客户端,monorepo workspace `@agenthub/mobile`）。`specs/14`。
 
 ### 测试（`e2e/` + `*.test.ts`）
-- 单元：`src/**/*.test.ts`（Vitest 纯函数：security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme）。
-- E2E：`e2e/`（Playwright；`global-setup.ts` 建隔离库 + 插 mock agent，`chat.spec.ts` / `conversations.spec.ts` 跑核心 IM 流）；配置 `playwright.config.ts`，命令 `pnpm e2e`。
+- 单元：`src/**/*.test.ts`（Vitest 纯函数：security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / task-service / tool-display）。
+- E2E：`e2e/`（Playwright；`global-setup.ts` 建隔离库 + 插 mock agent，`chat.spec.ts` / `conversations.spec.ts` / `artifacts.spec.ts` / `dispatch.spec.ts` / `export.spec.ts` / `tasks.spec.ts` 跑核心 IM 流 + 产物 + 调度 + 任务看板）；配置 `playwright.config.ts`，命令 `pnpm e2e`。
 
 ---
 
 ## 附 · 当前现状（易过时,以 git 为准）
 
 ### ✅ 近期完成（最新一批）
+- **跨会话任务看板**（openspec task-board）：`tasks` 表 + `task-service.ts` + `/api/tasks` + `create_task` 工具（claude-code/codex MCP bridge + custom adapter + builder 勾选） + Orchestrator dispatch 单向状态同步 + IconRail 第五导航「任务」+ `task-board-panel.tsx`；v1 看板不反向触发 run，也没有 `task.update` StreamEvent（面板挂载时 fetch 兜底，deferred v1.1）
 - **UI 重设计 Phase A-D**（openspec redesign-ui-shell）：teal token 体系、IconRail+二级面板应用壳、聊天列 760px 居中 + 统筹 chip、一体化输入盒、右侧面板对齐
 - **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
 - 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
@@ -186,6 +191,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - 冲突检测余留盲区：bash 写文件（需波次快照 diff，且难归属到具体子 run，暂不做）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
 - 移动端伴随 App 配对通信打通
+- 任务看板 v1.1：`task.update` StreamEvent 实时推送（当前面板挂载时 fetch 兜底）；`create_task` 工具卡的任务 id 高亮/跳转 UI
 
 ### ⚠️ 关键约定（动手前必看）
 - 改实体字段 → 同步 `specs/01`;改事件 → `specs/02`;改 Bash 黑名单 → 同步 `specs/11` + `src/server/security.ts`（单一数据源）。
@@ -194,4 +200,4 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ---
 
-*最后更新：2026-06-06 · 同步本批成果（会话归档 / Orchestrator 冲突检测 / PPT 产物+真 pptx+theme / Playwright E2E 基建）到功能矩阵、代码地图、当前现状三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*
+*最后更新：2026-07-03 · 同步跨会话任务看板（openspec task-board：tasks 表 / task-service / create_task 工具 / IconRail 任务导航 / task-board-panel）到功能矩阵、代码地图、当前现状三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*

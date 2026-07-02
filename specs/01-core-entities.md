@@ -269,6 +269,37 @@ interface Attachment {
 
 ---
 
+## 9. Task（跨会话任务看板）
+
+跨会话聚合的一等实体（openspec task-board）。看板视图按 `status` 分组展示；**不反向触发 run**（第一版）——编辑 / 切换状态只改任务记录，不创建消息、不唤起 Agent，纯粹是可视化与备忘层。
+
+```typescript
+interface Task {
+  id: string                    // task_<nanoid>
+  title: string
+  note?: string
+  status: 'open' | 'in_progress' | 'done' | 'blocked'
+  source: 'manual' | 'dispatch' | 'agent'
+
+  conversationId?: string       // 来源会话被删除后置空，任务记录保留
+  messageId?: string
+  artifactId?: string
+  dispatchTaskId?: string       // dispatch 来源幂等键 `${runId}:${taskId}`
+  createdByAgentId?: string
+
+  createdAt: number
+  updatedAt: number
+}
+```
+
+**约束**：
+- 三种来源：`manual`（用户在看板直接创建）/ `dispatch`（Orchestrator plan 批准时登记，子任务执行状态单向同步）/ `agent`（`create_task` 工具创建，详见 Spec 07）
+- `conversationId` / `messageId` / `artifactId` 均**无外键约束**，逻辑保证——同 AgentRun.parentRunId 的风格；来源会话被删除时这些字段置空，任务记录本身保留
+- `dispatchTaskId` 上有唯一索引（允许 NULL），plan 重复批准 / replan 时靠它 upsert 而非重复插入（见 Spec 08）
+- dispatch 状态 → 看板状态映射：`pending→open`、`running→in_progress`、`complete→done`、`failed/aborted/blocked/skipped→blocked`；同步方向单向（看板编辑不影响 dispatch 执行）
+
+---
+
 ## ID 命名规范
 
 | 实体 | 前缀 |
@@ -280,6 +311,7 @@ interface Attachment {
 | Workspace | `ws_` |
 | AgentRun | `run_` |
 | Attachment | `att_` |
+| Task | `task_` |
 | ToolCall（内存中） | `call_` |
 
 ID 用 `nanoid(12)`，URL-safe alphabet。详见 `src/server/ids.ts`。

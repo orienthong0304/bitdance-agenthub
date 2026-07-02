@@ -43,6 +43,9 @@ interface AppState {
   messages: Record<string, MessageRow>
   artifacts: Record<string, ArtifactRow>
 
+  // ─── 任务看板（跨会话，扁平数组非按 id normalize）─────
+  boardTasks: BoardTask[]        // TaskBoardPanel 挂载时 fetch 一次；v1 无 StreamEvent 实时同步
+
   // ─── 关系桶（按 conversationId 分桶）─────────────
   messageIdsByConv: Record<string, string[]>       // 该会话消息按时间顺序的 id 列表
   runsByConv: Record<string, Record<string, AgentRunRow>>
@@ -70,6 +73,7 @@ interface AppState {
 - **关系用「id 列表」分桶**，渲染时 map 拿实体。这样新增 / 删除消息只动 id 列表 + 实体 map，不破坏 React shallow equality
 - **UI 状态按 conversationId 分桶**（pendingAttachments / replyTarget），切会话不会污染
 - **不放在 store 的东西**：表单 draft、modal 开关、临时 hover 状态——这些用组件内 `useState`
+- **例外：`boardTasks` 是扁平数组，不像其它实体那样 normalize 成 `Record<id, Row>`**。任务看板数据量小（个人本地场景），`setBoardTasks`/`upsertBoardTask`/`removeBoardTask` 直接对数组线性查找，换取实现最简单
 
 ---
 
@@ -198,12 +202,13 @@ useEffect(() => {
 app/page.tsx
 └── <Home>
     ├── <Sidebar />               ── 应用壳左段：IconRail + 262px 二级列表面板（redesign-ui-shell）
-    │   ├── <IconRail />          ── 56px 图标栏：logo + 会话(未读 badge)/Agents/产物库/分析 导航 + ThemeToggle/SettingsButton/用户位；点击当前导航折叠面板（aria-expanded）
+    │   ├── <IconRail />          ── 56px 图标栏：logo + 会话(未读 badge)/Agents/产物库/分析/任务(open+blocked badge) 导航 + ThemeToggle/SettingsButton/用户位；点击当前导航折叠面板（aria-expanded）
     │   ├── <NewConversationDialog />
     │   ├── <ConversationItem />  ── 单条会话（置顶/最近分组渲染）+ hover 置顶/归档/重命名/删除 + 激活态 3px 主色左条
     │   ├── <ArtifactLibrary />
     │   ├── <AgentLibrary />
     │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME；claude-code 提供 Agent Skills 勾选 + <SkillLibraryDialog />（Spec 10）
+    │   ├── <TaskBoardPanel />    ── 任务看板：按状态分组（进行中/待办/受阻/已完成）+ 顶部内联「+ 新任务」+ hover 状态切换 select / 删除；行点击若有 conversationId 则 setActiveConversation 跳转来源会话
     │   └── <RenameInput />       ── 内联重命名
     ├── <ChatPanel />             ── 当前会话主区
     │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分）
@@ -251,6 +256,7 @@ app/page.tsx
 | `artifacts` | 不预加载；首次见到 `artifact_ref` part 时 lazy fetch 详情（`ArtifactRefPart` 组件内 effect） | `artifacts[id]` |
 | `attachments` | 打开 `FileLibraryDialog` 时拉该会话列表；附件 chip 渲染时也按需拉 | 组件内 useState |
 | `agents` / `conversations` | 应用启动时全量拉一次 | 同名 maps |
+| `boardTasks` | `TaskBoardPanel` 挂载时全量拉一次（`fetchBoardTasks`）；v1 无 `task.update` StreamEvent，agent `create_task` / dispatch 状态同步后需要重新打开面板才能看到最新数据，IconRail badge 同理只反映已加载过的快照 | `boardTasks` |
 
 **404 行为**：artifact lazy fetch 404 → 渲染「产物已删除」墓碑卡片（不在 store 标记 deleted；用组件 local state）。
 

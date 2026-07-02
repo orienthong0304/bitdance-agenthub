@@ -76,6 +76,7 @@ export const toolRegistry = buildRegistry()
 | `ask_user` | 向用户发起结构化选择题 | 等待用户回答（in-memory pending） | 需要澄清范围 / 风格 / 平台 / 风险选择的 agent |
 | `plan_tasks` | Orchestrator 拆解子任务 | 无（输出端工具） | **仅 Orchestrator** |
 | `report_task_result` | 子任务上报最终语义结果 | 无（输出端工具） | Orchestrator 派发的子 agent（AgentRunner 自动注入） |
+| `create_task` | 在跨会话任务看板登记后续待办 | 写 DB（`tasks` 表） | 发现「这件事之后要做但不是当前任务范围」的 agent |
 | `fs_read` | 读 workspace 内文本文件 | 读文件系统 | 需要看用户项目代码的 agent |
 | `fs_write` | 写 workspace 内文本文件 | 写文件系统 | 需要生成 / 修改文件的 agent |
 | `bash` | 在 workspace 内跑 shell 命令 | 进程 / 文件系统 | 需要 git / 编译 / 测试的 agent |
@@ -285,6 +286,21 @@ write_artifact({
 - 如果测试失败、实现不完整、有未解决错误、找不到必要文件 / 依赖，必须上报 `failed` 或 `blocked`，不能上报 `complete`。
 - 当 plan 含 `acceptanceCriteria` 时，child agent 必须在 `acceptanceResults` 中复制每条 criterion 原文，并给出 `passed/evidence`。AgentRunner 缺项或发现 `passed=false` 时，把该任务判为 `failed`。
 - 由于 `DispatchTaskStatus` 当前没有 `blocked`，`blocked` report 在 dispatch 层映射为 `failed`，错误原因保留 blocked summary / blockers；下游任务照常 skipped。
+
+### create_task
+
+源文件：`src/server/tools/create-task.ts`
+
+Agent 在对话中发现后续待办（不属于当前任务范围，比如「这里有个 bug 该修」「这份文档该更新」）时主动立单，任务出现在全局跨会话任务看板（详见 Spec 01 Task 实体、Spec 08 `tasks` 表）。
+
+**参数**：`{ title: string, note?: string }`（`title` 1~120 字，`note` ≤2000 字，可选）。
+
+**语义**：
+- `source` 固定为 `'agent'`；`conversationId` / `createdByAgentId` 取自 `ToolContext`，不接受 LLM 传入参数，避免伪造来源
+- 不用于追踪 agent 自己当前正在做的步骤——那类进度用普通文本回复即可，不要滥用 `create_task`
+- 看板 **不反向触发 run**（第一版）：这只是备忘 / 可视化层，用户从任务卡跳回来源会话继续推进
+
+**返回值**：`{ taskId, title }`，供 agent 在回复中引用任务 id。
 
 ### fs_read
 

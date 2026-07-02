@@ -170,7 +170,7 @@ export function Sidebar() {
           mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
         )}
       >
-      <IconRail mode={mode} onSelect={handleRailSelect} />
+      <IconRail mode={mode} panelHidden={panelHidden} onSelect={handleRailSelect} />
 
       {!panelHidden && (
       <div className="flex w-[262px] shrink-0 flex-col overflow-hidden bg-card">

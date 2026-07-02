@@ -17,9 +17,12 @@ export type RailMode = 'conversations' | 'artifacts' | 'agents' | 'analytics'
  */
 export function IconRail({
   mode,
+  panelHidden,
   onSelect,
 }: {
   mode: RailMode
+  /** 二级面板是否处于折叠态（当前导航按钮以 aria-expanded 暴露该语义） */
+  panelHidden: boolean
   onSelect: (mode: RailMode) => void
 }) {
   const unreadTotal = useAppStore((s) =>
@@ -37,19 +40,35 @@ export function IconRail({
 
       <RailButton
         active={mode === 'conversations'}
+        panelHidden={panelHidden}
         onClick={() => onSelect('conversations')}
         label="会话"
         badge={unreadTotal}
       >
         <MessageSquare className="size-5" />
       </RailButton>
-      <RailButton active={mode === 'agents'} onClick={() => onSelect('agents')} label="Agents">
+      <RailButton
+        active={mode === 'agents'}
+        panelHidden={panelHidden}
+        onClick={() => onSelect('agents')}
+        label="Agents"
+      >
         <Users className="size-5" />
       </RailButton>
-      <RailButton active={mode === 'artifacts'} onClick={() => onSelect('artifacts')} label="产物库">
+      <RailButton
+        active={mode === 'artifacts'}
+        panelHidden={panelHidden}
+        onClick={() => onSelect('artifacts')}
+        label="产物库"
+      >
         <Layers className="size-5" />
       </RailButton>
-      <RailButton active={mode === 'analytics'} onClick={() => onSelect('analytics')} label="分析">
+      <RailButton
+        active={mode === 'analytics'}
+        panelHidden={panelHidden}
+        onClick={() => onSelect('analytics')}
+        label="分析"
+      >
         <BarChart3 className="size-5" />
       </RailButton>
 
@@ -69,23 +88,28 @@ export function IconRail({
 
 function RailButton({
   active,
+  panelHidden,
   onClick,
   label,
   badge,
   children,
 }: {
   active: boolean
+  panelHidden: boolean
   onClick: () => void
   label: string
   badge?: number
   children: React.ReactNode
 }) {
+  // 当前导航按钮兼任「面板折叠开关」：用 aria-expanded + 动态提示暴露语义
+  const actionHint = active ? `${label} · 点击${panelHidden ? '展开' : '收起'}面板` : label
   return (
     <button
       type="button"
       onClick={onClick}
-      title={label}
-      aria-label={label}
+      title={actionHint}
+      aria-label={actionHint}
+      aria-expanded={active ? !panelHidden : undefined}
       className={cn(
         'relative flex size-10 items-center justify-center rounded-[9px] transition',
         active

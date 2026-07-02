@@ -25,7 +25,7 @@
 
 - [ ] 5.1 task-service 纯函数与状态流转单测（`mapDispatchStatusToBoard`，已覆盖）；dispatch 同步幂等单测（`upsertDispatchTask` / `syncDispatchTaskStatus` 的 DB 集成测试）**未覆盖**，留后续任务。
 - [x] 5.2 E2E：mock agent 场景「建任务」关键词 → create_task → 看板出现该任务（`e2e/tasks.spec.ts`）。
-- [x] 5.3 specs/01/07/08/09 同步 + OVERVIEW 矩阵。specs/02 本次不改动 —— v1 无 `task.update` StreamEvent（见 1.2 / 2.3 deferred v1.1）。
+- [x] 5.3 specs/01/07/08/09 同步 + OVERVIEW 矩阵；specs/02 已随 v1.1 的 `task.update` 事件同步（见 6.1）。
 
 ## 6. v1.1 Backlog（Codex 终审 2026-07-03 排定优先级）
 

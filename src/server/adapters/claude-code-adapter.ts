@@ -21,7 +21,11 @@ import { findBannedPattern } from '@/server/security'
 import { REPORT_TASK_RESULT_TOOL_NAME } from '@/server/task-result-report'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
-import { assertPathWithinWorkspace, getEffectiveCwd } from '@/server/workspace-utils'
+import {
+  assertPathWithinWorkspace,
+  assertSandboxWriteQuota,
+  getEffectiveCwd,
+} from '@/server/workspace-utils'
 import type { DeployStatusRecord, StreamEvent } from '@/shared/types'
 
 import { buildChildProcessEnv, createAdapterEvent } from './adapter-utils'
@@ -872,15 +876,8 @@ async function bridgePermission(
 
   // 3. fs_write 审批 (Write / Edit)
   if (FS_WRITE_TOOLS.has(toolName)) {
-    if (ctx.approvalMode === 'auto') return allow()
     const target = (toolInput.file_path as string) ?? (toolInput.path as string)
     if (!target) return deny('Missing file_path/path')
-
-    const oldContent = readIfExists(ctx.workspace, target)
-    const newContent = computeNewContent(toolName, toolInput, oldContent)
-    if (newContent instanceof Error) {
-      return deny(newContent.message)
-    }
 
     let absPath: string
     try {
@@ -888,6 +885,21 @@ async function bridgePermission(
     } catch (e) {
       return deny(e instanceof Error ? e.message : 'Path outside workspace')
     }
+
+    const oldContent = readIfExists(ctx.workspace, target)
+    const newContent = computeNewContent(toolName, toolInput, oldContent)
+    if (newContent instanceof Error) {
+      return deny(newContent.message)
+    }
+
+    // sandbox 配额闸：SDK 自己写盘不经过 fs-service，只能在审批桥拦（Auto / Review 都拦）
+    try {
+      assertSandboxWriteQuota(ctx.workspace, Buffer.byteLength(newContent, 'utf8'))
+    } catch (e) {
+      return deny(e instanceof Error ? e.message : 'Workspace quota exceeded')
+    }
+
+    if (ctx.approvalMode === 'auto') return allow()
 
     const pending = pendingWrites.register({
       conversationId: ctx.input.conversationId,

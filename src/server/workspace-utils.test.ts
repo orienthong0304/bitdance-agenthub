@@ -1,4 +1,5 @@
-import { homedir } from 'node:os'
+import fs from 'node:fs'
+import os, { homedir } from 'node:os'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -7,10 +8,13 @@ import type { WorkspaceRow } from '@/db/schema'
 
 import {
   assertPathWithinWorkspace,
+  assertSandboxWriteQuota,
   getEffectiveCwd,
   isPathSafe,
   isPathWithin,
   resolveSafePath,
+  SANDBOX_TOTAL_BYTES,
+  SANDBOX_TOTAL_FILES,
 } from './workspace-utils'
 
 function workspace(overrides: Partial<WorkspaceRow> = {}): WorkspaceRow {
@@ -123,5 +127,57 @@ describe('isPathSafe', () => {
   it.runIf(process.platform !== 'win32')('rejects POSIX system paths', () => {
     expect(isPathSafe('/etc')).toBe(false)
     expect(isPathSafe('/usr/bin')).toBe(false)
+  })
+})
+
+describe('assertSandboxWriteQuota', () => {
+  const makeWorkspace = (mode: 'sandbox' | 'local', rootPath: string): WorkspaceRow => ({
+    id: 'ws_test',
+    conversationId: 'conv_test',
+    rootPath,
+    mode,
+    boundPath: mode === 'local' ? rootPath : null,
+    createdAt: 0,
+  })
+
+  it('allows writes under quota in sandbox mode', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-quota-'))
+    try {
+      fs.writeFileSync(path.join(dir, 'a.txt'), 'hello')
+      expect(() => assertSandboxWriteQuota(makeWorkspace('sandbox', dir), 1024)).not.toThrow()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects when byte quota would be exceeded', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-quota-'))
+    try {
+      expect(() =>
+        assertSandboxWriteQuota(makeWorkspace('sandbox', dir), SANDBOX_TOTAL_BYTES + 1),
+      ).toThrow(/quota exceeded/i)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects when file count quota is reached', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-quota-'))
+    try {
+      for (let i = 0; i < SANDBOX_TOTAL_FILES; i++) {
+        fs.writeFileSync(path.join(dir, `f${i}.txt`), 'x')
+      }
+      expect(() => assertSandboxWriteQuota(makeWorkspace('sandbox', dir), 1)).toThrow(
+        /file count exceeded/i,
+      )
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is a no-op for local mode workspaces', () => {
+    expect(() =>
+      assertSandboxWriteQuota(makeWorkspace('local', '/nonexistent'), SANDBOX_TOTAL_BYTES * 2),
+    ).not.toThrow()
   })
 })

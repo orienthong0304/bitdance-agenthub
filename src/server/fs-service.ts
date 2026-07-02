@@ -3,7 +3,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  realpathSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
@@ -14,7 +13,11 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '@/db/client'
 import type { WorkspaceRow } from '@/db/schema'
 
-import { assertPathWithinWorkspace, getEffectiveCwd } from './workspace-utils'
+import {
+  assertPathWithinWorkspace,
+  assertSandboxWriteQuota,
+  getEffectiveCwd,
+} from './workspace-utils'
 
 /**
  * Workspace 文件系统共享 helper。
@@ -28,8 +31,6 @@ import { assertPathWithinWorkspace, getEffectiveCwd } from './workspace-utils'
 export const MAX_READ_BYTES = 1_048_576 // 1 MB
 export const MAX_READ_CHARS = 50_000
 export const MAX_WRITE_BYTES = 100 * 1024 // 100 KB
-export const SANDBOX_TOTAL_BYTES = 100 * 1024 * 1024 // 100 MB
-export const SANDBOX_TOTAL_FILES = 1000
 
 export async function getWorkspaceForConversation(
   conversationId: string,
@@ -107,18 +108,7 @@ export function writeFileInWorkspace(
     throw new Error(`Content too large (${(bytes / 1024).toFixed(1)} KB > 100 KB limit)`)
   }
   const absPath = assertPathWithinWorkspace(workspace, target)
-
-  if (workspace.mode === 'sandbox') {
-    const usage = scanWorkspaceUsage(workspace.rootPath)
-    if (usage.bytes + bytes > SANDBOX_TOTAL_BYTES) {
-      throw new Error(
-        `Workspace quota exceeded (${(usage.bytes / 1024 / 1024).toFixed(1)} MB used + ${(bytes / 1024).toFixed(1)} KB > 100 MB cap)`,
-      )
-    }
-    if (usage.files + 1 > SANDBOX_TOTAL_FILES) {
-      throw new Error(`Workspace file count exceeded (${usage.files} + 1 > 1000 cap)`)
-    }
-  }
+  assertSandboxWriteQuota(workspace, bytes)
 
   mkdirSync(path.dirname(absPath), { recursive: true })
   writeFileSync(absPath, content, 'utf8')
@@ -181,43 +171,3 @@ export function listDirInWorkspace(workspace: WorkspaceRow, target: string): Lis
   return { relPath, absolutePath: absPath, parent, entries }
 }
 
-// ─── 沙箱用量扫描（fs_write 配额检查复用） ─────────────
-function scanWorkspaceUsage(rootPath: string): { bytes: number; files: number } {
-  let bytes = 0
-  let files = 0
-  if (!existsSync(rootPath)) return { bytes, files }
-  // 用 realpath 防 symlink / junction 循环（Windows mklink /J 与 POSIX ln -s 同样会形成 cycle，详见 specs/11-platform.md）
-  const visited = new Set<string>()
-  const stack: string[] = [rootPath]
-  while (stack.length > 0) {
-    const dir = stack.pop()!
-    let real: string
-    try {
-      real = realpathSync(dir)
-    } catch {
-      continue
-    }
-    if (visited.has(real)) continue
-    visited.add(real)
-    let entries
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const e of entries) {
-      const full = path.join(dir, e.name)
-      if (e.isDirectory()) {
-        stack.push(full)
-      } else if (e.isFile()) {
-        try {
-          bytes += statSync(full).size
-          files++
-        } catch {
-          // ignore
-        }
-      }
-    }
-  }
-  return { bytes, files }
-}

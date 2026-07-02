@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
@@ -151,4 +151,62 @@ export function isPathSafe(absPath: string): boolean {
   }
 
   return true
+}
+
+// ─── sandbox 配额（fs_write 工具与 Claude Code SDK 写盘审批桥共用）──────────
+export const SANDBOX_TOTAL_BYTES = 100 * 1024 * 1024 // 100 MB
+export const SANDBOX_TOTAL_FILES = 1000
+
+export function scanWorkspaceUsage(rootPath: string): { bytes: number; files: number } {
+  let bytes = 0
+  let files = 0
+  if (!existsSync(rootPath)) return { bytes, files }
+  // 用 realpath 防 symlink / junction 循环（Windows mklink /J 与 POSIX ln -s 同样会形成 cycle，详见 specs/11-platform.md）
+  const visited = new Set<string>()
+  const stack: string[] = [rootPath]
+  while (stack.length > 0) {
+    const dir = stack.pop()!
+    let real: string
+    try {
+      real = realpathSync(dir)
+    } catch {
+      continue
+    }
+    if (visited.has(real)) continue
+    visited.add(real)
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        stack.push(full)
+      } else if (e.isFile()) {
+        try {
+          bytes += statSync(full).size
+          files++
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+  return { bytes, files }
+}
+
+/** sandbox 模式写盘前的配额闸：超 100MB / 1000 文件抛错；local 模式不限。 */
+export function assertSandboxWriteQuota(workspace: WorkspaceRow, additionalBytes: number): void {
+  if (workspace.mode !== 'sandbox') return
+  const usage = scanWorkspaceUsage(workspace.rootPath)
+  if (usage.bytes + additionalBytes > SANDBOX_TOTAL_BYTES) {
+    throw new Error(
+      `Workspace quota exceeded (${(usage.bytes / 1024 / 1024).toFixed(1)} MB used + ${(additionalBytes / 1024).toFixed(1)} KB > 100 MB cap)`,
+    )
+  }
+  if (usage.files + 1 > SANDBOX_TOTAL_FILES) {
+    throw new Error(`Workspace file count exceeded (${usage.files} + 1 > 1000 cap)`)
+  }
 }

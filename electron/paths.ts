@@ -9,15 +9,22 @@ import path from 'node:path'
  */
 export function setupDataDir(): void {
   // 已被外部（CI / e2e / 调用方）设置过就不动
-  if (process.env.AGENTHUB_DATA_DIR) return
+  if (!process.env.AGENTHUB_DATA_DIR) {
+    if (app.isPackaged) {
+      // macOS: ~/Library/Application Support/AgentHub/data
+      // Windows: %APPDATA%\AgentHub\data
+      process.env.AGENTHUB_DATA_DIR = path.join(app.getPath('userData'), 'data')
+    } else {
+      // electron:dev 走仓库根的 .agenthub-data（与 web 模式共用 DB / workspace）
+      // __dirname = dist-electron/，回到仓库根再拼
+      process.env.AGENTHUB_DATA_DIR = path.resolve(__dirname, '..', '.agenthub-data')
+    }
+  }
 
-  if (app.isPackaged) {
-    // macOS: ~/Library/Application Support/AgentHub/data
-    // Windows: %APPDATA%\AgentHub\data
-    process.env.AGENTHUB_DATA_DIR = path.join(app.getPath('userData'), 'data')
-  } else {
-    // electron:dev 走仓库根的 .agenthub-data（与 web 模式共用 DB / workspace）
-    // __dirname = dist-electron/，回到仓库根再拼
-    process.env.AGENTHUB_DATA_DIR = path.resolve(__dirname, '..', '.agenthub-data')
+  // 只读资源（bundled Agent Skills 包等）。打包后随 extraResources 落在 process.resourcesPath/resources。
+  if (!process.env.AGENTHUB_RESOURCES_DIR) {
+    process.env.AGENTHUB_RESOURCES_DIR = app.isPackaged
+      ? path.join(process.resourcesPath, 'resources')
+      : path.resolve(__dirname, '..', 'resources')
   }
 }

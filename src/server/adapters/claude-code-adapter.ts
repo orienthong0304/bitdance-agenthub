@@ -442,6 +442,14 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       env: buildSdkEnv(input.apiKey, input.apiBaseUrl),
       // 思考深度：agent.effort 非空时传给 SDK；为空走 SDK 默认（high）
       ...(input.effort ? { effort: input.effort } : {}),
+      // Agent Skills：已由 skills-service 解析（plan stage 时 runner 不注入）。
+      // plugins 装载 skill 包目录，skills 只启用点名的（SDK 是 context filter 非 sandbox）。
+      ...(input.skills?.length && input.skillPluginPaths?.length
+        ? {
+            skills: input.skills,
+            plugins: input.skillPluginPaths.map((p) => ({ type: 'local' as const, path: p })),
+          }
+        : {}),
       ...(previousSessionId ? { resume: previousSessionId } : {}),
       canUseTool: (toolName, toolInput) =>
         bridgePermission(toolName, toolInput, { workspace, approvalMode, input, signal }),

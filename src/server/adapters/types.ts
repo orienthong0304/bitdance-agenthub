@@ -49,6 +49,13 @@ export interface AdapterInput {
    *  null/undefined 时不传，SDK 用默认（high）。 */
   effort?: EffortLevel
 
+  /** 该 agent 启用的 Agent Skills（SKILL.md name 或 plugin:skill 限定名，已由 skills-service 解析过）。
+   *  仅 ClaudeCodeAdapter 消费（SDK options.skills）；Codex / Custom / Mock 忽略。plan stage 不注入。 */
+  skills?: string[]
+
+  /** 启用 skills 所在已安装包的 SDK local plugin 目录（绝对路径，去重）。与 skills 配对使用。 */
+  skillPluginPaths?: string[]
+
   /** 触发消息的附件（图片 / 文件），adapter 决定是否注入到 LLM content */
   attachments?: AdapterAttachment[]
 

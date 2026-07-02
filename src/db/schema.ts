@@ -6,7 +6,15 @@
 
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import type { ArtifactContent, ArtifactType, AdapterName, EffortLevel, MessagePart, ModelProvider } from '@/shared/types'
+import type {
+  ArtifactContent,
+  ArtifactType,
+  AdapterName,
+  EffortLevel,
+  MessagePart,
+  ModelProvider,
+  SkillSummary,
+} from '@/shared/types'
 
 // ─── Agents ──────────────────────────────────────────────────
 export const agents = sqliteTable('agents', {
@@ -36,6 +44,12 @@ export const agents = sqliteTable('agents', {
   apiBaseUrl: text('api_base_url'),
 
   toolNames: text('tool_names', { mode: 'json' }).$type<string[]>().notNull(),
+
+  /** 启用的 Agent Skills（SKILL.md name 或 `pkg:skill` 限定名）。仅 claude-code adapter 消费；空数组 = 无 skill。 */
+  skillNames: text('skill_names', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
 
   isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
   isOrchestrator: integer('is_orchestrator', { mode: 'boolean' }).notNull().default(false),
@@ -245,6 +259,26 @@ export const contextSummaries = sqliteTable(
   },
   (t) => [index('idx_context_summaries_conv_created').on(t.conversationId, t.createdAt)],
 )
+
+// ─── SkillPackages (Agent Skills 安装注册表) ─────────────────
+/**
+ * 已安装的 skill 包。builtin 包来自只读资源目录（启动时发现并注册），
+ * imported 包由用户从 GitHub / 本地路径导入到 <dataDir>/agent-skills/ 下。
+ * skill 以 SDK local plugin 形式装载，详见 specs/05 与 openspec agent-skills。
+ */
+export const skillPackages = sqliteTable('skill_packages', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  source: text('source', { enum: ['builtin', 'imported'] }).notNull(),
+  sourceRef: text('source_ref').notNull(),
+  installPath: text('install_path').notNull(),
+  skills: text('skills', { mode: 'json' }).$type<SkillSummary[]>().notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
+export type SkillPackageRow = typeof skillPackages.$inferSelect
+export type SkillPackageInsert = typeof skillPackages.$inferInsert
 
 // ─── AppSettings (全局 API key / endpoint) ──────────────────
 /**

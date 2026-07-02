@@ -146,6 +146,18 @@ const DDL: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_context_summaries_conv_created ON conversation_context_summaries(conversation_id, created_at)`,
 
+  // ─── skill_packages ────────────────────────────
+  `CREATE TABLE IF NOT EXISTS skill_packages (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    install_path TEXT NOT NULL,
+    skills TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+
   // ─── app_settings ──────────────────────────────
   `CREATE TABLE IF NOT EXISTS app_settings (
     id TEXT PRIMARY KEY,
@@ -174,6 +186,7 @@ function ensureSchema(sqlite: Database.Database): void {
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_dir TEXT`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_public_base_url TEXT`)
   safeAlter(sqlite, `ALTER TABLE agents ADD COLUMN effort TEXT`)
+  safeAlter(sqlite, `ALTER TABLE agents ADD COLUMN skill_names TEXT NOT NULL DEFAULT '[]'`)
 }
 
 function safeAlter(sqlite: Database.Database, stmt: string): void {

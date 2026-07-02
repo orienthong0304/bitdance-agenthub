@@ -65,6 +65,8 @@ export interface CreateAgentBody {
   apiBaseUrl?: string
   /** 思考深度（仅 claude-code adapter）；省略 = SDK 默认 high */
   effort?: EffortLevel
+  /** 启用的 Agent Skills（仅 claude-code adapter）；省略 = 无 */
+  skillNames?: string[]
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {

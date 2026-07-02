@@ -199,6 +199,31 @@ export type ModelProvider =
   | 'volcano-ark'
   | 'openai-compatible'
 
+// ─── Agent Skills（仅 claude-code adapter 消费）─────────────
+export type SkillSource = 'builtin' | 'imported'
+
+/** 一个 skill 包内的单个 skill（来自 SKILL.md frontmatter）。 */
+export interface SkillSummary {
+  name: string
+  description: string
+  /** `<packageName>:<skillName>`，跨包重名时用它精确启用（SDK plugin:skill 语义） */
+  qualifiedName: string
+}
+
+/** skill 包 = 安装单位（目录内含一或多个 SKILL.md skill）；skill = 启用单位。 */
+export interface SkillPackage {
+  id: string
+  name: string
+  description: string
+  source: SkillSource
+  /** builtin: 资源目录名；imported: GitHub URL 或本地来源路径 */
+  sourceRef: string
+  /** SDK local plugin 目录绝对路径 */
+  installPath: string
+  skills: SkillSummary[]
+  createdAt: number
+}
+
 // ─── 调度 plan ────────────────────────────────────────────
 export interface DispatchPlanItem {
   id: string

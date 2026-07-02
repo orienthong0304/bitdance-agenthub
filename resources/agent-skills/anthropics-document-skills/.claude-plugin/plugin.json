@@ -1,0 +1,5 @@
+{
+  "name": "anthropics-document-skills",
+  "description": "Bundled document skills from anthropics/skills (docx today; pdf/xlsx/pptx can join later). docx needs host runtimes: pandoc, python, LibreOffice (soffice) for .doc conversion.",
+  "version": "0.0.0"
+}

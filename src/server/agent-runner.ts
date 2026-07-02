@@ -41,6 +41,7 @@ import {
   recordRunCommand,
   type RunToolEvidence,
 } from './dispatch-run-evidence'
+import { resolveAgentSkills } from './skills-service'
 import {
   buildReplanContext,
   buildReviseContext,
@@ -2027,6 +2028,20 @@ async function buildAdapterInput(
     })
   }
 
+  // Agent Skills：仅 claude-code 消费；plan stage（带 plan_tasks 的编排规划轮）保持 skill-free，
+  // 让规划确定性且省 token（spec agent-skills）。解析失败降级为无 skill，不让整个 run 崩。
+  let resolvedSkills: { skills: string[]; pluginPaths: string[] } | null = null
+  if (
+    agent.adapterName === 'claude-code' &&
+    (agent.skillNames?.length ?? 0) > 0 &&
+    !toolNames.includes('plan_tasks')
+  ) {
+    resolvedSkills = await resolveAgentSkills(agent.skillNames).catch((err) => {
+      console.warn('[agent-runner] resolveAgentSkills failed; continuing without skills', err)
+      return null
+    })
+  }
+
   return {
     agentId: agent.id,
     conversationId: args.conversationId,
@@ -2039,6 +2054,9 @@ async function buildAdapterInput(
     modelId: agent.modelId,
     toolNames,
     effort: agent.effort ?? undefined,
+    skills: resolvedSkills && resolvedSkills.skills.length > 0 ? resolvedSkills.skills : undefined,
+    skillPluginPaths:
+      resolvedSkills && resolvedSkills.pluginPaths.length > 0 ? resolvedSkills.pluginPaths : undefined,
     attachments: attachments.length > 0 ? attachments : undefined,
     history: history.length > 0 ? history : undefined,
     customConfig:

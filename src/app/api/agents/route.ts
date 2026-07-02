@@ -21,6 +21,7 @@ const CreateBody = z
       .optional(),
     modelId: z.string().min(1).optional(),
     toolNames: z.array(z.string()).default([]),
+    skillNames: z.array(z.string().min(1).max(128)).max(64).default([]),
     supportsVision: z.boolean().optional(),
     apiKey: z.string().optional(),
     apiBaseUrl: z.string().optional(),

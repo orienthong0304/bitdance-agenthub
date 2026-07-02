@@ -177,14 +177,14 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - **UI 重设计 Phase A-D**（openspec redesign-ui-shell）：teal token 体系、IconRail+二级面板应用壳、聊天列 760px 居中 + 统筹 chip、一体化输入盒、右侧面板对齐
 - **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
 - 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
-- Orchestrator **同波次代码冲突检测**（fs_write 写入追踪 + 聚合阶段上报；盲区 bash / SDK adapter，`specs/06`）
+- Orchestrator **同波次代码冲突检测**（fs_write + Claude/Codex SDK 写盘三路追踪 + 聚合阶段上报；余留盲区仅 bash，`specs/06`）
 - **PPT 产物**：`ppt` 类型 + 结构化 slides JSON + 真 .pptx 导出（pptxgenjs）+ 完整 theme token（预览/导出同源消费 `resolvePptTheme`）
 - **Playwright E2E** 基建 + 核心 IM 流（mock agent；本机 `pnpm e2e` 跑，详见「测试」节）
 - 斜杠命令菜单（`/` 浮层）
 
 ### 📋 待办
 - E2E 补充：产物导出下载类用例（.pptx / ZIP 下载断言）
-- 冲突检测盲区：bash / SDK adapter 写入（可加波次快照补全）
+- 冲突检测余留盲区：bash 写文件（需波次快照 diff，且难归属到具体子 run，暂不做）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
 - 移动端伴随 App 配对通信打通
 

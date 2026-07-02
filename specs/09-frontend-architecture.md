@@ -33,7 +33,7 @@ L3  Application Services（见 Spec 02/06）
 
 ## AppState 结构
 
-源文件：`src/stores/app-store.ts:20-89`
+源文件：`src/stores/app-store.ts:32-97`
 
 ```typescript
 interface AppState {
@@ -79,7 +79,7 @@ interface AppState {
 
 ## applyEvent reducer
 
-源文件：`src/stores/app-store.ts:274-442`
+源文件：`src/stores/app-store.ts:566-884`
 
 逐 `event.type` 分发，所有 case 都在一个 `set((s) => switch)` 内，依赖 immer 直接 mutate。
 
@@ -121,7 +121,7 @@ interface AppState {
 
 为减少「发完才看到」的延迟，用户发消息时先在 store 插一条临时消息：
 
-源文件：`src/stores/app-store.ts:222-272`
+源文件：`src/stores/app-store.ts:510-564`
 
 ```typescript
 addLocalUserMessage({ tempId, ... })           // 用 tempId（'local-<nanoid>'）插入
@@ -140,7 +140,7 @@ replaceLocalMessageId(tempId, realId)          // 把 messages 表和 messageIds
 
 ## 派生 hooks
 
-源文件：`src/stores/app-store.ts:446-489`
+源文件：`src/stores/app-store.ts:1065-1140`
 
 所有派生 selector 返回新数组 / 对象时**必须**用 `useShallow`（Zustand 5 + immer 标配），否则每次 store 变更都触发新引用 → 无限 re-render。
 

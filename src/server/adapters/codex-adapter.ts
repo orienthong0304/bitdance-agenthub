@@ -15,6 +15,7 @@ import {
 import { eq } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
+import { recordFileWriteFromDisk } from '@/server/dispatch-file-writes'
 import { recordRunFileWrite } from '@/server/dispatch-run-evidence'
 import { getInternalToolToken } from '@/server/internal-tool-auth'
 import { newMessageId, newToolCallId } from '@/server/ids'
@@ -228,6 +229,8 @@ function recordCodexFileChangeEvidence(input: AdapterInput, item: FileChangeItem
       bytes,
       applied: 'auto',
     })
+    // 冲突检测哈希：Codex 已写完盘，从磁盘读回（specs/06 代码冲突检测）
+    recordFileWriteFromDisk(input.runId, absolutePath)
   }
 }
 

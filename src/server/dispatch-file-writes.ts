@@ -1,16 +1,21 @@
 import { createHash } from 'node:crypto'
+import { readFileSync, statSync } from 'node:fs'
 
 /**
  * Orchestrator 同波次「代码冲突」检测的写入追踪。
  *
- * 记录每个子 run 经 fs_write 写过的 workspace 文件（绝对路径 → 内容 hash），
+ * 记录每个子 run 写过的 workspace 文件（绝对路径 → 内容 hash），来源三路：
+ * fs_write 工具（内容直记）、Claude Code SDK 写盘、Codex 文件变更事件（后两路
+ * 由 adapter 在写盘完成后从磁盘读回，见 recordFileWriteFromDisk）。
  * 供 AgentRunner 在一波并行子任务结束后检测「多个子 agent 写了同一文件」。
  *
- * 盲区（见 specs/06 「代码冲突检测」）：bash 工具与 Claude Code SDK 自带写盘工具
- * 不经过 fs_write，因此不在此记录，这类并发写当前不检测。
+ * 剩余盲区（见 specs/06 「代码冲突检测」）：bash 工具写文件无法静态感知，
+ * 这类并发写当前不检测（补全需要波次前后 workspace 快照 diff）。
  */
 
 const writesByRun = new Map<string, Map<string, string>>()
+
+const MAX_HASH_BYTES = 5 * 1024 * 1024
 
 export function recordFileWrite(runId: string, absolutePath: string, content: string): void {
   let files = writesByRun.get(runId)
@@ -19,6 +24,24 @@ export function recordFileWrite(runId: string, absolutePath: string, content: st
     writesByRun.set(runId, files)
   }
   files.set(absolutePath, createHash('sha1').update(content).digest('hex'))
+}
+
+/** SDK adapter（Claude Code / Codex）自己写盘后从磁盘读回记哈希；超 5MB 或读失败跳过（保守漏报，不误报）。 */
+export function recordFileWriteFromDisk(runId: string, absolutePath: string): void {
+  let raw: Buffer
+  try {
+    const stat = statSync(absolutePath)
+    if (!stat.isFile() || stat.size > MAX_HASH_BYTES) return
+    raw = readFileSync(absolutePath)
+  } catch {
+    return
+  }
+  let files = writesByRun.get(runId)
+  if (!files) {
+    files = new Map()
+    writesByRun.set(runId, files)
+  }
+  files.set(absolutePath, createHash('sha1').update(raw).digest('hex'))
 }
 
 export function getFileWrites(runId: string): Map<string, string> {

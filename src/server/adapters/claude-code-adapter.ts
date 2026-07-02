@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { classifyBashApproval, waitForBashApproval } from '@/server/bash-command-approval'
 import { db, schema } from '@/db/client'
 import type { WorkspaceRow } from '@/db/schema'
+import { recordFileWriteFromDisk } from '@/server/dispatch-file-writes'
 import { recordRunFileWrite } from '@/server/dispatch-run-evidence'
 import { readIfExists } from '@/server/fs-service'
 import { newMessageId, newToolCallId } from '@/server/ids'
@@ -718,6 +719,8 @@ function recordClaudeSdkFileWrite(
     bytes,
     applied: 'auto',
   })
+  // 冲突检测哈希：SDK 已写完盘，从磁盘读回（specs/06 代码冲突检测）
+  recordFileWriteFromDisk(runId, absolutePath)
 }
 
 // ─── canUseTool 桥 ────────────────────────────────────────

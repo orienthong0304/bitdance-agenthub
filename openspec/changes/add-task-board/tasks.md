@@ -26,3 +26,11 @@
 - [ ] 5.1 task-service 纯函数与状态流转单测（`mapDispatchStatusToBoard`，已覆盖）；dispatch 同步幂等单测（`upsertDispatchTask` / `syncDispatchTaskStatus` 的 DB 集成测试）**未覆盖**，留后续任务。
 - [x] 5.2 E2E：mock agent 场景「建任务」关键词 → create_task → 看板出现该任务（`e2e/tasks.spec.ts`）。
 - [x] 5.3 specs/01/07/08/09 同步 + OVERVIEW 矩阵。specs/02 本次不改动 —— v1 无 `task.update` StreamEvent（见 1.2 / 2.3 deferred v1.1）。
+
+## 6. v1.1 Backlog（Codex 终审 2026-07-03 排定优先级）
+
+- [ ] 6.1 `task.update` StreamEvent（P1：影响 agent 建单/dispatch 同步后的实时可见性与 rail badge 准确性；按 specs/02 扩展流程走 delta spec）。
+- [ ] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。
+- [ ] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。
+- [ ] 6.4 评估 create_task 在 SDK 桥上的授权控制（当前对所有 SDK agent 默认可用；若产品预期受 toolNames 控制则需收敛）。
+- [ ] 6.5 e2e `createSingleChat` 抽共享 fixture（四处重复已达阈值）。

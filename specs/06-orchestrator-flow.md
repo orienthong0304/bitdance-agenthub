@@ -185,12 +185,15 @@ const planTasksTool: ToolDef = {
 - 能并行的尽量并行（不写 dependsOn）
 - 有依赖关系的明确写 dependsOn
 - 每个子任务给出独立可执行的描述（被分派的 Agent 看不到完整群聊上下文）
+- taskKind 取值（可选）：`code` / `test` / `review` / `design` / `doc` / `analysis` / `research` / `writing`。code/test 隐含可运行的构建/测试 evidence；其余为文字型工序。写作流水线映射：资料研究=research、策划/Brief/提纲=doc、主笔/润色成稿=writing、审校=review
 - 代码实现任务必须声明 taskKind="code"，并声明 required project expectedOutputs；project 由 workspace 文件写入自动产物化，不由 write_artifact 创建
+- research / writing 等文字型工序不声明 project expectedOutputs，用 document expectedOutputs 或 acceptanceCriteria 描述交付（与 review / doc 一致）
 - 代码实现任务必须声明可验证的 acceptanceCriteria / requiredEvidence，并尽量声明 requiredCommands（如 pnpm build、mvn compile）
 - 只有需要真实 artifact 交接或供用户预览时才声明非 project expectedOutputs
 - 审查 / 验证 / 诊断 / 状态检查 / 解释 / 总结等文字型任务不要声明 expectedOutputs，用 acceptanceCriteria 描述完成条件
 - local workspace 中的本地代码任务（创建 / 修改 / 初始化 / 调试 / 构建项目或源码文件）应派给具备 fs_read / fs_write / bash 或 SDK 本地工具的 Agent
 - local workspace 代码任务不要声明 expectedOutputs，用 acceptanceCriteria 描述应落盘的目录、文件、命令和验证结果；task 文本要明确要求直接修改当前本地 workspace 文件，不要用 write_artifact 代替源码落盘
+- 修订已有产物：用户要求修改 / 润色 / 续写某个已存在的 artifact 时，Orchestrator 没有 write_artifact，不能自己改稿；应发单任务 plan_tasks 派给原作者或合适的 writer agent，task 文本写明产物 id、改哪部分、保留哪些、基于原产物出新版（子 agent 用 read_artifact 读原文、write_artifact 带 parentArtifactId 存新版），不为一次小修订重启完整写作链
 - 不要重复拆解已有产物已满足的需求
 
 【输出规则】

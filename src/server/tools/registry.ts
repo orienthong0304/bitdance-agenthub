@@ -1,5 +1,6 @@
 import { askUserTool } from './ask-user'
 import { bashTool } from './bash'
+import { createTaskTool } from './create-task'
 import { deployArtifactTool } from './deploy-artifact'
 import { deployWorkspaceTool } from './deploy-workspace'
 import { fsListTool } from './fs-list'
@@ -73,6 +74,7 @@ function buildRegistry(): ToolRegistry {
   reg.register(fsWriteTool)
   reg.register(bashTool)
   reg.register(askUserTool)
+  reg.register(createTaskTool)
   return reg
 }
 

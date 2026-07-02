@@ -413,6 +413,26 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
             }
           },
         ),
+        tool(
+          'create_task',
+          'Log a follow-up to-do on the global cross-conversation task board when you notice something that should happen later but is outside the current task (e.g. a bug to fix, a doc to update, a decision the user still owes). Not for tracking your own in-progress steps. Returns the created taskId.',
+          {
+            title: z.string(),
+            note: z.string().optional(),
+          },
+          async (args) => {
+            const result = await toolRegistry.execute('create_task', args, toolCtx)
+            if (!result.ok) {
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
+                isError: true,
+              }
+            }
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify(result.value) }],
+            }
+          },
+        ),
       ]
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',

@@ -9,6 +9,8 @@ import type {
 } from '@/db/schema'
 import type {
   AskUserAnswer,
+  BoardTask,
+  BoardTaskStatus,
   DeployCandidateRecord,
   DeployStatusRecord,
   EffortLevel,
@@ -127,6 +129,41 @@ export async function importSkillPackage(body: {
 
 export async function deleteSkillPackage(packageId: string): Promise<void> {
   await json<{ ok: boolean }>(fetch(`/api/skills/${packageId}`, { method: 'DELETE' }))
+}
+
+// ─── Task Board ─────────────────────────────────
+export async function fetchBoardTasks(): Promise<BoardTask[]> {
+  const { tasks } = await json<{ tasks: BoardTask[] }>(fetch('/api/tasks'))
+  return tasks
+}
+
+export async function createBoardTask(body: { title: string; note?: string }): Promise<BoardTask> {
+  const { task } = await json<{ task: BoardTask }>(
+    fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+  return task
+}
+
+export async function updateBoardTask(
+  taskId: string,
+  patch: { title?: string; note?: string; status?: BoardTaskStatus },
+): Promise<BoardTask> {
+  const { task } = await json<{ task: BoardTask }>(
+    fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  )
+  return task
+}
+
+export async function deleteBoardTask(taskId: string): Promise<void> {
+  await json<{ ok: boolean }>(fetch(`/api/tasks/${taskId}`, { method: 'DELETE' }))
 }
 
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {

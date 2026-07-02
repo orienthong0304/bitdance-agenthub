@@ -57,6 +57,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | MockAdapter | ✅ | 开发期不烧 token |
 | CodexAdapter | ✅ | @openai/codex-sdk + 线程续接 + AgentHub MCP bridge |
 | 自建 Agent | ✅ | 表单/对话式创建,自定义 prompt + 工具集 |
+| Agent Skills | ✅ | Claude Code agent 启用 SKILL.md 技能包（内置 docx · GitHub/本地导入 · SDK plugins 装载 · per-agent 勾选） |
 | Orchestrator 编排 | ✅ | 三阶段规划 + DAG 调度 + 级联中止 + 可视化卡 + 同波次代码冲突检测（检测+上报，不自动合并） |
 | 工具系统 | ✅ | write/deploy/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
 | Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL + 本地静态发布/源码包/容器包) / document(md) / image / 版本对比 diff（历史 diff 只读兼容） / **ppt(幻灯片分页预览 + 完整 theme token + 导出真 .pptx)** · code_file workspace 预览/编辑 · 版本链 v1↔v2 · 选区改写 · 面板内编辑(CodeMirror)→提交新版本 · 导出 |
@@ -126,6 +127,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 事件总线 | `event-bus.ts` | HMR-safe globalThis 单例,推 SSE |
 | 产物服务 | `artifact-service.ts` · `deployment-service.ts` · `ppt-export.ts` | 产物 CRUD + 版本链（parentArtifactId）· 本地静态发布与下载包 · slides JSON → 真 .pptx（pptxgenjs） |
 | Agent / 附件 / 文件 | `agent-service.ts` · `attachment-service.ts` · `fs-service.ts` | |
+| Agent Skills | `skills-service.ts` | 技能包发现/导入/注册 + per-agent 解析（openspec agent-skills；builtin 包在 `resources/agent-skills/`） |
 | 审批中转 store | `pending-writes.ts` · `pending-questions.ts` | fs_write 审批 / ask_user 的内存中转 |
 | 设置 / Key | `settings-service.ts` | 三层 key 优先级解析 |
 | 安全 / 平台 / 沙箱 | `security.ts`（黑名单 `getBannedPatterns`） · `platform.ts`（shell 选择） · `workspace-utils.ts`（路径校验/配额） | `specs/11` |
@@ -171,6 +173,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 ## 附 · 当前现状（易过时,以 git 为准）
 
 ### ✅ 近期完成（最新一批）
+- **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
 - 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
 - Orchestrator **同波次代码冲突检测**（fs_write 写入追踪 + 聚合阶段上报；盲区 bash / SDK adapter，`specs/06`）
 - **PPT 产物**：`ppt` 类型 + 结构化 slides JSON + 真 .pptx 导出（pptxgenjs）+ 完整 theme token（预览/导出同源消费 `resolvePptTheme`）

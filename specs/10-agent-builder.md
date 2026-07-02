@@ -38,6 +38,8 @@
 | `apiKey` | string | — | `''` | 命名 provider 留空走 env var；`openai-compatible` 必填 per-agent key |
 | `apiBaseUrl` | string | — | `''` | Claude Code 可填 Anthropic 兼容 endpoint；Codex 仅可填 Codex/Responses 兼容 endpoint；Custom `openai-compatible` 必填 Chat Completions 兼容 endpoint |
 | `toolNames` | string[] | — | 全栈通用预设 | 当前可勾选：`write_artifact` / `deploy_artifact` / `deploy_workspace` / `read_artifact` / `read_attachment` / `ask_user` / `fs_read` / `fs_write` / `bash` |
+| `skillNames` | string[] | — | `[]` | 仅 claude-code adapter 可选；见下方「Agent Skills 勾选与技能包导入」 |
+| `effort` | enum | — | `''`（SDK 默认 high） | 仅 claude-code adapter；思考深度档位 low/medium/high/xhigh/max |
 | `supportsVision` | boolean | — | `true` | 决定是否把图片 base64 注入 messages |
 | `avatar` | string | — | `'🤖'` | service 层默认（UI 当前不暴露） |
 | `isBuiltin` | boolean | — | `false` | service 写死，UI 不可改 |
@@ -122,6 +124,23 @@ UI 当前允许勾选产物、附件和 workspace 相关常用工具。`plan_tas
 | 审查验证 | `read_artifact` / `read_attachment` / `ask_user` / `fs_read` / `bash` | 读取产物或本地代码并运行检查，不默认写文件 |
 
 **新增工具时**：除了在 `src/server/tools/registry.ts` 注册，还要在 `src/shared/agent-builder-config.ts` 的 `AVAILABLE_AGENT_TOOLS` 加上、并在 `AGENT_TOOL_META` 补一条文案，才能在 UI 正常勾选（详见 Spec 07 「新增工具步骤」）。
+
+---
+
+## Agent Skills 勾选与技能包导入
+
+源：`src/components/create-agent-dialog.tsx`（选择器）、`src/components/skill-library-dialog.tsx`（技能包面板）、`src/server/skills-service.ts`
+
+「工具与提示词」Tab 在工具区下方提供 Agent Skills 选择器：
+
+- **仅 claude-code adapter 可用**：其它 adapter 显示禁用说明（Codex / Custom 没有 skill 运行机制），切换 adapter 时清空已勾选 skill
+- 选择器列出所有已安装技能包内的 skill（name + description + 所属包名），勾选写入 `agents.skillNames`
+- **跨包重名**：以 `pkg:skill` 限定名启用并在列表中展示限定名
+- 「管理技能包」按钮打开技能包面板：列出 builtin / imported 包及各自 skill；支持从 GitHub 仓库 URL（`https://github.com/<owner>/<repo>`，`git clone` install-only）或本地目录导入；imported 包可移除，builtin 不可
+- 部分技能依赖宿主环境运行时（如 docx 需要 pandoc / python / LibreOffice），UI 提示缺失时对应命令失败但不影响其它功能
+- Agent 信息 popover（`agent-info-popover.tsx`）展示已启用 skill 徽标
+
+数据流：`/api/skills`（list / import / delete）→ `skills-service`；运行期解析见 Spec 05「Agent Skills」节，DB 表见 Spec 08 §10。
 
 ---
 

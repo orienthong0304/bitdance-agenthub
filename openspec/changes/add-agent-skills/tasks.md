@@ -29,15 +29,15 @@
 
 ## 5. Agent Builder UI
 
-- [ ] 5.1 Add a skill selector to the detailed form for Claude Code agents, listing skills from installed packages with descriptions.
-- [ ] 5.2 Disable the selector with an explanation when the adapter is not Claude Code.
-- [ ] 5.3 Add a browse/import panel showing installed packages (builtin + imported) and their included skills, with a `git clone`/local-path import action, and note any external runtime requirements a skill declares (e.g. `docx` needs `pandoc`/`python`/LibreOffice).
-- [ ] 5.4 Show enabled skills on the agent profile/review surfaces before save.
+- [x] 5.1 Add a skill selector to the detailed form for Claude Code agents, listing skills from installed packages with descriptions.
+- [x] 5.2 Disable the selector with an explanation when the adapter is not Claude Code.
+- [x] 5.3 Add a browse/import panel showing installed packages (builtin + imported) and their included skills, with a `git clone`/local-path import action, and note any external runtime requirements a skill declares (e.g. `docx` needs `pandoc`/`python`/LibreOffice).
+- [x] 5.4 Show enabled skills on the agent profile/review surfaces before save.
 
 ## 6. Documentation And Verification
 
 - [x] 6.1 Remove "Skills" (Claude Code scope) from the `specs/05-adapter-interface.md` deferred list and document the supported boundary.
-- [ ] 6.2 Update `specs/01-core-entities.md` (Agent `skillNames`), `specs/08-db-schema.md` (new table + column), and `specs/10-agent-builder.md` (skill selection + import).
+- [x] 6.2 Update `specs/01-core-entities.md` (Agent `skillNames`), `specs/08-db-schema.md` (new table + column), and `specs/10-agent-builder.md` (skill selection + import).
 - [ ] 6.3 Add tests for skill resolution, import validation, adapter skill wiring, and non-Claude rejection.
 - [ ] 6.4 Run OpenSpec validation for `add-agent-skills`.
-- [ ] 6.5 Run targeted unit tests, `pnpm typecheck`, and `pnpm lint` without running `pnpm build`.
+- [x] 6.5 Run targeted unit tests, `pnpm typecheck`, and `pnpm lint` without running `pnpm build`.

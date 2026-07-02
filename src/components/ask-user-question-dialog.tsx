@@ -305,7 +305,7 @@ function QuestionBlock({
                   <div className="mt-0.5 text-[11px] text-muted-foreground">{opt.description}</div>
                 )}
                 {opt.preview && (
-                  <pre className="mt-1 overflow-x-auto rounded bg-black/5 px-2 py-1 font-mono text-[10px] dark:bg-white/5">
+                  <pre className="mt-1 overflow-x-auto rounded bg-muted px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {opt.preview}
                   </pre>
                 )}
@@ -320,14 +320,14 @@ function QuestionBlock({
           className={cn(
             'flex items-start gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition',
             otherSelected
-              ? 'border-amber-400 bg-amber-50/60 dark:bg-amber-950/20'
+              ? 'border-primary bg-primary/5'
               : 'border-dashed border-muted-foreground/30 hover:border-foreground/30',
           )}
         >
           <span
             className={cn(
               'mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border-2',
-              otherSelected ? 'border-amber-500 bg-amber-500' : 'border-muted-foreground/40',
+              otherSelected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
             )}
           >
             {otherSelected && <span className="size-1 rounded-full bg-white" />}

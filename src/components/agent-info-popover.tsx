@@ -1,6 +1,6 @@
 'use client'
 
-import { Eye, Pencil, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
+import { Eye, Pencil, Puzzle, ShieldCheck, Sparkles, Wrench } from 'lucide-react'
 import { useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
@@ -111,6 +111,21 @@ export function AgentInfoPopover({
                       className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-muted-foreground"
                     >
                       {t}
+                    </code>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(agent.skillNames?.length ?? 0) > 0 && (
+              <div className="flex items-start gap-1.5">
+                <Puzzle className="mt-0.5 size-3 shrink-0" />
+                <div className="flex flex-wrap gap-1">
+                  {agent.skillNames.map((s) => (
+                    <code
+                      key={s}
+                      className="rounded bg-primary/10 px-1 py-0.5 font-mono text-[10px] text-primary"
+                    >
+                      {s}
                     </code>
                   ))}
                 </div>

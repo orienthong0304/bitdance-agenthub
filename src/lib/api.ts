@@ -16,6 +16,7 @@ import type {
   PendingDispatchPlan,
   PendingQuestion,
   PendingWrite,
+  SkillPackage,
 } from '@/shared/types'
 import type { AgentConfigDraft, AgentDraftRequest } from '@/shared/agent-builder-config'
 
@@ -102,6 +103,30 @@ export type UpdateAgentBody = Partial<
   apiBaseUrl?: string | null
   // 思考深度：null 清除（回退 SDK 默认 high）；undefined 不改
   effort?: EffortLevel | null
+}
+
+// ─── Agent Skills ───────────────────────────────
+export async function fetchSkillPackages(): Promise<SkillPackage[]> {
+  const { packages } = await json<{ packages: SkillPackage[] }>(fetch('/api/skills'))
+  return packages
+}
+
+export async function importSkillPackage(body: {
+  gitUrl?: string
+  localPath?: string
+}): Promise<SkillPackage> {
+  const { package: pkg } = await json<{ package: SkillPackage }>(
+    fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+  return pkg
+}
+
+export async function deleteSkillPackage(packageId: string): Promise<void> {
+  await json<{ ok: boolean }>(fetch(`/api/skills/${packageId}`, { method: 'DELETE' }))
 }
 
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {

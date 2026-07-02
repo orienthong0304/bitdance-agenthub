@@ -122,7 +122,7 @@ export function ArtifactPreviewPanel() {
 
   return (
     <aside className="flex w-1/2 min-w-[420px] shrink-0 flex-col border-l bg-card max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
-      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+      <header className="flex h-[57px] shrink-0 items-center justify-between border-b px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <TypeIcon type={artifact.type} />
           <div className="min-w-0 flex-1">

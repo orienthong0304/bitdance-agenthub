@@ -135,8 +135,8 @@ export function FileExplorerPanel() {
   if (!open || !conv) return null
 
   return (
-    <aside className="flex w-80 min-w-[260px] shrink-0 flex-col border-l bg-card max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
-      <header className="flex shrink-0 items-center justify-between border-b px-3 py-2">
+    <aside className="flex w-80 min-w-[260px] shrink-0 flex-col border-l bg-sidebar max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
+      <header className="flex h-[57px] shrink-0 items-center justify-between border-b px-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <Folder className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-medium">文件</span>
@@ -236,9 +236,9 @@ function DirTreeNode({
                       <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                     )}
                     {expanded ? (
-                      <FolderOpen className="size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                      <FolderOpen className="size-3.5 shrink-0 text-primary" />
                     ) : (
-                      <Folder className="size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                      <Folder className="size-3.5 shrink-0 text-primary" />
                     )}
                     <span className="truncate">{e.name}</span>
                   </button>

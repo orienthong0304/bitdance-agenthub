@@ -69,7 +69,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
-| 测试覆盖 | 🟡 | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库**（mock agent 走真实 write_artifact）；群聊调度 E2E 待补 |
+| 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度**（mock agent 走真实 write_artifact / plan_tasks / report_task_result 协议） |
 
 ---
 
@@ -181,7 +181,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - 斜杠命令菜单（`/` 浮层）
 
 ### 📋 待办
-- E2E 第二批（余）：群聊 Orchestrator 调度 E2E（需 mock dispatch 场景）；产物导出下载类用例
+- E2E 补充：产物导出下载类用例（.pptx / ZIP 下载断言）
 - PPT 深化：辅色语义着色（正面↑ / 警示↓）+ 数据页卡片化
 - 冲突检测盲区：bash / SDK adapter 写入（可加波次快照补全）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）

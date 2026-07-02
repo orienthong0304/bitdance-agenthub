@@ -488,6 +488,8 @@ export type StreamEvent = BaseEvent &
     | { type: 'bash_command.resolved'; pendingId: string; approved: boolean }
     | { type: 'ask_user.pending'; pendingQuestion: PendingQuestion }
     | { type: 'ask_user.resolved'; pendingId: string; answered: boolean }
+    // 任务看板实时同步：agent 建单 / dispatch 状态变化时广播；conversationId 空串 = 全局任务
+    | { type: 'task.update'; task: BoardTask }
     | { type: 'heartbeat' }
   )
 

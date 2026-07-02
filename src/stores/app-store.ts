@@ -36,7 +36,7 @@ interface AppState {
   messages: Record<string, MessageRow>
   artifacts: Record<string, ArtifactRow>
 
-  // ─── 任务看板（跨会话，面板挂载时 fetch 一次；v1 无 StreamEvent 实时同步）─
+  // ─── 任务看板（跨会话，面板挂载时 fetch 一次；task.update StreamEvent 增量实时同步）─
   boardTasks: BoardTask[]
 
   // ─── 关系（按 conversationId 分桶）───────────────
@@ -875,6 +875,14 @@ export const useAppStore = create<AppState>()(
             const next = list.filter((q) => q.id !== event.pendingId)
             if (next.length === 0) delete s.pendingQuestionsByConv[event.conversationId]
             else s.pendingQuestionsByConv[event.conversationId] = next
+            return
+          }
+
+          case 'task.update': {
+            // agent 建单 / dispatch 状态同步后广播；幂等 upsert，rail badge 随 boardTasks 自动更新
+            const idx = s.boardTasks.findIndex((t) => t.id === event.task.id)
+            if (idx >= 0) s.boardTasks[idx] = event.task
+            else s.boardTasks.push(event.task)
             return
           }
 

@@ -28,7 +28,7 @@ export function IconRail({
   const unreadTotal = useAppStore((s) =>
     Object.values(s.unreadByConv).reduce((sum, n) => sum + n, 0),
   )
-  // badge 只反映当前已加载进 store 的任务（TaskBoardPanel 挂载时 fetch，v1 无实时同步）
+  // badge 反映 store 内任务：挂载时 fetch 全量 + task.update StreamEvent 增量实时同步
   const taskBadge = useAppStore((s) =>
     s.boardTasks.reduce((sum, t) => sum + (t.status === 'open' || t.status === 'blocked' ? 1 : 0), 0),
   )
@@ -81,6 +81,7 @@ export function IconRail({
         onClick={() => onSelect('tasks')}
         label="任务"
         badge={taskBadge}
+        badgeTestId="rail-task-badge"
       >
         <ListTodo className="size-5" />
       </RailButton>
@@ -105,6 +106,7 @@ function RailButton({
   onClick,
   label,
   badge,
+  badgeTestId,
   children,
 }: {
   active: boolean
@@ -112,6 +114,7 @@ function RailButton({
   onClick: () => void
   label: string
   badge?: number
+  badgeTestId?: string
   children: React.ReactNode
 }) {
   // 当前导航按钮兼任「面板折叠开关」：用 aria-expanded + 动态提示暴露语义
@@ -132,7 +135,10 @@ function RailButton({
     >
       {children}
       {(badge ?? 0) > 0 && (
-        <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+        <span
+          data-testid={badgeTestId}
+          className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
+        >
           {badge! > 99 ? '99+' : badge}
         </span>
       )}

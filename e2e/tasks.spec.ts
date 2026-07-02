@@ -26,6 +26,9 @@ test('任务看板：Agent 用 create_task 立单 → 手动建单 → 状态切
   await expect(msg).toBeVisible({ timeout: 30_000 })
   await expect(msg).toContainText('任务已创建')
 
+  // 实时性证明：不点击任务导航，rail「任务」badge 应经 task.update StreamEvent 立即出现计数
+  await expect(page.getByTestId('rail-task-badge')).toHaveText('1', { timeout: 10_000 })
+
   // 点 rail「任务」打开看板面板
   await page.getByRole('button', { name: '任务', exact: true }).click()
 

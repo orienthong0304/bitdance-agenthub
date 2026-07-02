@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import type { TaskRow } from '@/db/schema'
+import { eventBus } from '@/server/event-bus'
 import { newBoardTaskId } from '@/server/ids'
 import type { BoardTask, BoardTaskSource, BoardTaskStatus } from '@/shared/types'
 
@@ -27,6 +28,20 @@ function toBoardTask(row: TaskRow): BoardTask {
     createdByAgentId: row.createdByAgentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  }
+}
+
+/** 看板 mutation 单点出口：把变更广播到 SSE，让 rail badge / 面板跨端实时更新。conversationId 空串 = 全局任务；发布失败不影响主流程。 */
+function publishTaskUpdate(task: BoardTask): void {
+  try {
+    eventBus.publish({
+      type: 'task.update',
+      conversationId: task.conversationId ?? '',
+      timestamp: task.updatedAt,
+      task,
+    })
+  } catch (err) {
+    console.warn(`[task-service] publish task.update failed for ${task.id}`, err)
   }
 }
 
@@ -63,7 +78,9 @@ export async function createBoardTask(args: CreateBoardTaskArgs): Promise<BoardT
     updatedAt: now,
   }
   await db.insert(schema.tasks).values(row)
-  return toBoardTask(row)
+  const task = toBoardTask(row)
+  publishTaskUpdate(task)
+  return task
 }
 
 export interface UpdateBoardTaskArgs {
@@ -88,7 +105,9 @@ export async function updateBoardTask(id: string, patch: UpdateBoardTaskArgs): P
     .update(schema.tasks)
     .set({ title: next.title, note: next.note, status: next.status, updatedAt: next.updatedAt })
     .where(eq(schema.tasks.id, id))
-  return toBoardTask(next)
+  const task = toBoardTask(next)
+  publishTaskUpdate(task)
+  return task
 }
 
 export async function deleteBoardTask(id: string): Promise<void> {
@@ -111,12 +130,16 @@ export async function upsertDispatchTask(args: UpsertDispatchTaskArgs): Promise<
     where: eq(schema.tasks.dispatchTaskId, args.dispatchTaskId),
   })
   if (existing) {
+    const titleChanged = args.title !== existing.title
     const next: TaskRow = { ...existing, title: args.title, updatedAt: Date.now() }
     await db
       .update(schema.tasks)
       .set({ title: next.title, updatedAt: next.updatedAt })
       .where(eq(schema.tasks.id, existing.id))
-    return toBoardTask(next)
+    const task = toBoardTask(next)
+    // 幂等命中：只在 title 真实变化时广播，避免 plan 重复登记造成看板噪音
+    if (titleChanged) publishTaskUpdate(task)
+    return task
   }
 
   const now = Date.now()
@@ -135,7 +158,9 @@ export async function upsertDispatchTask(args: UpsertDispatchTaskArgs): Promise<
     updatedAt: now,
   }
   await db.insert(schema.tasks).values(row)
-  return toBoardTask(row)
+  const task = toBoardTask(row)
+  publishTaskUpdate(task)
+  return task
 }
 
 /** Orchestrator 子任务在其生命周期内可能上报的状态；比 DispatchTaskStatus 多一个 'blocked'（AgentRunner 判定阻塞时用）。 */
@@ -177,8 +202,14 @@ export async function syncDispatchTaskStatus(
     console.warn(`[task-service] syncDispatchTaskStatus: no board task for dispatchTaskId ${dispatchTaskId}`)
     return
   }
+  const nextStatus = mapDispatchStatusToBoard(dispatchStatus)
+  const now = Date.now()
   await db
     .update(schema.tasks)
-    .set({ status: mapDispatchStatusToBoard(dispatchStatus), updatedAt: Date.now() })
+    .set({ status: nextStatus, updatedAt: now })
     .where(eq(schema.tasks.id, existing.id))
+  // 只在看板状态真实变化时广播（如 running→running 映射后同为 in_progress 时静默），避免 rail badge 抖动
+  if (nextStatus !== existing.status) {
+    publishTaskUpdate(toBoardTask({ ...existing, status: nextStatus, updatedAt: now }))
+  }
 }

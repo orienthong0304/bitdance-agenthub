@@ -69,7 +69,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
-| UI 重设计（teal 体系） | 🟡 | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒已落地；弹窗族与用量视图细化待补（设计稿 `docs/design/`） |
+| UI 重设计（teal 体系） | ✅ | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒/弹窗族全部落地（设计稿 `docs/design/`）；主区 880px 用量页+成本自算另行立项 |
 | 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度**（mock agent 走真实 write_artifact / plan_tasks / report_task_result 协议） |
 
 ---
@@ -183,7 +183,6 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 - 斜杠命令菜单（`/` 浮层）
 
 ### 📋 待办
-- E2E 补充：产物导出下载类用例（.pptx / ZIP 下载断言）
 - 冲突检测余留盲区：bash 写文件（需波次快照 diff，且难归属到具体子 run，暂不做）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
 - 移动端伴随 App 配对通信打通

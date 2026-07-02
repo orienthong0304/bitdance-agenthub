@@ -26,9 +26,9 @@
 
 ## 5. Phase E — 弹窗族与反馈
 
-- [ ] 5.1 settings / new-conversation / create-agent（含向导步骤）/ skill-manager 弹窗对齐。
-- [ ] 5.2 fs_write diff 审批 / bash 审批 / ask_user / export word 弹窗对齐；toast 样式统一。
-- [ ] 5.3 全量 e2e 回归。
+- [x] 5.1 settings / new-conversation / create-agent（含向导步骤）/ skill-manager 弹窗对齐。
+- [x] 5.2 fs_write diff 审批 / bash 审批 / ask_user / export word 弹窗对齐；toast 样式统一。
+- [x] 5.3 全量 e2e 回归。
 
 ## 6. 文档
 

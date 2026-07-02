@@ -197,13 +197,13 @@ useEffect(() => {
 ```
 app/page.tsx
 └── <Home>
-    ├── <Sidebar />               ── 对话/产物库/Agents/分析 四 tab 切换
-    │   ├── <ThemeToggle />
+    ├── <Sidebar />               ── 应用壳左段：IconRail + 262px 二级列表面板（redesign-ui-shell）
+    │   ├── <IconRail />          ── 56px 图标栏：logo + 会话(未读 badge)/Agents/产物库/分析 导航 + ThemeToggle/SettingsButton/用户位；点击当前导航折叠面板（aria-expanded）
     │   ├── <NewConversationDialog />
-    │   ├── <ConversationItem />  ── 单条会话 + hover 置顶/归档/重命名/删除
+    │   ├── <ConversationItem />  ── 单条会话（置顶/最近分组渲染）+ hover 置顶/归档/重命名/删除 + 激活态 3px 主色左条
     │   ├── <ArtifactLibrary />
     │   ├── <AgentLibrary />
-    │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME
+    │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME；claude-code 提供 Agent Skills 勾选 + <SkillLibraryDialog />（Spec 10）
     │   └── <RenameInput />       ── 内联重命名
     ├── <ChatPanel />             ── 当前会话主区
     │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分）
@@ -292,7 +292,8 @@ app/page.tsx
 ## CSS / 样式
 
 - Tailwind v4 + shadcn/ui（base-ui 底座，「base-nova」preset）
-- 主题色由 `src/app/globals.css` 的 CSS 变量驱动：`--primary` (字节蓝 #3370FF) / `--destructive` (火山红 #FE3B25) / `--ring` 等。light / dark 双模式
+- 主题色由 `src/app/globals.css` 的 CSS 变量驱动：`--primary` teal `#0d9488`（dark 提亮 teal-500）/ `--destructive` red-600 / `--radius` 8px 基准（设计稿 `docs/design/Helm-Agent.dc.html`，openspec redesign-ui-shell）。light / dark 双模式
+- 组件禁止硬编码品牌色值，一律走 `primary` / `destructive` 等 token 类；消息列 760px 居中栏宽体系
 - 代码块用 shiki 双主题（github-light / dark）；shiki pre 强制透明底，外层 CodeBlock 容器统一底色（见 `src/components/code-block.tsx` 与 `src/lib/highlighter.ts`）
 - 不引入新 UI 库（CLAUDE.md §2）；新 UI 组件先在 shadcn registry 里找，没有就自写
 

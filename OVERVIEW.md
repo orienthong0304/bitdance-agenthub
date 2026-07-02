@@ -69,6 +69,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
+| UI 重设计（teal 体系） | 🟡 | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒已落地；弹窗族与用量视图细化待补（设计稿 `docs/design/`） |
 | 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度**（mock agent 走真实 write_artifact / plan_tasks / report_task_result 协议） |
 
 ---
@@ -88,7 +89,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 ### L5 UI 组件（`src/components/`）
 | 区域 | 文件 |
 |---|---|
-| 侧栏（会话/产物库/Agents/分析 Tab） | `sidebar.tsx` |
+| 应用壳（图标栏+二级面板） | `icon-rail.tsx` · `sidebar.tsx` |
 | 聊天主面板 | `chat-panel.tsx` · `message-list.tsx` · `message-item.tsx` · `message-parts.tsx` |
 | 输入框（附件/审批模式/选区引用/斜杠命令） | `message-input.tsx` · `edit-message-input.tsx` |
 | Orchestrator 调度卡 | `dispatch-plan-card.tsx` |
@@ -173,6 +174,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 ## 附 · 当前现状（易过时,以 git 为准）
 
 ### ✅ 近期完成（最新一批）
+- **UI 重设计 Phase A-D**（openspec redesign-ui-shell）：teal token 体系、IconRail+二级面板应用壳、聊天列 760px 居中 + 统筹 chip、一体化输入盒、右侧面板对齐
 - **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
 - 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
 - Orchestrator **同波次代码冲突检测**（fs_write 写入追踪 + 聚合阶段上报；盲区 bash / SDK adapter，`specs/06`）

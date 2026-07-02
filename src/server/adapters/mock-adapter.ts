@@ -22,6 +22,12 @@ export class MockAdapter implements AgentPlatformAdapter {
   readonly name = 'mock' as const
 
   async *stream(input: AdapterInput, signal: AbortSignal): AsyncIterable<StreamEvent> {
+    // Orchestrator plan 阶段：直接发 plan_tasks tool.call（Runner 从事件里截获 plan 并停流）
+    if (input.toolNames.includes('plan_tasks')) {
+      yield* streamMockPlanStage(input)
+      return
+    }
+
     const script = pickScript(input.prompt)
 
     const messageId = newMessageId()
@@ -211,6 +217,31 @@ export class MockAdapter implements AgentPlatformAdapter {
       }
     }
 
+    // 被分派为子任务时（Runner 注入了 report_task_result），按契约上报语义结果；
+    // Runner 从 tool.result 的 result 值读取 report（readTaskResultReportFromToolResult）。
+    if (input.toolNames.includes('report_task_result') && !signal.aborted) {
+      const callId = newToolCallId()
+      const report = { status: 'complete', summary: 'Mock 子任务已完成：按脚本输出了内容。' }
+      yield {
+        type: 'tool.call',
+        conversationId: input.conversationId,
+        timestamp: Date.now(),
+        messageId,
+        callId,
+        toolName: 'report_task_result',
+        args: report,
+      }
+      yield {
+        type: 'tool.result',
+        conversationId: input.conversationId,
+        timestamp: Date.now(),
+        messageId,
+        callId,
+        result: report,
+        isError: false,
+      }
+    }
+
     yield {
       type: 'message.end',
       conversationId: input.conversationId,
@@ -218,6 +249,59 @@ export class MockAdapter implements AgentPlatformAdapter {
       messageId,
     }
   }
+}
+
+/** 计划阶段脚本：从 plan system prompt 的 agent 名册里挑一个非自己的 agent，派一个单任务。 */
+async function* streamMockPlanStage(input: AdapterInput): AsyncIterable<StreamEvent> {
+  const messageId = newMessageId()
+  yield {
+    type: 'message.start',
+    conversationId: input.conversationId,
+    timestamp: Date.now(),
+    messageId,
+    agentId: input.agentId,
+    runId: input.runId,
+  }
+
+  const candidateIds = [...new Set(input.systemPrompt.match(/\bag_[A-Za-z0-9_]+\b/g) ?? [])].filter(
+    (id) => id !== input.agentId,
+  )
+
+  if (candidateIds.length === 0) {
+    yield {
+      type: 'part.start',
+      conversationId: input.conversationId,
+      timestamp: Date.now(),
+      messageId,
+      partIndex: 0,
+      part: { type: 'text', content: '没有可分派的 Agent，无法制定计划。' },
+    }
+    yield { type: 'part.end', conversationId: input.conversationId, timestamp: Date.now(), messageId, partIndex: 0 }
+    yield { type: 'message.end', conversationId: input.conversationId, timestamp: Date.now(), messageId }
+    return
+  }
+
+  yield {
+    type: 'tool.call',
+    conversationId: input.conversationId,
+    timestamp: Date.now(),
+    messageId,
+    callId: newToolCallId(),
+    toolName: 'plan_tasks',
+    args: {
+      reasoning: 'Mock 编排：单任务分派用于 E2E 验证。',
+      tasks: [
+        {
+          id: 't1',
+          agentId: candidateIds[0],
+          task: '写一句简短的问候语，作为 mock 子任务输出。',
+          taskKind: 'writing',
+        },
+      ],
+    },
+  }
+
+  yield { type: 'message.end', conversationId: input.conversationId, timestamp: Date.now(), messageId }
 }
 
 // ─── 脚本类型 ─────────────────────────────────────────────

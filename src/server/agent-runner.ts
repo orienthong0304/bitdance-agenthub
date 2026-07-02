@@ -66,6 +66,7 @@ import {
   readTaskResultReportFromToolResult,
   REPORT_TASK_RESULT_TOOL_NAME,
 } from './task-result-report'
+import { syncDispatchTaskStatus, upsertDispatchTask } from './task-service'
 import { executeBashCommand } from './tools/bash'
 import { assertPathWithinWorkspace, getEffectiveCwd } from './workspace-utils'
 
@@ -520,6 +521,21 @@ async function executeOrchestratorRun(
       plan: approvedPlan,
     })
     for (const item of approvedPlan) planItemsById.set(item.id, item)
+
+    // 看板登记：dispatchTaskId 用父 orchestrator runId（补救轮复用同一 runId），跨轮对同一 item.id 幂等；
+    // 登记失败不阻塞调度，但先 await 完成再进 executeDag，避免第一波 dispatch.start 同步先于登记落地。
+    await Promise.all(
+      approvedPlan.map((item) =>
+        upsertDispatchTask({
+          dispatchTaskId: `${runId}:${item.id}`,
+          title: item.task.slice(0, 120),
+          conversationId: args.conversationId,
+          agentId: item.agentId,
+        }).catch((err) => {
+          console.warn(`[agent-runner] upsertDispatchTask failed for ${runId}:${item.id}`, err)
+        }),
+      ),
+    )
 
     // ─── EXECUTE (DAG) ───
     const { results, conflicts } = await executeDag(approvedPlan, {
@@ -1050,6 +1066,10 @@ async function runChildTaskAttempt(
     agentId: task.agentId,
   })
 
+  await syncDispatchTaskStatus(`${ctx.parentRunId}:${task.id}`, 'running').catch((err) => {
+    console.warn(`[agent-runner] syncDispatchTaskStatus(running) failed for ${ctx.parentRunId}:${task.id}`, err)
+  })
+
   const raw = await promise
   const verificationResults =
     raw.status === 'aborted'
@@ -1507,6 +1527,12 @@ function publishDispatchEnd(
     taskId,
     status: result.status,
     error: result.error,
+  })
+
+  // 看板同步不阻塞 DAG 收尾：部分调用点在同步的清理路径里（如 abort 时的 markRemainingTasksAborted），
+  // 不 await，失败只 console.warn。
+  syncDispatchTaskStatus(`${ctx.parentRunId}:${taskId}`, result.status).catch((err) => {
+    console.warn(`[agent-runner] syncDispatchTaskStatus(${result.status}) failed for ${ctx.parentRunId}:${taskId}`, err)
   })
 }
 

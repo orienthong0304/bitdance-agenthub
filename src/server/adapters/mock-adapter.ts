@@ -1,5 +1,7 @@
 import type { StreamEvent } from '@/shared/types'
 import { newMessageId, newToolCallId } from '@/server/ids'
+import { toolRegistry } from '@/server/tools/registry'
+import type { ToolContext } from '@/server/tools/types'
 
 import type { AdapterInput, AgentPlatformAdapter } from './types'
 
@@ -146,6 +148,66 @@ export class MockAdapter implements AgentPlatformAdapter {
           result: step.result ?? { ok: true },
           isError: false,
         }
+      } else if (step.kind === 'write_artifact') {
+        // 真实执行 L3 write_artifact（与 CustomAgentAdapter 同一约定），
+        // 让 E2E 能覆盖「产物落库 → artifact_ref → 预览面板」全链路。
+        const callId = newToolCallId()
+        yield {
+          type: 'tool.call',
+          conversationId: input.conversationId,
+          timestamp: Date.now(),
+          messageId,
+          callId,
+          toolName: 'write_artifact',
+          args: step.args,
+        }
+        const ctx: ToolContext = {
+          conversationId: input.conversationId,
+          workspacePath: input.workspacePath,
+          agentId: input.agentId,
+          runId: input.runId,
+          abortSignal: signal,
+        }
+        const result = await toolRegistry.execute('write_artifact', step.args, ctx)
+        const value = result.ok ? result.value : { error: result.error }
+        yield {
+          type: 'tool.result',
+          conversationId: input.conversationId,
+          timestamp: Date.now(),
+          messageId,
+          callId,
+          result: value,
+          isError: !result.ok,
+        }
+        const artifactId =
+          result.ok && typeof value === 'object' && value !== null && 'artifactId' in value
+            ? String((value as { artifactId: unknown }).artifactId)
+            : null
+        if (artifactId) {
+          const { db, schema } = await import('@/db/client')
+          const { eq } = await import('drizzle-orm')
+          const artifact = await db.query.artifacts.findFirst({
+            where: eq(schema.artifacts.id, artifactId),
+          })
+          if (artifact) {
+            yield {
+              type: 'artifact.create',
+              conversationId: input.conversationId,
+              timestamp: Date.now(),
+              artifact: {
+                id: artifact.id,
+                conversationId: artifact.conversationId,
+                type: artifact.type,
+                title: artifact.title,
+                content: artifact.content,
+                version: artifact.version,
+                parentArtifactId: artifact.parentArtifactId ?? undefined,
+                createdByAgentId: artifact.createdByAgentId,
+                createdAt: artifact.createdAt,
+              },
+            }
+          }
+        }
       }
     }
 
@@ -164,6 +226,7 @@ type ScriptStep =
   | { kind: 'thinking'; content: string }
   | { kind: 'code'; language: string; content: string }
   | { kind: 'tool'; toolName: string; args: unknown; result?: unknown }
+  | { kind: 'write_artifact'; args: unknown }
 
 // ─── 内置脚本 ─────────────────────────────────────────────
 const GREETING_SCRIPT: ScriptStep[] = [
@@ -209,6 +272,44 @@ const TOOL_SCRIPT: ScriptStep[] = [
   { kind: 'text', content: '已读取产物信息。这只是脚本演示，真实工具会在后续 milestone 接入。' },
 ]
 
+const WEB_ARTIFACT_SCRIPT: ScriptStep[] = [
+  { kind: 'thinking', content: '用户要一个网页，我用 write_artifact 创建 web_app 产物。' },
+  { kind: 'text', content: '好的，我来创建一个简单的网页产物：' },
+  {
+    kind: 'write_artifact',
+    args: {
+      type: 'web_app',
+      title: 'Mock 计数器页面',
+      content: {
+        files: {
+          'index.html':
+            '<!DOCTYPE html>\n<html lang="zh">\n<head><meta charset="utf-8"><title>Mock Counter</title></head>\n<body>\n<h1 id="count">0</h1>\n<button onclick="document.getElementById(\'count\').textContent = Number(document.getElementById(\'count\').textContent) + 1">+1</button>\n</body>\n</html>\n',
+        },
+        entry: 'index.html',
+      },
+    },
+  },
+  { kind: 'text', content: '网页产物已创建，点击上方卡片可以在预览面板查看。' },
+]
+
+const DOC_ARTIFACT_SCRIPT: ScriptStep[] = [
+  { kind: 'thinking', content: '用户要一份文档，我用 write_artifact 创建 document 产物。' },
+  { kind: 'text', content: '好的，这就写一份 Markdown 文档：' },
+  {
+    kind: 'write_artifact',
+    args: {
+      type: 'document',
+      title: 'Mock 说明文档',
+      content: {
+        format: 'markdown',
+        content:
+          '# Mock 说明文档\n\n这是 MockAdapter 创建的测试文档。\n\n## 要点\n\n- 走真实 write_artifact 工具落库\n- 消息里出现 artifact_ref 卡片\n- 预览面板可渲染 markdown\n',
+      },
+    },
+  },
+  { kind: 'text', content: '文档产物已创建完成。' },
+]
+
 const DEFAULT_SCRIPT: ScriptStep[] = [
   { kind: 'thinking', content: '收到了用户消息，按通用模板回应。' },
   {
@@ -221,6 +322,8 @@ const DEFAULT_SCRIPT: ScriptStep[] = [
 function pickScript(prompt: string): ScriptStep[] {
   const p = prompt.toLowerCase()
   if (/(你好|hello|hi|您好)/.test(p)) return GREETING_SCRIPT
+  if (/(网页|web|html|页面)/.test(p)) return WEB_ARTIFACT_SCRIPT
+  if (/(文档|document|说明书)/.test(p)) return DOC_ARTIFACT_SCRIPT
   if (/(写代码|代码|code|component|组件)/.test(p)) return CODE_SCRIPT
   if (/(执行|工具|tool|run|跑)/.test(p)) return TOOL_SCRIPT
   return DEFAULT_SCRIPT

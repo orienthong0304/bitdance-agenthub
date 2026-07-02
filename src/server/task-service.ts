@@ -130,15 +130,15 @@ export async function upsertDispatchTask(args: UpsertDispatchTaskArgs): Promise<
     where: eq(schema.tasks.dispatchTaskId, args.dispatchTaskId),
   })
   if (existing) {
-    const titleChanged = args.title !== existing.title
+    // 幂等命中且 title 未变：不写库、不发事件，避免 plan 重复登记 bump updatedAt 造成看板排序抖动
+    if (args.title === existing.title) return toBoardTask(existing)
     const next: TaskRow = { ...existing, title: args.title, updatedAt: Date.now() }
     await db
       .update(schema.tasks)
       .set({ title: next.title, updatedAt: next.updatedAt })
       .where(eq(schema.tasks.id, existing.id))
     const task = toBoardTask(next)
-    // 幂等命中：只在 title 真实变化时广播，避免 plan 重复登记造成看板噪音
-    if (titleChanged) publishTaskUpdate(task)
+    publishTaskUpdate(task)
     return task
   }
 
@@ -203,13 +203,13 @@ export async function syncDispatchTaskStatus(
     return
   }
   const nextStatus = mapDispatchStatusToBoard(dispatchStatus)
+  // 看板状态未变（如 running→running 映射后同为 in_progress）：不写库、不发事件，
+  // 避免 bump updatedAt 造成本地态与 DB 短暂发散 + rail badge / 看板排序抖动
+  if (nextStatus === existing.status) return
   const now = Date.now()
   await db
     .update(schema.tasks)
     .set({ status: nextStatus, updatedAt: now })
     .where(eq(schema.tasks.id, existing.id))
-  // 只在看板状态真实变化时广播（如 running→running 映射后同为 in_progress 时静默），避免 rail badge 抖动
-  if (nextStatus !== existing.status) {
-    publishTaskUpdate(toBoardTask({ ...existing, status: nextStatus, updatedAt: now }))
-  }
+  publishTaskUpdate(toBoardTask({ ...existing, status: nextStatus, updatedAt: now }))
 }

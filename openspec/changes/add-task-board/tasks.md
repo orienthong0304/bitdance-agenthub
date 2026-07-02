@@ -30,7 +30,7 @@
 ## 6. v1.1 Backlog（Codex 终审 2026-07-03 排定优先级）
 
 - [x] 6.1 `task.update` StreamEvent（P1：影响 agent 建单/dispatch 同步后的实时可见性与 rail badge 准确性；按 specs/02 扩展流程走 delta spec）。task-service 单点发射 + store reducer + e2e 实时 badge 断言，delete 不发事件（面板内操作 + 挂载全量兜底），specs/02 加「task.update」专节。
-- [ ] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。
+- [x] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。`task-service.test.ts` 用 `vi.mock('@/db/client')` 注入 in-memory drizzle，实测幂等不产生第二行、title 变更发事件/未变不写不发、状态全终态映射、状态未变不写不发、createBoardTask 发事件；同步收敛 `upsertDispatchTask`/`syncDispatchTaskStatus` 无实质变化时的 updatedAt bump（早退不写库不发事件）。
 - [ ] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。
 - [ ] 6.4 评估 create_task 在 SDK 桥上的授权控制（当前对所有 SDK agent 默认可用；若产品预期受 toolNames 控制则需收敛）。
 - [ ] 6.5 e2e `createSingleChat` 抽共享 fixture（四处重复已达阈值）。

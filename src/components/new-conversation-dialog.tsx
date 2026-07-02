@@ -127,7 +127,7 @@ export function NewConversationDialog({
                   onClick={() => toggle(a.id)}
                   className={cn(
                     'flex w-full items-start gap-3 rounded-md border p-3 text-left transition hover:border-foreground/30 hover:bg-muted/60',
-                    isSelected && 'border-primary bg-primary/5',
+                    isSelected && 'border-primary bg-primary/5 hover:bg-primary/10',
                   )}
                 >
                   <AgentAvatar agent={a} size="lg" />

@@ -91,7 +91,7 @@ function PendingBashCommandCard({
     >
       <div className="flex shrink-0 items-center gap-2">
         {agent ? <AgentAvatar agent={agent} size="sm" /> : <div className="size-6 rounded-md bg-muted" />}
-        <Terminal className="size-4 text-amber-600" />
+        <Terminal className="size-4 text-amber-600 dark:text-amber-400" />
       </div>
 
       <div className="min-w-0 flex-1">

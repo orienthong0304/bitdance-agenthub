@@ -108,7 +108,7 @@ export function SkillLibraryDialog({
                 onClick={() => setImportMode('github')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30 hover:bg-muted/60',
-                  importMode === 'github' && 'border-primary bg-primary/5',
+                  importMode === 'github' && 'border-primary bg-primary/5 hover:bg-primary/10',
                 )}
               >
                 <GitBranch className="size-3" />
@@ -119,7 +119,7 @@ export function SkillLibraryDialog({
                 onClick={() => setImportMode('local')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition hover:border-foreground/30 hover:bg-muted/60',
-                  importMode === 'local' && 'border-primary bg-primary/5',
+                  importMode === 'local' && 'border-primary bg-primary/5 hover:bg-primary/10',
                 )}
               >
                 <FolderOpen className="size-3" />

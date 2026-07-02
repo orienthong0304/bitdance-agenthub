@@ -81,7 +81,7 @@ export function PendingWriteDiffTab({
         {isNew ? (
           <FilePlus2 className="size-3.5 shrink-0 text-emerald-600" />
         ) : (
-          <FilePenLine className="size-3.5 shrink-0 text-[#3370FF]" />
+          <FilePenLine className="size-3.5 shrink-0 text-primary" />
         )}
         <code className="min-w-0 flex-1 truncate font-mono">{pending.path}</code>
         <span className="shrink-0 text-muted-foreground">
@@ -131,7 +131,7 @@ export function PendingWriteDiffTab({
             size="sm"
             onClick={handleApprove}
             disabled={!!busy}
-            className="h-7 bg-[#3370FF] text-white hover:bg-[#2860e5]"
+            className="h-7 bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {busy === 'approve' ? (
               <Loader2 className="mr-1 size-3.5 animate-spin" />

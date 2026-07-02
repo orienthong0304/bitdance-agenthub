@@ -203,7 +203,7 @@ export function ChatPanel() {
                   key={tabId}
                   label={`diff: ${name}`}
                   tooltip={pw?.path}
-                  icon={<FilePenLine className="size-3 text-[#3370FF]" />}
+                  icon={<FilePenLine className="size-3 text-primary" />}
                   active={activeTab === tabId}
                   onClick={() => setActiveTab(conv.id, tabId)}
                   onClose={() => closeFile(conv.id, tabId)}
@@ -324,7 +324,7 @@ function TabButton({
         'group flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 transition',
         active
           ? highlight
-            ? 'border-[#3370FF]/40 bg-[#3370FF]/5 text-foreground shadow-sm'
+            ? 'border-primary/40 bg-primary/5 text-foreground shadow-sm'
             : 'border-primary/30 bg-background shadow-sm'
           : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
       )}

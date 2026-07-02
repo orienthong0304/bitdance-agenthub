@@ -94,7 +94,7 @@ function DispatchPlanReviewCard({
               size="sm"
               onClick={() => void handleApprove()}
               disabled={!!busy}
-              className="h-7 bg-[#3370FF] px-2 text-white hover:bg-[#2860e5]"
+              className="h-7 bg-primary px-2 text-primary-foreground hover:bg-primary/90"
             >
               {busy === 'approve' ? (
                 <Loader2 className="size-3.5 animate-spin" />

@@ -194,10 +194,10 @@ function QuotedSelectionCard({ source, artifactId, filePath, text }: QuotedSegme
   const lines = text.split('\n')
   const collapsed = lines.length > 4
   return (
-    <div className="overflow-hidden rounded-md border border-[#3370FF]/30 bg-[#3370FF]/5 text-xs">
-      <div className="flex items-center gap-1.5 border-b border-[#3370FF]/20 bg-[#3370FF]/10 px-2.5 py-1 text-[11px]">
-        <Sparkles className="size-3 text-[#3370FF]" />
-        <span className="font-medium text-[#3370FF]">引用</span>
+    <div className="overflow-hidden rounded-md border border-primary/30 bg-primary/5 text-xs">
+      <div className="flex items-center gap-1.5 border-b border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px]">
+        <Sparkles className="size-3 text-primary" />
+        <span className="font-medium text-primary">引用</span>
         {source && (
           <>
             <span className="text-muted-foreground">·</span>

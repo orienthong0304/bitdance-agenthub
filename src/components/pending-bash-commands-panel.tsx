@@ -124,7 +124,7 @@ function PendingBashCommandCard({
           size="sm"
           onClick={handleApprove}
           disabled={!!busy}
-          className="h-7 bg-[#3370FF] px-2.5 text-white hover:bg-[#2860e5]"
+          className="h-7 bg-primary px-2.5 text-primary-foreground hover:bg-primary/90"
           title="执行"
         >
           {busy === 'approve' ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}

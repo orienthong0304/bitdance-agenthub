@@ -224,6 +224,30 @@ export interface SkillPackage {
   createdAt: number
 }
 
+// ─── Task Board（跨会话任务看板）─────────────────────────────
+export type BoardTaskStatus = 'open' | 'in_progress' | 'done' | 'blocked'
+export type BoardTaskSource = 'manual' | 'dispatch' | 'agent'
+
+/**
+ * 跨会话任务看板条目。看板是可视化与备忘层，不反向触发 run（第一版）；
+ * conversationId/messageId/artifactId 均为可选回链，来源会话被删除后置空但任务保留。
+ */
+export interface BoardTask {
+  id: string
+  title: string
+  note: string | null
+  status: BoardTaskStatus
+  source: BoardTaskSource
+  conversationId: string | null
+  messageId: string | null
+  artifactId: string | null
+  /** dispatch 来源的幂等键 `${runId}:${taskId}`；manual / agent 任务为 null。 */
+  dispatchTaskId: string | null
+  createdByAgentId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 // ─── 调度 plan ────────────────────────────────────────────
 export interface DispatchPlanItem {
   id: string

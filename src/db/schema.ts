@@ -5,7 +5,7 @@
  */
 
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type {
   ArtifactContent,
   ArtifactType,
@@ -279,6 +279,39 @@ export const skillPackages = sqliteTable('skill_packages', {
 
 export type SkillPackageRow = typeof skillPackages.$inferSelect
 export type SkillPackageInsert = typeof skillPackages.$inferInsert
+
+// ─── Tasks (跨会话任务看板) ────────────────────────────────
+/**
+ * 跨会话任务看板条目。三种来源：manual（用户在看板直接创建）/ dispatch（Orchestrator plan
+ * 批准时登记，随子任务执行状态单向同步）/ agent（create_task 工具创建）。
+ * conversationId 故意不建外键 —— 删除会话 SHALL NOT 级联删除任务，只是来源链接失去指向
+ * （见 openspec task-board spec「跨会话聚合」）。
+ */
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    note: text('note'),
+    status: text('status', { enum: ['open', 'in_progress', 'done', 'blocked'] }).notNull(),
+    source: text('source', { enum: ['manual', 'dispatch', 'agent'] }).notNull(),
+    conversationId: text('conversation_id'),
+    messageId: text('message_id'),
+    artifactId: text('artifact_id'),
+    /** dispatch 来源的幂等键：`${runId}:${taskId}`；plan 重复批准 / replan 时靠它 upsert 而非重复插入。 */
+    dispatchTaskId: text('dispatch_task_id'),
+    createdByAgentId: text('created_by_agent_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_tasks_status').on(t.status),
+    uniqueIndex('idx_tasks_dispatch').on(t.dispatchTaskId).where(sql`dispatch_task_id IS NOT NULL`),
+  ],
+)
+
+export type TaskRow = typeof tasks.$inferSelect
+export type TaskInsert = typeof tasks.$inferInsert
 
 // ─── AppSettings (全局 API key / endpoint) ──────────────────
 /**

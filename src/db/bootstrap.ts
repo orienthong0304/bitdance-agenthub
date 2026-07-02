@@ -158,6 +158,24 @@ const DDL: string[] = [
     created_at INTEGER NOT NULL
   )`,
 
+  // ─── tasks ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    note TEXT,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    conversation_id TEXT,
+    message_id TEXT,
+    artifact_id TEXT,
+    dispatch_task_id TEXT,
+    created_by_agent_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_dispatch ON tasks(dispatch_task_id) WHERE dispatch_task_id IS NOT NULL`,
+
   // ─── app_settings ──────────────────────────────
   `CREATE TABLE IF NOT EXISTS app_settings (
     id TEXT PRIMARY KEY,

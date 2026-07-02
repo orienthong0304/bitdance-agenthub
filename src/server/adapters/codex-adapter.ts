@@ -204,6 +204,7 @@ function buildCodexDeveloperInstructions(systemPrompt: string, isPlanStage: bool
     'Use fs_list to inspect AgentHub workspace directories before reading specific files. Prefer it over shell-specific listing commands.',
     'When progress depends on the user choosing from a finite set of options, use ask_user to present structured choices instead of asking only in plain text. Do not use ask_user for open-ended discussion or non-blocking details.',
     'When you are executing an AgentHub dispatched sub-task, call report_task_result exactly once at the end to report whether the task is complete, failed, or blocked.',
+    'When you notice a follow-up to-do that is outside the current task, use create_task to log it on the global cross-conversation task board.',
     'deploy_artifact returns previewPath as a local relative path for the current AgentHub instance. Do not convert it into an absolute public URL and do not invent hostnames. In user-facing summaries, tell the user to use the deployment card buttons or quote previewPath exactly.',
   ].join('\n')
 }

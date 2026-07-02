@@ -15,8 +15,8 @@ export async function GET() {
 
 const CreateBody = z
   .object({
-    title: z.string().min(1).max(120),
-    note: z.string().max(2000).optional(),
+    title: z.string().trim().min(1).max(120),
+    note: z.string().trim().max(2000).optional(),
   })
   .strict()
 

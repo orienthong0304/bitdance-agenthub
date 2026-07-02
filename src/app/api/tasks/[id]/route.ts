@@ -9,8 +9,8 @@ interface RouteContext {
 
 const PatchBody = z
   .object({
-    title: z.string().min(1).max(120).optional(),
-    note: z.string().max(2000).optional(),
+    title: z.string().trim().min(1).max(120).optional(),
+    note: z.string().trim().max(2000).optional(),
     status: z.enum(['open', 'in_progress', 'done', 'blocked']).optional(),
   })
   .strict()

@@ -135,7 +135,7 @@ export function SkillLibraryDialog({
                     ? 'https://github.com/<owner>/<repo>'
                     : '/absolute/path/to/skill-package'
                 }
-                className="h-9 flex-1 font-mono text-xs focus:border-primary"
+                className="h-9 flex-1 font-mono text-xs focus-visible:border-primary"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void handleImport()
                 }}

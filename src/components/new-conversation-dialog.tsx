@@ -150,9 +150,7 @@ export function NewConversationDialog({
 
         {/* 工作目录 */}
         <div className="space-y-2 border-t pt-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            工作目录
-          </div>
+          <div className="text-xs font-semibold text-foreground/80">工作目录</div>
           <label className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition hover:border-foreground/30">
             <input
               type="radio"
@@ -188,7 +186,7 @@ export function NewConversationDialog({
                       value={boundPath}
                       onChange={(e) => setBoundPath(e.target.value)}
                       placeholder={boundPathPlaceholder}
-                      className="h-9 flex-1 font-mono text-xs focus:border-primary"
+                      className="h-9 flex-1 font-mono text-xs focus-visible:border-primary"
                     />
                     <Button
                       type="button"

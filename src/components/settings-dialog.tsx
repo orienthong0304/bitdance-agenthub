@@ -580,7 +580,7 @@ function DeploymentPublishSettings({
             value={publishDir}
             onChange={(event) => onPublishDirChange(event.target.value)}
             placeholder="D:\\sites\\agenthub"
-            className="h-9 focus:border-primary"
+            className="h-9 focus-visible:border-primary"
           />
           <p className="text-[11px] leading-4 text-muted-foreground">
             AgentHub 会写入该目录下的 dep_xxx 子目录。
@@ -592,7 +592,7 @@ function DeploymentPublishSettings({
             value={publicBaseUrl}
             onChange={(event) => onPublicBaseUrlChange(event.target.value)}
             placeholder="https://example.com/apps"
-            className="h-9 focus:border-primary"
+            className="h-9 focus-visible:border-primary"
           />
           <p className="text-[11px] leading-4 text-muted-foreground">
             部署卡片会返回公开根 URL 加 deployment id 的地址。
@@ -640,7 +640,7 @@ function KeyField({
           onChange={(e) => onChange(e.target.value)}
           autoComplete="off"
           spellCheck={false}
-          className={cn('h-9 font-mono text-xs focus:border-primary', onToggleReveal && 'pr-9')}
+          className={cn('h-9 font-mono text-xs focus-visible:border-primary', onToggleReveal && 'pr-9')}
         />
         {onToggleReveal && (
           <button

@@ -772,7 +772,8 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <div className="relative shrink-0 border-t bg-background p-3">
+    <div className="shrink-0 border-t bg-background">
+    <div className="relative mx-auto w-full max-w-[808px] px-6 pb-4 pt-3">
       {/* 引用预览 */}
       {replyMessage && (
         <div className="mb-2">
@@ -941,7 +942,56 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-1.5 rounded-xl border bg-background p-2 pl-2 transition focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+        {/* 文件上传 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void handleFileSelect(e.target.files)
+            e.target.value = '' // 允许同名文件再次选择
+          }}
+        />
+        {/* 左侧辅助组：附件 + 审批模式 */}
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isRunning}
+          title="附件 / 图片"
+          className="shrink-0 self-end"
+        >
+          <Paperclip className="size-4" />
+        </Button>
+        {/* fs_write 审批模式开关：绿色 = Review（默认安全），红色 = Auto（直写） */}
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          onClick={() => void toggleApprovalMode()}
+          disabled={modeBusy}
+          title={
+            approvalMode === 'review'
+              ? 'Review 模式 · Agent 写入需审批（点击切到 Auto，直接生效 ⚠）'
+              : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
+          }
+          className={cn(
+            'shrink-0 self-end',
+            approvalMode === 'review'
+              ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
+              : 'text-destructive hover:text-destructive',
+          )}
+        >
+          {approvalMode === 'review' ? (
+            <Shield className="size-4" />
+          ) : (
+            <Zap className="size-4" />
+          )}
+        </Button>
+
         <Textarea
           ref={textareaRef}
           data-testid="composer-input"
@@ -958,68 +1008,21 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
                   ? '输入消息，@ 指定 Agent，Enter 发送，Shift+Enter 换行'
                   : '输入消息，Enter 发送，Shift+Enter 换行'
           }
-          className="min-h-[44px] max-h-40 resize-none"
+          className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           disabled={composerLocked}
         />
 
-        {/* 文件上传 */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void handleFileSelect(e.target.files)
-            e.target.value = '' // 允许同名文件再次选择
-          }}
-        />
-        {/* 辅助按钮组（紧贴）—— 让 Paperclip + 审批模式视觉成一组，与右侧主操作按钮 send 区分 */}
-        <div className="flex items-center">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isRunning}
-            title="附件 / 图片"
-          >
-            <Paperclip className="size-4" />
-          </Button>
-          {/* fs_write 审批模式开关：绿色 = Review（默认安全），红色 = Auto（直写） */}
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => void toggleApprovalMode()}
-            disabled={modeBusy}
-            title={
-              approvalMode === 'review'
-                ? 'Review 模式 · Agent 写入需审批（点击切到 Auto，直接生效 ⚠）'
-                : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
-            }
-            className={cn(
-              approvalMode === 'review'
-                ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
-                : 'text-[#FE3B25] hover:text-[#FE3B25] dark:text-[#FE3B25]',
-            )}
-          >
-            {approvalMode === 'review' ? (
-              <Shield className="size-4" />
-            ) : (
-              <Zap className="size-4" />
-            )}
-          </Button>
-        </div>
         {composerLocked ? (
           <Button
             onClick={() => void abortAll()}
             disabled={aborting}
             size="icon"
-            variant="destructive"
+            variant="ghost"
             title="中止全部"
             data-testid="composer-abort"
+            className="size-[34px] shrink-0 self-end rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
           >
-            <Square className="size-4 fill-current" />
+            <Square className="size-3.5 fill-current" />
           </Button>
         ) : (
           <Button
@@ -1028,11 +1031,13 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
             size="icon"
             title="发送 (Enter)"
             data-testid="composer-send"
+            className="size-[34px] shrink-0 self-end rounded-lg"
           >
             <Send className="size-4" />
           </Button>
         )}
       </div>
+    </div>
     </div>
   )
 }

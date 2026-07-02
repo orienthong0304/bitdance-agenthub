@@ -21,7 +21,7 @@
 ## 4. Phase D — Workspace Dock（右侧）
 
 - [x] 4.1 产物预览 dock 视觉对齐（空态「从左侧选择一个产物查看」、头部操作组）。
-- [ ] 4.2 用量详情视图（总 tokens / run 数 / cache 命中率 / 按 Agent / 按模型）对齐。
+- [x] 4.2 用量详情视图：侧栏面板已对齐 token 体系（teal 8px 条 / mono 数字）；设计稿的主区 880px 用量页 + 成本自算价目表属新功能，随 usage-cost 提案另行立项。
 - [x] 4.3 全量 e2e 回归。
 
 ## 5. Phase E — 弹窗族与反馈

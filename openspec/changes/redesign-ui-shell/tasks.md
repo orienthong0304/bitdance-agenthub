@@ -6,10 +6,10 @@
 
 ## 2. Phase B — 应用壳（Icon Rail + Secondary Panel）
 
-- [ ] 2.1 新组件 `icon-rail.tsx`：56px 竖栏（logo / 会话 / Agents / 产物 / 用量 / 设置 / 用户位），当前导航高亮 + 未读 badge。
-- [ ] 2.2 `sidebar.tsx` 重构为 262px 二级列表面板：会话态（置顶 / 最近分组 + 搜索 + 已归档折叠按钮）、Agent 库态、产物库态、用量态，样式对齐设计稿（行高 / 字号 / avatar 徽标 / Orchestrator 标签）。
-- [ ] 2.3 布局接线：`page.tsx` 组装 rail + panel + chat + dock；保留移动端响应式行为。
-- [ ] 2.4 E2E 选择器适配（新建对话按钮、产物库入口等）+ 全量回归。
+- [x] 2.1 新组件 `icon-rail.tsx`：56px 竖栏（logo / 会话 / Agents / 产物 / 用量 / 设置 / 用户位），当前导航高亮 + 未读 badge。
+- [x] 2.2 `sidebar.tsx` 重构为 262px 二级列表面板：会话态（置顶 / 最近分组 + 搜索 + 已归档折叠按钮）、Agent 库态、产物库态、用量态，样式对齐设计稿（行高 / 字号 / avatar 徽标 / Orchestrator 标签）。
+- [x] 2.3 布局接线：`page.tsx` 组装 rail + panel + chat + dock；保留移动端响应式行为。
+- [x] 2.4 E2E 选择器适配（新建对话按钮、产物库入口等）+ 全量回归。
 
 ## 3. Phase C — 聊天列
 

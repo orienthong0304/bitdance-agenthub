@@ -215,7 +215,15 @@ export interface DispatchPlanItem {
   requiredEvidence?: string[]
 }
 
-export type DispatchTaskKind = 'code' | 'test' | 'review' | 'design' | 'doc' | 'analysis'
+export type DispatchTaskKind =
+  | 'code'
+  | 'test'
+  | 'review'
+  | 'design'
+  | 'doc'
+  | 'analysis'
+  | 'research'
+  | 'writing'
 
 export interface DispatchExpectedOutput {
   id: string

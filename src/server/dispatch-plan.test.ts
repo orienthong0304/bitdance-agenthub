@@ -55,6 +55,20 @@ describe('parseDispatchPlanToolArgs', () => {
     ])
   })
 
+  it('parses research and writing task kinds', () => {
+    expect(
+      parseDispatchPlanToolArgs({
+        tasks: [
+          { id: 't1', agentId: 'ag_pm', task: '联网检索资料，产出资料简报', taskKind: 'research' },
+          { id: 't2', agentId: 'ag_frontend', task: '按提纲写初稿', taskKind: 'writing', dependsOn: ['t1'] },
+        ],
+      }),
+    ).toEqual([
+      { id: 't1', agentId: 'ag_pm', task: '联网检索资料，产出资料简报', taskKind: 'research' },
+      { id: 't2', agentId: 'ag_frontend', task: '按提纲写初稿', taskKind: 'writing', dependsOn: ['t1'] },
+    ])
+  })
+
   it('parses task contracts for artifact handoff', () => {
     expect(
       parseDispatchPlanToolArgs({
@@ -389,6 +403,24 @@ describe('compileDispatchPlan', () => {
     expect(plan[0].expectedOutputs).toBeUndefined()
     expect(plan[0].acceptanceCriteria).toBeUndefined()
     expect(plan[0].requiredEvidence).toBeUndefined()
+  })
+
+  it('does not add project outputs to explicit research or writing tasks', () => {
+    const { plan } = compileDispatchPlan([
+      {
+        ...task('t1', 'ag_pm', undefined, '调研并构建 Agent 主题的资料简报'),
+        taskKind: 'research',
+      },
+      {
+        ...task('t2', 'ag_frontend', ['t1'], '按提纲构建文章初稿应用'),
+        taskKind: 'writing',
+      },
+    ])
+
+    expect(plan[0].expectedOutputs).toBeUndefined()
+    expect(plan[0].requiredEvidence).toBeUndefined()
+    expect(plan[1].expectedOutputs).toBeUndefined()
+    expect(plan[1].requiredEvidence).toBeUndefined()
   })
 
   it('infers missing dependencies from task id artifact references', () => {

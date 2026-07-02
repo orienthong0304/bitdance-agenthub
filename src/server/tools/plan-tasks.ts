@@ -16,7 +16,9 @@ const TaskSchema = z.object({
   id: z.string().min(1),
   agentId: z.string().min(1),
   task: z.string().min(1),
-  taskKind: z.enum(['code', 'test', 'review', 'design', 'doc', 'analysis']).optional(),
+  taskKind: z
+    .enum(['code', 'test', 'review', 'design', 'doc', 'analysis', 'research', 'writing'])
+    .optional(),
   dependsOn: z.array(z.string()).optional(),
   expectedOutputs: z
     .array(
@@ -92,9 +94,9 @@ export const planTasksTool: ToolDef = {
             },
             taskKind: {
               type: 'string',
-              enum: ['code', 'test', 'review', 'design', 'doc', 'analysis'],
+              enum: ['code', 'test', 'review', 'design', 'doc', 'analysis', 'research', 'writing'],
               description:
-                'Kind of work. Use code/test/review/design/doc/analysis to help AgentRunner apply evidence expectations.',
+                'Kind of work, to help AgentRunner apply evidence expectations. Code/test imply runnable build/test evidence; design/doc/analysis/review/research/writing are text-output stages. For a writing pipeline use research (资料检索), doc (策划/Brief/提纲), writing (主笔/润色成稿), review (审校).',
             },
             dependsOn: {
               type: 'array',

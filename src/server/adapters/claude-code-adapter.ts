@@ -127,7 +127,9 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
                   id: z.string(),
                   agentId: z.string(),
                   task: z.string(),
-                  taskKind: z.enum(['code', 'test', 'review', 'design', 'doc', 'analysis']).optional(),
+                  taskKind: z
+                    .enum(['code', 'test', 'review', 'design', 'doc', 'analysis', 'research', 'writing'])
+                    .optional(),
                   dependsOn: z.array(z.string()).optional(),
                   expectedOutputs: z
                     .array(

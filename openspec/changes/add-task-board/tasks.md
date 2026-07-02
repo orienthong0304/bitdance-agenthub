@@ -1,13 +1,13 @@
 ## 1. Persistence 与共享类型
 
 - [x] 1.1 `tasks` 表（id `task_` 前缀 / title / note / status / source / conversationId? / messageId? / artifactId? / dispatchTaskId? / createdByAgentId? / createdAt / updatedAt）+ bootstrap DDL + drizzle 同步。
-- [x] 1.2 共享 `BoardTask` 类型（`src/shared/types.ts`）。`task.update` StreamEvent **deferred v1.1**：v1 没有跨面板实时推送，`TaskBoardPanel` 挂载时 `fetchBoardTasks()` 全量兜底（见 specs/09 Lazy load 策略）。
+- [x] 1.2 共享 `BoardTask` 类型（`src/shared/types.ts`）。`task.update` StreamEvent **已于 v1.1 实现**（见 6.1）：`StreamEvent` 联合已加成员，`TaskBoardPanel` 挂载时 `fetchBoardTasks()` 全量兜底 + `task.update` 增量实时同步（见 specs/02「task.update」专节）。
 
 ## 2. 服务与 API
 
 - [x] 2.1 `task-service.ts`：CRUD + 状态流转 + dispatch 同步入口（幂等 upsert by dispatchTaskId）。
 - [x] 2.2 `/api/tasks` 路由（list / create / patch / delete），zod 校验。
-- [ ] 2.3 EventBus 推 `task.update`，store reducer 应用 —— **deferred v1.1**（依赖 1.2 的 StreamEvent，同一原因未做）。
+- [x] 2.3 EventBus 推 `task.update`，store reducer 应用 —— **已于 v1.1 实现**（见 6.1）：task-service 四个 mutation 出口单点发射，`app-store.ts` `applyEvent` 加 `task.update` case 幂等 upsert。
 
 ## 3. 工具与 Orchestrator 接线
 
@@ -29,7 +29,7 @@
 
 ## 6. v1.1 Backlog（Codex 终审 2026-07-03 排定优先级）
 
-- [ ] 6.1 `task.update` StreamEvent（P1：影响 agent 建单/dispatch 同步后的实时可见性与 rail badge 准确性；按 specs/02 扩展流程走 delta spec）。
+- [x] 6.1 `task.update` StreamEvent（P1：影响 agent 建单/dispatch 同步后的实时可见性与 rail badge 准确性；按 specs/02 扩展流程走 delta spec）。task-service 单点发射 + store reducer + e2e 实时 badge 断言，delete 不发事件（面板内操作 + 挂载全量兜底），specs/02 加「task.update」专节。
 - [ ] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。
 - [ ] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。
 - [ ] 6.4 评估 create_task 在 SDK 桥上的授权控制（当前对所有 SDK agent 默认可用；若产品预期受 toolNames 控制则需收敛）。

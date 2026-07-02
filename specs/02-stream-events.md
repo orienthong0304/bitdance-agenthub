@@ -68,6 +68,9 @@ type StreamEvent = BaseEvent & (
   // —— Token usage 计量（adapter 在 run 结束前 emit）——
   | { type: 'run.usage', runId: string, usage: RunUsageEvent }
 
+  // —— 任务看板实时同步（task-service mutation 单点广播；详见下方「task.update」专节）——
+  | { type: 'task.update', task: BoardTask }
+
   // —— 心跳 ——
   | { type: 'heartbeat' }
 )
@@ -243,6 +246,7 @@ dispatch.end      (parentRunId=r1, taskId=t3, status='skipped', error='Upstream 
 | `bash_command.pending` | ❌ 透传 | pending 队列存于内存单例（`src/server/pending-bash-commands.ts`）；前端 mount 时拉一次兜底 |
 | `bash_command.resolved` | ❌ 透传 | approved=true/false 由前端 store 用来移除对应 pending |
 | `run.usage` | ✅ 落到 `agent_runs.usage` JSON 列 | adapter 在 run 结束前 emit；前端 store 同步更新该 run 行 |
+| `task.update` | ❌ 透传 | 任务已由 task-service mutation 直接落 `tasks` 表；此事件仅广播行快照让各端 store 幂等 upsert（详见下方「task.update」专节） |
 | `heartbeat` | ❌ 透传 | |
 
 **写入策略**：流式 `part.delta` 高频，使用「内存缓冲 + 定时 flush」避免每个 delta 都打 DB：
@@ -304,3 +308,26 @@ Plan review adds two dispatch events before the existing `dispatch.plan` executi
 `dispatch.plan.pending` means AgentRunner has compiled and validated a plan, registered it in the in-memory pending plan queue, and is waiting for user action. `dispatch.plan.resolved` removes that pending review from the UI. The existing `dispatch.plan` event remains the signal that an approved compiled plan is now executing.
 
 These events are pass-through and are not persisted. The pending queue is recoverable through `GET /api/conversations/:id/pending-dispatch-plans` while the server process is alive.
+
+## task.update
+
+跨会话任务看板（Spec 01 `Task` 实体 / `specs/07` `create_task` / Orchestrator dispatch 同步）的实时化事件。让 agent 建单、dispatch 状态流转在**不打开看板面板**的前提下也能即时反映到 rail「任务」badge（open+blocked 计数）与已挂载的面板。
+
+```typescript
+| { type: 'task.update'; task: BoardTask }   // task = 变更后的完整行快照
+```
+
+**单点发射**：只在 `task-service.ts` 的 mutation 出口 publish（`event-bus` 与 `task-service` 无循环依赖，直接 `eventBus.publish`），杜绝散落各调用方：
+
+- `createBoardTask`（manual / agent 来源建单）→ 每次都发
+- `updateBoardTask`（看板内联编辑 / 拖动状态）→ 每次都发
+- `upsertDispatchTask`（plan 批准登记）→ 新建必发；幂等命中仅在 `title` 真实变化时发（重复登记不制造噪音）
+- `syncDispatchTaskStatus`（子任务状态单向同步）→ 仅在映射后的看板 status 真实变化时发（如 `running→running` 静默）
+
+**`conversationId` 语义**：`BaseEvent.conversationId` 取 `task.conversationId ?? ''`。**空串 = 全局事件**：manual 任务或来源会话已删除的任务没有归属会话，前端 `applyEvent` 对 `task.update` 不按会话分桶（`boardTasks` 是全局切片），故空串不影响分发。
+
+**delete 不发事件**（v1.1 取舍）：删除是面板内的本地操作，发起端 store 已同步移除；跨端陈旧由 `TaskBoardPanel` 挂载时的 `fetchBoardTasks()` 全量兜底，不为删除单独设计反向事件（符合「状态机越简单越好」原则）。
+
+**发布失败不影响主流程**：publish 包 try/catch + `console.warn`，SSE 广播失败不回滚 DB mutation。
+
+**持久化**：透传。任务本身已由 mutation 落 `tasks` 表；本事件只携带行快照供前端 store 幂等 `upsert`（按 `task.id`）。

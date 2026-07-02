@@ -394,6 +394,31 @@ const DOC_ARTIFACT_SCRIPT: ScriptStep[] = [
   { kind: 'text', content: '文档产物已创建完成。' },
 ]
 
+const PPT_ARTIFACT_SCRIPT: ScriptStep[] = [
+  { kind: 'thinking', content: '用户要一份幻灯片，我用 write_artifact 创建 ppt 产物。' },
+  { kind: 'text', content: '好的，这就生成一份演示文稿：' },
+  {
+    kind: 'write_artifact',
+    args: {
+      type: 'ppt',
+      title: 'Mock 演示文稿',
+      content: {
+        slides: [
+          { title: 'Mock Slide', layout: 'title' },
+          {
+            layout: 'metrics',
+            blocks: [
+              { type: 'metric', label: '增长', value: '+12%', tone: 'positive' },
+              { type: 'metric', label: '风险', value: '-3%', tone: 'negative' },
+            ],
+          },
+        ],
+      },
+    },
+  },
+  { kind: 'text', content: '幻灯片产物已创建完成，可以在预览面板翻页查看并导出 .pptx。' },
+]
+
 const DEFAULT_SCRIPT: ScriptStep[] = [
   { kind: 'thinking', content: '收到了用户消息，按通用模板回应。' },
   {
@@ -408,6 +433,7 @@ function pickScript(prompt: string): ScriptStep[] {
   if (/(你好|hello|hi|您好)/.test(p)) return GREETING_SCRIPT
   if (/(网页|web|html|页面)/.test(p)) return WEB_ARTIFACT_SCRIPT
   if (/(文档|document|说明书)/.test(p)) return DOC_ARTIFACT_SCRIPT
+  if (/(幻灯片|ppt|slides)/.test(p)) return PPT_ARTIFACT_SCRIPT
   if (/(写代码|代码|code|component|组件)/.test(p)) return CODE_SCRIPT
   if (/(执行|工具|tool|run|跑)/.test(p)) return TOOL_SCRIPT
   return DEFAULT_SCRIPT

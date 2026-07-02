@@ -6,6 +6,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import type { AgentRunRow, AgentRow, ArtifactRow, AttachmentRow, ConversationWithMeta, MessageRow } from '@/db/schema'
 import type {
+  BoardTask,
   DispatchPlanItem,
   DispatchTaskStatus,
   MessagePart,
@@ -34,6 +35,9 @@ interface AppState {
   agents: Record<string, AgentRow>
   messages: Record<string, MessageRow>
   artifacts: Record<string, ArtifactRow>
+
+  // ─── 任务看板（跨会话，面板挂载时 fetch 一次；v1 无 StreamEvent 实时同步）─
+  boardTasks: BoardTask[]
 
   // ─── 关系（按 conversationId 分桶）───────────────
   messageIdsByConv: Record<string, string[]>
@@ -116,6 +120,10 @@ interface AppState {
   removeArtifact(artifactId: string): void
   removeArtifacts(artifactIds: string[]): void
 
+  setBoardTasks(list: BoardTask[]): void
+  upsertBoardTask(task: BoardTask): void
+  removeBoardTask(taskId: string): void
+
   setFileExplorerOpen(open: boolean): void
   openFile(conversationId: string, path: string): void
   closeFile(conversationId: string, path: string): void
@@ -174,6 +182,7 @@ export const useAppStore = create<AppState>()(
     agents: {},
     messages: {},
     artifacts: {},
+    boardTasks: [],
     messageIdsByConv: {},
     runsByConv: {},
     dispatchesByRunId: {},
@@ -343,6 +352,23 @@ export const useAppStore = create<AppState>()(
           delete s.artifacts[id]
           if (s.previewArtifactId === id) s.previewArtifactId = null
         }
+      }),
+
+    setBoardTasks: (list) =>
+      set((s) => {
+        s.boardTasks = list
+      }),
+
+    upsertBoardTask: (task) =>
+      set((s) => {
+        const idx = s.boardTasks.findIndex((t) => t.id === task.id)
+        if (idx >= 0) s.boardTasks[idx] = task
+        else s.boardTasks.push(task)
+      }),
+
+    removeBoardTask: (taskId) =>
+      set((s) => {
+        s.boardTasks = s.boardTasks.filter((t) => t.id !== taskId)
       }),
 
     removeMessages: (conversationId, messageIds) =>

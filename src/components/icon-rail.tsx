@@ -1,18 +1,18 @@
 'use client'
 
-import { BarChart3, Layers, LifeBuoy, MessageSquare, Users } from 'lucide-react'
+import { BarChart3, Layers, LifeBuoy, ListTodo, MessageSquare, Users } from 'lucide-react'
 
 import { SettingsButton } from '@/components/settings-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/app-store'
 
-export type RailMode = 'conversations' | 'artifacts' | 'agents' | 'analytics'
+export type RailMode = 'conversations' | 'artifacts' | 'agents' | 'analytics' | 'tasks'
 
 /**
  * IconRail — 应用左缘 56px 图标导航栏（redesign-ui-shell Phase B）。
  *
- * logo + 四个导航（会话带未读 badge）+ 底部主题/设置/用户位。
+ * logo + 五个导航（会话带未读 badge，任务带 open+blocked badge）+ 底部主题/设置/用户位。
  * 点击当前导航可折叠/展开二级列表面板（onSelect 由 Sidebar 处理）。
  */
 export function IconRail({
@@ -27,6 +27,10 @@ export function IconRail({
 }) {
   const unreadTotal = useAppStore((s) =>
     Object.values(s.unreadByConv).reduce((sum, n) => sum + n, 0),
+  )
+  // badge 只反映当前已加载进 store 的任务（TaskBoardPanel 挂载时 fetch，v1 无实时同步）
+  const taskBadge = useAppStore((s) =>
+    s.boardTasks.reduce((sum, t) => sum + (t.status === 'open' || t.status === 'blocked' ? 1 : 0), 0),
   )
 
   return (
@@ -70,6 +74,15 @@ export function IconRail({
         label="分析"
       >
         <BarChart3 className="size-5" />
+      </RailButton>
+      <RailButton
+        active={mode === 'tasks'}
+        panelHidden={panelHidden}
+        onClick={() => onSelect('tasks')}
+        label="任务"
+        badge={taskBadge}
+      >
+        <ListTodo className="size-5" />
       </RailButton>
 
       <div className="flex-1" />

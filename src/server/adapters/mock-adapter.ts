@@ -214,6 +214,38 @@ export class MockAdapter implements AgentPlatformAdapter {
             }
           }
         }
+      } else if (step.kind === 'create_task') {
+        // 真实执行 L3 create_task（与 write_artifact 分支同一约定），
+        // 让 E2E 能覆盖「Agent 建单 → 任务看板出现该任务」全链路。任务看板 v1 无
+        // StreamEvent 实时同步，面板挂载时直接 fetch 全量即可看到刚落库的任务。
+        const callId = newToolCallId()
+        yield {
+          type: 'tool.call',
+          conversationId: input.conversationId,
+          timestamp: Date.now(),
+          messageId,
+          callId,
+          toolName: 'create_task',
+          args: step.args,
+        }
+        const ctx: ToolContext = {
+          conversationId: input.conversationId,
+          workspacePath: input.workspacePath,
+          agentId: input.agentId,
+          runId: input.runId,
+          abortSignal: signal,
+        }
+        const result = await toolRegistry.execute('create_task', step.args, ctx)
+        const value = result.ok ? result.value : { error: result.error }
+        yield {
+          type: 'tool.result',
+          conversationId: input.conversationId,
+          timestamp: Date.now(),
+          messageId,
+          callId,
+          result: value,
+          isError: !result.ok,
+        }
       }
     }
 
@@ -311,6 +343,7 @@ type ScriptStep =
   | { kind: 'code'; language: string; content: string }
   | { kind: 'tool'; toolName: string; args: unknown; result?: unknown }
   | { kind: 'write_artifact'; args: unknown }
+  | { kind: 'create_task'; args: unknown }
 
 // ─── 内置脚本 ─────────────────────────────────────────────
 const GREETING_SCRIPT: ScriptStep[] = [
@@ -419,6 +452,19 @@ const PPT_ARTIFACT_SCRIPT: ScriptStep[] = [
   { kind: 'text', content: '幻灯片产物已创建完成，可以在预览面板翻页查看并导出 .pptx。' },
 ]
 
+const TASK_SCRIPT: ScriptStep[] = [
+  { kind: 'thinking', content: '用户想记一件待办，我用 create_task 在跨会话任务看板立单。' },
+  { kind: 'text', content: '好的，我把这件事记到任务看板：' },
+  {
+    kind: 'create_task',
+    args: {
+      title: 'Mock 待办事项',
+      note: '来自对话「帮我记个任务」的 mock 演示，验证 create_task → 任务看板全链路。',
+    },
+  },
+  { kind: 'text', content: '任务已创建，可以在左侧「任务」看板查看。' },
+]
+
 const DEFAULT_SCRIPT: ScriptStep[] = [
   { kind: 'thinking', content: '收到了用户消息，按通用模板回应。' },
   {
@@ -434,6 +480,7 @@ function pickScript(prompt: string): ScriptStep[] {
   if (/(网页|web|html|页面)/.test(p)) return WEB_ARTIFACT_SCRIPT
   if (/(文档|document|说明书)/.test(p)) return DOC_ARTIFACT_SCRIPT
   if (/(幻灯片|ppt|slides)/.test(p)) return PPT_ARTIFACT_SCRIPT
+  if (/(记个任务|建任务|待办)/.test(p)) return TASK_SCRIPT
   if (/(写代码|代码|code|component|组件)/.test(p)) return CODE_SCRIPT
   if (/(执行|工具|tool|run|跑)/.test(p)) return TOOL_SCRIPT
   return DEFAULT_SCRIPT

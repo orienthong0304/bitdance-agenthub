@@ -9,6 +9,7 @@ import { GlobalSearchTrigger } from '@/components/global-search-trigger'
 import { ArtifactLibrary } from '@/components/artifact-library'
 import { IconRail, type RailMode } from '@/components/icon-rail'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
+import { TaskBoardPanel } from '@/components/task-board-panel'
 import { UsageDashboard } from '@/components/usage-dashboard'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -320,6 +321,8 @@ export function Sidebar() {
         <ArtifactLibrary />
       ) : mode === 'agents' ? (
         <AgentLibrary />
+      ) : mode === 'tasks' ? (
+        <TaskBoardPanel />
       ) : (
         <UsageDashboard />
       )}

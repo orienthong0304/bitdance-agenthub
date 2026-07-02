@@ -6,6 +6,8 @@ describe('tool display helpers', () => {
   it('formats AgentHub tool names', () => {
     expect(getToolDisplayName('read_artifact')).toBe('读取产物')
     expect(getToolDisplayName('read_attachment')).toBe('读取附件')
+    expect(getToolDisplayName('create_task')).toBe('建任务')
+    expect(getToolDisplayName('fs_list')).toBe('浏览目录')
   })
 
   it('formats MCP-prefixed AgentHub tool names', () => {

@@ -26,6 +26,7 @@ interface Agent {
   apiBaseUrl?: string           // per-agent 自定义 API endpoint；openai-compatible 必填；NULL 时 Claude Code 可走 app_settings.anthropicBaseUrl，Codex 走隔离 CODEX_HOME + SDK 默认 endpoint
 
   toolNames: string[]           // 该 Agent 可调用的工具，引用 Spec 07
+  skillNames: string[]          // 启用的 Agent Skills（SKILL.md name 或 `pkg:skill` 限定名）；仅 claude-code adapter 消费，空数组 = 无 skill（openspec agent-skills）
 
   isBuiltin: boolean            // 内置（不可删；可改）
   isOrchestrator: boolean       // 标记为协调者；同会话最多 1 个
@@ -45,6 +46,7 @@ type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'open
 - `adapterName === 'claude-code'` 时 `modelProvider` 忽略；`modelId` 可选（默认走 SDK 默认模型 `claude-opus-4-7`）；`toolNames` 强制 `[]`（Claude Code 用 SDK 内置工具集，详见 Spec 07）
 - `adapterName === 'codex'` 时 `modelProvider` 忽略；`modelId` 可选（默认 `gpt-5-codex`）；`toolNames` 强制 `[]`（Codex 用 SDK 内置工具集，详见 Spec 05）；`apiBaseUrl` 必须是 Codex/Responses 兼容 endpoint
 - `apiKey` / `apiBaseUrl` 是 per-agent 凭据：`apiBaseUrl` 非空时，`apiKey` 作为对应 SDK / endpoint 的 token；Claude Code、Codex、Custom openai-compatible 的 Base URL 协议不相同，Chat Completions-only provider 走 Custom adapter
+- `skillNames` 仅 `adapterName === 'claude-code'` 时可非空（其它 adapter 无 skill 运行机制，create/update 会拒绝）；切换 adapter 时清空
 - `isBuiltin: true` 的 Agent 不可删除但可修改配置（详见 Spec 10）
 - 删除 Agent 不级联删除使用它的 Conversation；前端应展示「已停用 Agent」灰态
 

@@ -414,11 +414,22 @@ signal.addEventListener('abort', () => controller.abort(), { once: true })
 
 捕获 `AbortError` 区分主动中止和真错误（中止时静默 return，run.end 状态由 AgentRunner 决定为 `'aborted'`）。
 
+### Agent Skills
+
+`AdapterInput.skills` / `AdapterInput.skillPluginPaths` 由 AgentRunner 通过 `skills-service.resolveAgentSkills(agent.skillNames)` 解析后注入（仅 claude-code agent、非 plan stage）。Adapter 把包目录作为 SDK local plugin 装载，并用 `options.skills` 只启用点名的 skill：
+
+```typescript
+plugins: input.skillPluginPaths.map((p) => ({ type: 'local', path: p })),
+skills: input.skills,   // SKILL.md name 或 plugin:skill 限定名
+```
+
+边界：skills 是 SDK 的 context filter 而非 sandbox（未启用的 skill 文件仍在盘上可被 Read/Bash 读到）；skill 引发的一切执行仍走 `canUseTool` 审批桥（黑名单 / 写审批 / 路径沙箱）。Codex / Custom adapter 无等价机制，忽略这两个字段（openspec agent-skills spec）。
+
 ### 不做 / 推迟
 
 - Subagent 独立 child run（MVP 同流够用）
 - MCP server 配置 UI
-- Skills / Plugins / Worktree SDK 高级特性
+- Worktree SDK 高级特性（Skills / Plugins 已支持，见上节「Agent Skills」）
 - `write_artifact` 给 Claude Code agent（绑本地项目时文件就是产物）
 - NotebookEdit 审批 diff
 - Thinking 块翻译（需要开 Anthropic betas）

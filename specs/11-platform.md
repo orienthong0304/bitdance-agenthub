@@ -286,7 +286,7 @@ async function rmDirWithRetry(target: string): Promise<void> {
 
 ## 递归扫描的 symlink/junction 防护
 
-`fs-service.ts` 的 `scanWorkspaceUsage` 用栈递归遍历 workspace 算大小 / 文件数（fs_write 配额）。
+`workspace-utils.ts` 的 `scanWorkspaceUsage` 用栈递归遍历 workspace 算大小 / 文件数；`assertSandboxWriteQuota` 是 sandbox 配额单一闸口 —— `fs_write` 工具与 Claude Code SDK 写盘审批桥（`canUseTool` 的 Write/Edit 路径，Auto / Review 都拦）共用。
 
 - POSIX 上 `ln -s` symlink 可能引入循环
 - Windows 上 `mklink /J` junction 与 `mklink /D` 目录 symlink 都是 reparse point，同样会循环

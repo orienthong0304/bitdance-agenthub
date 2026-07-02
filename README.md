@@ -357,7 +357,6 @@ This is a local single-user app, not a multi-tenant hosted service.
 
 - Linux desktop packaging is not configured yet.
 - Cross-platform Electron builds with native modules should be handled through target-platform machines or CI.
-- Claude Code SDK can write files through its own tool layer; sandbox quota enforcement only applies to AgentHub-managed file tools.
 - Some SDK-level command/file approval bridges depend on what the underlying adapter exposes.
 - The mobile app is a companion client, not a standalone agent runtime.
 

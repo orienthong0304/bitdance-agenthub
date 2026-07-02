@@ -184,10 +184,8 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ### 📋 待办
 - E2E 补充：产物导出下载类用例（.pptx / ZIP 下载断言）
-- PPT 深化：辅色语义着色（正面↑ / 警示↓）+ 数据页卡片化
 - 冲突检测盲区：bash / SDK adapter 写入（可加波次快照补全）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
-- sandbox 配额对 Claude Code SDK 失效（SDK 自己写盘绕过 quota）
 - 移动端伴随 App 配对通信打通
 
 ### ⚠️ 关键约定（动手前必看）

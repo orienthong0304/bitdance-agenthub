@@ -780,8 +780,13 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
       return
     }
     // → Auto 是安全关键切换：首次开启弹一次风险确认（本机记忆，之后直接切）
-    const acked =
-      typeof window !== 'undefined' && window.localStorage.getItem(AUTO_APPROVAL_ACK_KEY) === '1'
+    let acked = false
+    try {
+      acked =
+        typeof window !== 'undefined' && window.localStorage.getItem(AUTO_APPROVAL_ACK_KEY) === '1'
+    } catch {
+      // localStorage 不可用时按未确认处理（与 setItem 的守卫对称）
+    }
     if (!acked) {
       setAutoConfirmOpen(true)
       return
@@ -1051,7 +1056,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
               : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
           }
           className={cn(
-            'flex h-8 shrink-0 items-center gap-1 self-end rounded-lg border px-2 text-[11px] font-medium transition disabled:opacity-50',
+            'flex h-8 shrink-0 items-center gap-1 self-end rounded-lg border px-2 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30 disabled:opacity-50',
             approvalMode === 'review'
               ? 'border-border text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400'
               : 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20',

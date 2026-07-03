@@ -3,8 +3,20 @@ import { NextResponse } from 'next/server'
 
 import { db, schema } from '@/db/client'
 import type { RunUsage } from '@/db/schema'
+import { getAppSettings } from '@/server/settings-service'
+import {
+  computeBucketCost,
+  resolvePriceTable,
+  type ModelPrice,
+  type ModelPriceTable,
+} from '@/shared/model-pricing'
 
-/** GET /api/usage/summary —— 全局 token 用量聚合（今日 / 本周 / 全部 + per-agent / per-model / per-conversation top）。 */
+/**
+ * GET /api/usage/summary —— 全局 token 用量聚合 + 本地价目表成本自算。
+ *
+ * 成本口径（spec：usage-cost）：cost 不读 provider total_cost；未定价模型 cost=null 不计总额；
+ * 无 model 的 run 不计成本；多币种分桶不折算；cacheRate = cacheRead / (input + cacheRead)。
+ */
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -15,6 +27,25 @@ export interface UsageBucket {
   cacheCreationTokens: number
   totalTokens: number
   runs: number
+}
+
+/** byModel / byAgent 行携带的 token 细分，与 UsageBucket 同形。 */
+export type UsageTokenBreakdown = UsageBucket
+
+export interface UsageModelRow extends UsageTokenBreakdown {
+  model: string
+  /** 生效单价（默认 + 用户覆盖后）；未定价为 null */
+  price: ModelPrice | null
+  /** 成本（p.currency 的元）；未定价为 null，不计入 totalCost */
+  cost: number | null
+}
+
+export interface UsageAgentRow extends UsageTokenBreakdown {
+  agentId: string
+  name: string
+  avatar: string | null
+  /** 该 agent token 数最多的 model；无 model 用量时 null */
+  topModel: string | null
 }
 
 export interface UsageSummary {
@@ -28,8 +59,16 @@ export interface UsageSummary {
     runs: number
     updatedAt: number
   }>
-  byAgent: Array<{ agentId: string; name: string; totalTokens: number; runs: number }>
-  byModel: Array<{ model: string; totalTokens: number; runs: number }>
+  byAgent: UsageAgentRow[]
+  byModel: UsageModelRow[]
+  /** 按币种分桶的成本总额（不折算） */
+  totalCost: { usd: number; cny: number }
+  /** allTime 桶的 cache 命中率；分母 0 → null */
+  cacheRate: number | null
+  /** 未计入成本的 token 数（未定价模型 + 无 model 的 run），供 UI 口径说明 */
+  unpricedTokens: number
+  /** 生效价目表（默认 + 用户覆盖），供 UI 展示与行内编辑基线 */
+  pricing: ModelPriceTable
 }
 
 function empty(): UsageBucket {
@@ -70,6 +109,8 @@ export async function GET() {
   const byAgentMap = new Map<string, UsageBucket>()
   const byModelMap = new Map<string, UsageBucket>()
   const byConvMap = new Map<string, UsageBucket>()
+  // per-agent 各 model 的 totalTokens，用来求 topModel
+  const byAgentModelTokens = new Map<string, Map<string, number>>()
 
   for (const row of runs) {
     const u = row.usage as RunUsage | null
@@ -92,6 +133,15 @@ export async function GET() {
         byModelMap.set(u.model, modelB)
       }
       accumulate(modelB, u)
+
+      let perModel = byAgentModelTokens.get(row.agentId)
+      if (!perModel) {
+        perModel = new Map()
+        byAgentModelTokens.set(row.agentId, perModel)
+      }
+      const runTokens =
+        u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheCreationTokens
+      perModel.set(u.model, (perModel.get(u.model) ?? 0) + runTokens)
     }
 
     let convB = byConvMap.get(row.conversationId)
@@ -102,14 +152,18 @@ export async function GET() {
     accumulate(convB, u)
   }
 
-  // 拉 agent 名称
+  // 生效价目表（默认 + 用户覆盖）
+  const settings = await getAppSettings()
+  const pricing = resolvePriceTable(settings.modelPrices)
+
+  // 拉 agent 名称 + 头像
   const agentRows =
     byAgentMap.size > 0
       ? await db.query.agents.findMany({
           where: inArray(schema.agents.id, Array.from(byAgentMap.keys())),
         })
       : []
-  const agentNameById = new Map(agentRows.map((a) => [a.id, a.name]))
+  const agentById = new Map(agentRows.map((a) => [a.id, a]))
 
   // 拉 conversation 标题 + 排序按 totalTokens 取 top 10
   const topConvIds = Array.from(byConvMap.entries())
@@ -123,6 +177,57 @@ export async function GET() {
         })
       : []
   const convById = new Map(convRows.map((c) => [c.id, c]))
+
+  // byModel：保留四段细分 + 计价
+  const totalCost = { usd: 0, cny: 0 }
+  let unpricedTokens = 0
+  const byModel: UsageModelRow[] = Array.from(byModelMap.entries())
+    .map(([model, b]) => {
+      const price = pricing[model] ?? null
+      let cost: number | null = null
+      if (price) {
+        cost = computeBucketCost(b, price)
+        if (price.currency === 'USD') totalCost.usd += cost
+        else totalCost.cny += cost
+      } else {
+        unpricedTokens += b.totalTokens
+      }
+      return { model, ...b, price, cost }
+    })
+    .sort((a, b) => b.totalTokens - a.totalTokens)
+
+  // 无 model 的 run 同样不计成本 —— 计入 unpricedTokens 让 UI 诚实提示
+  const modeledTotal = byModel.reduce((s, r) => s + r.totalTokens, 0)
+  unpricedTokens += allTime.totalTokens - modeledTotal
+
+  // cacheRate（allTime）：cacheRead / (input + cacheRead)，分母 0 → null
+  const cacheDenom = allTime.inputTokens + allTime.cacheReadTokens
+  const cacheRate = cacheDenom > 0 ? allTime.cacheReadTokens / cacheDenom : null
+
+  // byAgent：保留四段细分 + 头像 + topModel
+  const byAgent: UsageAgentRow[] = Array.from(byAgentMap.entries())
+    .map(([agentId, b]) => {
+      const a = agentById.get(agentId)
+      const perModel = byAgentModelTokens.get(agentId)
+      let topModel: string | null = null
+      if (perModel) {
+        let best = -1
+        for (const [model, tok] of perModel) {
+          if (tok > best) {
+            best = tok
+            topModel = model
+          }
+        }
+      }
+      return {
+        agentId,
+        name: a?.name ?? agentId,
+        avatar: a?.avatar ?? null,
+        topModel,
+        ...b,
+      }
+    })
+    .sort((a, b) => b.totalTokens - a.totalTokens)
 
   const summary: UsageSummary = {
     today,
@@ -142,17 +247,12 @@ export async function GET() {
         }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null),
-    byAgent: Array.from(byAgentMap.entries())
-      .map(([agentId, b]) => ({
-        agentId,
-        name: agentNameById.get(agentId) ?? agentId,
-        totalTokens: b.totalTokens,
-        runs: b.runs,
-      }))
-      .sort((a, b) => b.totalTokens - a.totalTokens),
-    byModel: Array.from(byModelMap.entries())
-      .map(([model, b]) => ({ model, totalTokens: b.totalTokens, runs: b.runs }))
-      .sort((a, b) => b.totalTokens - a.totalTokens),
+    byAgent,
+    byModel,
+    totalCost,
+    cacheRate,
+    unpricedTokens,
+    pricing,
   }
 
   return NextResponse.json(summary)

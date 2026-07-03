@@ -9,6 +9,15 @@ export async function GET() {
   return NextResponse.json({ settings })
 }
 
+const rate = z.number().finite().nonnegative()
+const ModelPrice = z.object({
+  inputPer1M: rate,
+  outputPer1M: rate,
+  cacheReadPer1M: rate.optional(),
+  cacheWritePer1M: rate.optional(),
+  currency: z.enum(['USD', 'CNY']),
+})
+
 const PatchBody = z.object({
   // 显式 null 表示清空；undefined 表示不改
   anthropicApiKey: z.string().nullable().optional(),
@@ -21,6 +30,8 @@ const PatchBody = z.object({
   deploymentPublishEnabled: z.boolean().optional(),
   deploymentPublishDir: z.string().nullable().optional(),
   deploymentPublicBaseUrl: z.string().nullable().optional(),
+  // 价目表覆盖：record(model → price)；null 清除全部覆盖，undefined 不改
+  modelPrices: z.record(z.string(), ModelPrice).nullable().optional(),
 })
 
 /** PATCH /api/settings —— upsert 部分字段 */

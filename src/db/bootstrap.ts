@@ -189,6 +189,7 @@ const DDL: string[] = [
     deployment_publish_enabled INTEGER NOT NULL DEFAULT 0,
     deployment_publish_dir TEXT,
     deployment_public_base_url TEXT,
+    model_prices TEXT,
     updated_at INTEGER NOT NULL
   )`,
 ]
@@ -203,6 +204,7 @@ function ensureSchema(sqlite: Database.Database): void {
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_enabled INTEGER NOT NULL DEFAULT 0`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_dir TEXT`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_public_base_url TEXT`)
+  safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN model_prices TEXT`)
   safeAlter(sqlite, `ALTER TABLE agents ADD COLUMN effort TEXT`)
   safeAlter(sqlite, `ALTER TABLE agents ADD COLUMN skill_names TEXT NOT NULL DEFAULT '[]'`)
 }

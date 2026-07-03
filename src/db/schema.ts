@@ -15,6 +15,7 @@ import type {
   ModelProvider,
   SkillSummary,
 } from '@/shared/types'
+import type { ModelPriceTable } from '@/shared/model-pricing'
 
 // ─── Agents ──────────────────────────────────────────────────
 export const agents = sqliteTable('agents', {
@@ -334,6 +335,8 @@ export const appSettings = sqliteTable('app_settings', {
     .default(false),
   deploymentPublishDir: text('deployment_publish_dir'),
   deploymentPublicBaseUrl: text('deployment_public_base_url'),
+  /** 用户覆盖的本地价目表（按模型条目字段级 merge 到内置默认）。NULL = 无覆盖，全走默认。 */
+  modelPrices: text('model_prices', { mode: 'json' }).$type<ModelPriceTable>(),
   updatedAt: integer('updated_at').notNull(),
 })
 

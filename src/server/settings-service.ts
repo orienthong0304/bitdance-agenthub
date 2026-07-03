@@ -16,6 +16,7 @@ import {
   writeCompanionConfig,
   type CompanionMode,
 } from '@/server/companion-config'
+import type { ModelPriceTable } from '@/shared/model-pricing'
 
 const SINGLETON_ID = 'singleton'
 
@@ -31,6 +32,7 @@ const EMPTY: AppSettingsRow = {
   deploymentPublishEnabled: false,
   deploymentPublishDir: null,
   deploymentPublicBaseUrl: null,
+  modelPrices: null,
   updatedAt: 0,
 }
 
@@ -52,16 +54,21 @@ export interface AppSettingsPatch {
   deploymentPublishEnabled?: boolean
   deploymentPublishDir?: string | null
   deploymentPublicBaseUrl?: string | null
+  /** null 清除全部覆盖（回退默认表）；undefined 不动。 */
+  modelPrices?: ModelPriceTable | null
 }
 
 /** UPSERT 全部字段：传 null 清空，undefined 不动。 */
 export async function updateAppSettings(patch: AppSettingsPatch): Promise<AppSettingsRow> {
   const current = await getAppSettings()
+  // modelPrices 是 JSON 对象，绕开 normalize（它只处理 string/boolean）
+  const { modelPrices, ...stringPatch } = patch
   const next: AppSettingsRow = {
     ...current,
     ...Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [k, normalize(v)]),
+      Object.entries(stringPatch).map(([k, v]) => [k, normalize(v)]),
     ),
+    ...(modelPrices !== undefined ? { modelPrices } : {}),
     id: SINGLETON_ID,
     updatedAt: Date.now(),
   } as AppSettingsRow
@@ -87,6 +94,7 @@ export async function updateAppSettings(patch: AppSettingsPatch): Promise<AppSet
         deploymentPublishEnabled: next.deploymentPublishEnabled,
         deploymentPublishDir: next.deploymentPublishDir,
         deploymentPublicBaseUrl: next.deploymentPublicBaseUrl,
+        modelPrices: next.modelPrices,
         updatedAt: next.updatedAt,
       },
     })

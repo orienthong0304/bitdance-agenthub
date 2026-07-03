@@ -47,6 +47,8 @@ type MessagePart =
 
 Agent 的主要文字输出。content 是 markdown 文本，前端用 `react-markdown + remark-gfm` 渲染（`src/components/markdown.tsx`），fenced code block 走 shiki 高亮的 `<CodeBlock>` 组件。
 
+**行内产物引用兜底**：正文里出现的行内 `<artifact_ref id="art_..."/>` 裸标签（含属性顺序/空白/单双引号变体）或裸 `art_xxx` 词，在进 markdown 前由 `transformArtifactRefs`（`src/lib/artifact-ref-text.ts`）改写成内联链接占位（`#artifact-ref-<id>`），再由 `Markdown` 的 `a` 覆写渲染成可点开预览的内联产物 chip（`InlineArtifactChip`）。规则：标签**始终**改写（micromark 因标签名含下划线不识别为 HTML，否则会原样把标签当文字漏出，即 P0-1）；裸 `art_` 词仅在 store 命中该产物时才转（否则保持原文，防误伤）；代码块 / 行内代码内不动；无法解析的引用兜底为弱化「产物（不可用）」chip，**任何情况下都不透出原始标签文本**。
+
 **可增量**：`PartDelta { type: 'text.append', text }` 追加到 content。
 
 ### 2. `code`

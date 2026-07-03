@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getToolDisplayName, isBashToolName } from './tool-display'
+import { getToolDisplayName, isBashToolName, isCreateTaskToolName } from './tool-display'
 
 describe('tool display helpers', () => {
   it('formats AgentHub tool names', () => {
@@ -24,5 +24,8 @@ describe('tool display helpers', () => {
     expect(isBashToolName('bash')).toBe(true)
     expect(isBashToolName('mcp__agenthub__bash')).toBe(true)
     expect(isBashToolName('read_attachment')).toBe(false)
+    expect(isCreateTaskToolName('create_task')).toBe(true)
+    expect(isCreateTaskToolName('mcp__agenthub__create_task')).toBe(true)
+    expect(isCreateTaskToolName('read_attachment')).toBe(false)
   })
 })

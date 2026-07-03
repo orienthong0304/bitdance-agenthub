@@ -223,8 +223,8 @@ export class MockAdapter implements AgentPlatformAdapter {
         partIndex++ // tool_result（tool_use 已由顶部 ++ 计入）
       } else if (step.kind === 'create_task') {
         // 真实执行 L3 create_task（与 write_artifact 分支同一约定），
-        // 让 E2E 能覆盖「Agent 建单 → 任务看板出现该任务」全链路。任务看板 v1 无
-        // StreamEvent 实时同步，面板挂载时直接 fetch 全量即可看到刚落库的任务。
+        // 让 E2E 能覆盖「Agent 建单 → task.update 实时推送 → 任务看板」全链路
+        // （面板挂载时的全量 fetch 仅作兜底）。
         const callId = newToolCallId()
         yield {
           type: 'tool.call',

@@ -61,6 +61,9 @@ interface SlashTrigger {
   query: string
 }
 
+// 本机「已确认 Auto 审批风险」标记：首次切到 Auto 才弹确认，之后不再打扰
+const AUTO_APPROVAL_ACK_KEY = 'agenthub.fs-auto-approval-ack'
+
 const SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'deploy',
@@ -270,6 +273,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   const removePendingAttachment = useAppStore((s) => s.removePendingAttachment)
   const clearPendingAttachments = useAppStore((s) => s.clearPendingAttachments)
   const [modeBusy, setModeBusy] = useState(false)
+  const [autoConfirmOpen, setAutoConfirmOpen] = useState(false)
 
   // 引用回复目标
   const replyTargetId = useAppStore((s) => s.replyTargetByConv[conversationId])
@@ -757,9 +761,8 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   }
 
   const approvalMode = conversation?.fsWriteApprovalMode ?? 'review'
-  const toggleApprovalMode = async () => {
-    if (modeBusy || !conversation) return
-    const nextMode = approvalMode === 'review' ? 'auto' : 'review'
+  const applyApprovalMode = async (nextMode: 'review' | 'auto') => {
+    if (!conversation) return
     setModeBusy(true)
     try {
       const updated = await setFsWriteApprovalMode(conversationId, nextMode)
@@ -769,6 +772,30 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
     } finally {
       setModeBusy(false)
     }
+  }
+  const toggleApprovalMode = () => {
+    if (modeBusy || !conversation) return
+    if (approvalMode === 'auto') {
+      void applyApprovalMode('review')
+      return
+    }
+    // → Auto 是安全关键切换：首次开启弹一次风险确认（本机记忆，之后直接切）
+    const acked =
+      typeof window !== 'undefined' && window.localStorage.getItem(AUTO_APPROVAL_ACK_KEY) === '1'
+    if (!acked) {
+      setAutoConfirmOpen(true)
+      return
+    }
+    void applyApprovalMode('auto')
+  }
+  const confirmAutoApproval = () => {
+    try {
+      window.localStorage.setItem(AUTO_APPROVAL_ACK_KEY, '1')
+    } catch {
+      // localStorage 不可用时忽略：仅影响「首次确认」记忆，不影响功能
+    }
+    setAutoConfirmOpen(false)
+    void applyApprovalMode('auto')
   }
 
   return (
@@ -898,6 +925,33 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={autoConfirmOpen} onOpenChange={setAutoConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="size-4 text-destructive" />
+              切换到 Auto 审批模式？
+            </DialogTitle>
+            <DialogDescription>
+              Auto 模式下，本会话 Agent 的写盘与命令将直接执行，不再逐条向你确认。请仅在信任当前任务时开启，随时可切回 Review。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAutoConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={modeBusy}
+              onClick={confirmAutoApproval}
+            >
+              开启 Auto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <SlashCommandHelpDialog
         open={slashHelpOpen}
         commands={SLASH_COMMANDS}
@@ -942,7 +996,22 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         </div>
       )}
 
-      <div className="flex items-end gap-1.5 rounded-xl border bg-background p-2 pl-2 transition focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+      {/* Auto 态持续警示：写盘 / 命令将直接执行，不再逐条审批 */}
+      {approvalMode === 'auto' && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+          <Zap className="size-3 shrink-0" />
+          <span>Auto：写盘与命令将直接执行，不再逐条审批</span>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          'flex items-end gap-1.5 rounded-xl border bg-background p-2 pl-2 transition focus-within:ring-[3px]',
+          approvalMode === 'auto'
+            ? 'border-destructive/50 focus-within:border-destructive focus-within:ring-destructive/10'
+            : 'focus-within:border-primary focus-within:ring-primary/10',
+        )}
+      >
         {/* 文件上传 */}
         <input
           ref={fileInputRef}
@@ -966,31 +1035,35 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         >
           <Paperclip className="size-4" />
         </Button>
-        {/* fs_write 审批模式开关：绿色 = Review（默认安全），红色 = Auto（直写） */}
-        <Button
+        {/* fs_write 审批模式开关：带文字标签（Review 安全 / Auto 直写），安全关键状态可辨识 */}
+        <button
           type="button"
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => void toggleApprovalMode()}
+          onClick={toggleApprovalMode}
           disabled={modeBusy}
+          aria-label={
+            approvalMode === 'review'
+              ? '审批模式：Review · Agent 写入需审批，点击切换到 Auto'
+              : '审批模式：Auto · Agent 写入直接生效，点击切回 Review'
+          }
           title={
             approvalMode === 'review'
               ? 'Review 模式 · Agent 写入需审批（点击切到 Auto，直接生效 ⚠）'
               : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
           }
           className={cn(
-            'shrink-0 self-end',
+            'flex h-8 shrink-0 items-center gap-1 self-end rounded-lg border px-2 text-[11px] font-medium transition disabled:opacity-50',
             approvalMode === 'review'
-              ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
-              : 'text-destructive hover:text-destructive',
+              ? 'border-border text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400'
+              : 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20',
           )}
         >
           {approvalMode === 'review' ? (
-            <Shield className="size-4" />
+            <Shield className="size-3.5" />
           ) : (
-            <Zap className="size-4" />
+            <Zap className="size-3.5" />
           )}
-        </Button>
+          <span>{approvalMode === 'review' ? 'Review' : 'Auto'}</span>
+        </button>
 
         <Textarea
           ref={textareaRef}
@@ -1008,7 +1081,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
                   ? '输入消息，@ 指定 Agent，Enter 发送，Shift+Enter 换行'
                   : '输入消息，Enter 发送，Shift+Enter 换行'
           }
-          className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none placeholder:truncate focus-visible:ring-0 dark:bg-transparent"
           disabled={composerLocked}
         />
 

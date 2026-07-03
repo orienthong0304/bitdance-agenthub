@@ -109,7 +109,7 @@ export function ChatPanel() {
   const participantAgents = conv.agentIds.map((id) => agents[id]).filter(Boolean)
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:min-w-[360px]">
       <header className="flex h-[57px] shrink-0 items-center gap-3 overflow-hidden border-b px-3.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {/* 移动端汉堡按钮：打开 sidebar 抽屉 */}

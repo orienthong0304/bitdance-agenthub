@@ -121,7 +121,14 @@ export function ArtifactPreviewPanel() {
   const hasMultiple = versionCount > 1
 
   return (
-    <aside className="flex w-1/2 min-w-[420px] shrink-0 flex-col border-l bg-card max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
+    <>
+      {/* 窄窗（<1280px）预览改右侧 overlay 抽屉，避免挤压聊天列破版；scrim 点击关闭 */}
+      <div
+        className="fixed inset-0 z-30 hidden bg-black/40 md:block xl:hidden"
+        onClick={close}
+        aria-hidden
+      />
+      <aside className="flex shrink-0 flex-col border-l bg-card fixed inset-y-0 right-0 z-40 w-[min(560px,92vw)] shadow-2xl max-md:inset-0 max-md:w-full max-md:shadow-none xl:static xl:z-auto xl:w-1/2 xl:min-w-[420px] xl:shadow-none">
       <header className="flex h-[57px] shrink-0 items-center justify-between border-b px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <TypeIcon type={artifact.type} />
@@ -256,6 +263,7 @@ export function ArtifactPreviewPanel() {
         <ArtifactView artifact={artifact} onSaveVersion={handleSaveVersion} />
       )}
     </aside>
+    </>
   )
 }
 

@@ -135,7 +135,14 @@ export function FileExplorerPanel() {
   if (!open || !conv) return null
 
   return (
-    <aside className="flex w-80 min-w-[260px] shrink-0 flex-col border-l bg-sidebar max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
+    <>
+      {/* 窄窗（<1280px）文件树改右侧 overlay 抽屉，避免挤压聊天列破版；scrim 点击关闭 */}
+      <div
+        className="fixed inset-0 z-30 hidden bg-black/40 md:block xl:hidden"
+        onClick={() => setFileExplorerOpen(false)}
+        aria-hidden
+      />
+      <aside className="flex shrink-0 flex-col border-l bg-sidebar fixed inset-y-0 right-0 z-40 w-[min(360px,92vw)] shadow-2xl max-md:inset-0 max-md:w-full max-md:shadow-none xl:static xl:z-auto xl:w-80 xl:min-w-[260px] xl:shadow-none">
       <header className="flex h-[57px] shrink-0 items-center justify-between border-b px-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <Folder className="size-4 shrink-0 text-muted-foreground" />
@@ -168,6 +175,7 @@ export function FileExplorerPanel() {
         </div>
       </ScrollArea>
     </aside>
+    </>
   )
 }
 

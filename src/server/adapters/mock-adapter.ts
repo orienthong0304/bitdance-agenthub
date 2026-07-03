@@ -282,6 +282,23 @@ export class MockAdapter implements AgentPlatformAdapter {
       }
     }
 
+    // 本次 run 的固定用量（run.end 前上报）。run.usage 不是 part 事件，不进 partIndex 账。
+    // mock-model 不入 DEFAULT_MODEL_PRICES（生产表不掺测试模型）——用量页里显示为「未定价」，
+    // 由 e2e 现填单价验证成本自算全链路。
+    yield {
+      type: 'run.usage',
+      conversationId: input.conversationId,
+      timestamp: Date.now(),
+      runId: input.runId,
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 800,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 300,
+        model: 'mock-model',
+      },
+    }
+
     yield {
       type: 'message.end',
       conversationId: input.conversationId,

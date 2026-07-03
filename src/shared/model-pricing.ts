@@ -60,7 +60,15 @@ export function resolvePriceTable(overrides: ModelPriceTable | null | undefined)
   if (!overrides) return resolved
   for (const [model, override] of Object.entries(overrides)) {
     const base = resolved[model]
-    resolved[model] = base ? mergePrice(base, override) : override
+    if (!base) {
+      resolved[model] = override
+    } else if (override.currency !== undefined && override.currency !== base.currency) {
+      // 切换币种：默认表的 cache 价是旧币种数值，字段级 merge 会把旧币种数字并进新币种计费——错。
+      // 此时该条目视为整条替换，只用 override（未填 cache 价按 0，computeBucketCost 缺省处理）。
+      resolved[model] = override
+    } else {
+      resolved[model] = mergePrice(base, override)
+    }
   }
   return resolved
 }
@@ -89,10 +97,13 @@ export function computeBucketCost(
   ) / 1_000_000
 }
 
-/** '$1.23 · ¥4.56' / 单币种只显一个 / 全零 '—'。 */
+/**
+ * '$1.23 · ¥4.56' / 单币种只显一个 / 全零 '—'。
+ * 0 < 金额 < 0.005（会被 toFixed(2) 压成 0.00）时显示 `<$0.01` / `<¥0.01`，避免把非零成本呈现为 0。
+ */
 export function formatCost(usd: number, cny: number): string {
   const parts: string[] = []
-  if (usd > 0) parts.push(`$${usd.toFixed(2)}`)
-  if (cny > 0) parts.push(`¥${cny.toFixed(2)}`)
+  if (usd > 0) parts.push(usd < 0.005 ? '<$0.01' : `$${usd.toFixed(2)}`)
+  if (cny > 0) parts.push(cny < 0.005 ? '<¥0.01' : `¥${cny.toFixed(2)}`)
   return parts.length > 0 ? parts.join(' · ') : '—'
 }

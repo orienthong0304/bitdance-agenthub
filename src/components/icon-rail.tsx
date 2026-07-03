@@ -7,8 +7,6 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
 import { useAppStore, type RailMode } from '@/stores/app-store'
 
-export type { RailMode }
-
 /**
  * IconRail — 应用左缘 56px 图标导航栏（redesign-ui-shell Phase B）。
  *

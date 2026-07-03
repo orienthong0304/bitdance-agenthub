@@ -80,6 +80,36 @@ describe('resolvePriceTable', () => {
     expect(resolved['mock-model']).toEqual({ inputPer1M: 1, outputPer1M: 2, currency: 'USD' })
   })
 
+  it('treats a currency switch as a full replacement (no old-currency cache prices mixed in)', () => {
+    // 默认 claude-opus-4-8 是 USD，含 cacheRead 0.5 / cacheWrite 6.25。
+    // 覆盖切到 CNY 时不能把这两个 USD 数字并进 CNY 计费——整条替换。
+    const overrides: ModelPriceTable = {
+      'claude-opus-4-8': { inputPer1M: 30, outputPer1M: 120, currency: 'CNY' },
+    }
+    const resolved = resolvePriceTable(overrides)
+    expect(resolved['claude-opus-4-8']).toEqual({
+      inputPer1M: 30,
+      outputPer1M: 120,
+      currency: 'CNY',
+    })
+    expect(resolved['claude-opus-4-8'].cacheReadPer1M).toBeUndefined()
+    expect(resolved['claude-opus-4-8'].cacheWritePer1M).toBeUndefined()
+  })
+
+  it('still field-merges when the currency is unchanged (default cache prices kept)', () => {
+    const overrides: ModelPriceTable = {
+      'claude-opus-4-8': { inputPer1M: 6, outputPer1M: 30, currency: 'USD' },
+    }
+    const resolved = resolvePriceTable(overrides)
+    expect(resolved['claude-opus-4-8']).toEqual({
+      inputPer1M: 6,
+      outputPer1M: 30,
+      cacheReadPer1M: 0.5,
+      cacheWritePer1M: 6.25,
+      currency: 'USD',
+    })
+  })
+
   it('does not mutate the default table across calls', () => {
     resolvePriceTable({ 'claude-opus-4-8': { inputPer1M: 99, outputPer1M: 99, currency: 'USD' } })
     const untouched = resolvePriceTable(null)
@@ -99,5 +129,17 @@ describe('formatCost', () => {
 
   it('shows a dash when both are zero', () => {
     expect(formatCost(0, 0)).toBe('—')
+  })
+
+  it('shows <$0.01 / <¥0.01 for a non-zero amount that would round to 0.00', () => {
+    // 0.0028 → toFixed(2) 会压成 "0.00"，改显 "<$0.01" 以免把非零成本呈现为 0
+    expect(formatCost(0.0028, 0)).toBe('<$0.01')
+    expect(formatCost(0, 0.004)).toBe('<¥0.01')
+    expect(formatCost(0.0028, 0.004)).toBe('<$0.01 · <¥0.01')
+  })
+
+  it('rounds normally at or above 0.005', () => {
+    expect(formatCost(0.005, 0)).toBe('$0.01')
+    expect(formatCost(0, 0.006)).toBe('¥0.01')
   })
 })

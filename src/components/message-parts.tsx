@@ -11,7 +11,8 @@ import { CodeBlock } from '@/components/code-block'
 import { Markdown } from '@/components/markdown'
 import { artifactPreviewPath } from '@/lib/artifact-preview'
 import { deployConversationArtifact, fetchArtifact } from '@/lib/api'
-import { getToolDisplayName, isBashToolName } from '@/lib/tool-display'
+import { getToolDisplayName, isBashToolName, isCreateTaskToolName } from '@/lib/tool-display'
+import { emitUiCommand } from '@/lib/ui-command-events'
 import { cn } from '@/lib/utils'
 import type { MessagePart } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -287,6 +288,10 @@ function ToolUsePart({
           ? { output: completion.result }
           : null)
       : null
+  const createTaskConfirm =
+    isCreateTaskToolName(toolName) && completion && !completion.isError
+      ? extractCreateTaskResult(completion.result)
+      : null
 
   const state: 'running' | 'success' | 'error' = !completion
     ? 'running'
@@ -360,6 +365,9 @@ function ToolUsePart({
             tone={completion?.isError ? 'error' : 'neutral'}
           />
         )}
+        {createTaskConfirm && (
+          <CreateTaskConfirm taskId={createTaskConfirm.taskId} title={createTaskConfirm.title} />
+        )}
 
         {showDetails && (
           <div className="min-w-0 space-y-2 pt-1">
@@ -392,6 +400,33 @@ function CommandPreview({ command, expanded }: { command: string; expanded: bool
       copyTitle="复制命令"
       expanded={expanded}
     />
+  )
+}
+
+// create_task 成功后的确认行：立单标题 + 任务 id 徽标 + 跳看板按钮
+function CreateTaskConfirm({ taskId, title }: { taskId: string; title: string }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-[11px]">
+      <Check className="size-3.5 shrink-0 text-primary" />
+      <span className="min-w-0 max-w-full flex-1 truncate">
+        <span className="font-medium text-primary">已立单</span>
+        <span className="text-primary/70">：</span>
+        <span className="text-foreground/90">{title}</span>
+      </span>
+      <code className="shrink-0 truncate rounded bg-primary/10 px-1 py-0.5 font-mono text-[10px] text-primary/80">
+        {taskId}
+      </code>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          emitUiCommand('open-tasks')
+        }}
+        className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 font-medium text-primary transition hover:bg-primary/10"
+      >
+        在看板查看
+      </button>
+    </div>
   )
 }
 
@@ -544,6 +579,37 @@ function extractBashResult(value: unknown): BashResultPreview | null {
     truncated: typeof value.truncated === 'boolean' ? value.truncated : undefined,
     timedOut: typeof value.timedOut === 'boolean' ? value.timedOut : undefined,
   }
+}
+
+// create_task 结果形态：mock 直接 { taskId, title }；Claude Code MCP 回来是
+// JSON 字符串或 [{type:'text', text: JSON.stringify(value)}] 数组，都要能解出来。
+function extractCreateTaskResult(value: unknown): { taskId: string; title: string } | null {
+  const fromRecord = (obj: Record<string, unknown>): { taskId: string; title: string } | null => {
+    if (typeof obj.taskId !== 'string' || !obj.taskId) return null
+    return { taskId: obj.taskId, title: typeof obj.title === 'string' ? obj.title : '' }
+  }
+  const tryParse = (s: string): { taskId: string; title: string } | null => {
+    try {
+      const parsed = JSON.parse(s) as unknown
+      return isPlainRecord(parsed) ? fromRecord(parsed) : null
+    } catch {
+      return null
+    }
+  }
+  if (isPlainRecord(value)) {
+    const direct = fromRecord(value)
+    if (direct) return direct
+  }
+  if (typeof value === 'string') return tryParse(value)
+  if (Array.isArray(value)) {
+    for (const blk of value) {
+      if (blk && typeof blk === 'object' && 'text' in blk && typeof (blk as { text: unknown }).text === 'string') {
+        const r = tryParse((blk as { text: string }).text)
+        if (r) return r
+      }
+    }
+  }
+  return null
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

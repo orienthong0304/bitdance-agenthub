@@ -19,7 +19,7 @@
 
 - [x] 4.1 IconRail 第五导航「任务」（badge = open+blocked 数，从 `boardTasks` store 切片读）。
 - [x] 4.2 `task-board-panel.tsx`：按状态分组列表、手动建单、状态切换、任务卡跳回来源会话。
-- [ ] 4.3 会话内 agent 建单的确认反馈（工具卡里显示任务 id + 跳转）—— 未做：`create_task` 的 tool_result 目前走通用 `ToolUsePart` JSON 展示，没有专门的任务 id 高亮/跳转 UI。留后续任务。
+- [x] 4.3 会话内 agent 建单的确认反馈（工具卡里显示任务 id + 跳转）—— 已实现于 6.3：`create_task` 成功后工具卡渲染「已立单：<title>」+ 任务 id 徽标 +「在看板查看」按钮（`emitUiCommand('open-tasks')` 打开看板）。
 
 ## 5. 测试与文档
 
@@ -31,6 +31,6 @@
 
 - [x] 6.1 `task.update` StreamEvent（P1：影响 agent 建单/dispatch 同步后的实时可见性与 rail badge 准确性；按 specs/02 扩展流程走 delta spec）。task-service 单点发射 + store reducer + e2e 实时 badge 断言，delete 不发事件（面板内操作 + 挂载全量兜底），specs/02 加「task.update」专节。
 - [x] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。`task-service.test.ts` 用 `vi.mock('@/db/client')` 注入 in-memory drizzle，实测幂等不产生第二行、title 变更发事件/未变不写不发、状态全终态映射、状态未变不写不发、createBoardTask 发事件；同步收敛 `upsertDispatchTask`/`syncDispatchTaskStatus` 无实质变化时的 updatedAt bump（早退不写库不发事件）。
-- [ ] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。
+- [x] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。`message-parts.tsx` 的 `ToolUsePart` 在 `isCreateTaskToolName` 且 result 含 taskId 时渲染确认行（teal token）；新增 `ui-command` 的 `open-tasks` 命令，sidebar 回调与 `open-agents` 同构切到 tasks 面板。前置修复 mock-adapter `partIndex` 记账 bug（见 fix commit），tasks.spec 加「已立单」断言。
 - [x] 6.4 评估 create_task 在 SDK 桥上的授权控制——**裁定：接受现状**。SDK agent（claude-code/codex）本就不消费 `toolNames`（强制 `[]`，Spec 01），AgentHub MCP 工具组对 SDK agent 一直是固定集合（write_artifact / deploy / ask_user 等同样全量可用），create_task 加入该集合与既有授权模型一致；单独收敛反而制造特例。风险面（agent 噪音立单）由看板可删、来源徽标、仅 open 态缓解，个人使用场景可接受。若未来引入 per-agent MCP 工具授权机制，create_task 纳入同一机制即可。
 - [x] 6.5 e2e `createSingleChat` 抽共享 fixture（四处重复已达阈值）。抽到 `e2e/helpers.ts`（非 barrel，导出 `MOCK_AGENT` / `createSingleChat` / `lastCompleteAgentMsg`）；chat/artifacts/export/tasks 四个 spec 改为 import，dispatch.spec 的 `createGroupChat` 留原文件但 MOCK_AGENT 也收敛自 helpers。

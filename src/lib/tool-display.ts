@@ -46,6 +46,11 @@ export function isBashToolName(toolName: string): boolean {
   return findAgentHubToolName(lower) === 'bash' || lower === 'bash'
 }
 
+export function isCreateTaskToolName(toolName: string): boolean {
+  const lower = toolName.trim().toLowerCase()
+  return findAgentHubToolName(lower) === 'create_task' || lower === 'create_task'
+}
+
 function findAgentHubToolName(toolName: string): keyof typeof AGENTHUB_TOOL_LABELS | null {
   if (toolName in AGENTHUB_TOOL_LABELS) {
     return toolName as keyof typeof AGENTHUB_TOOL_LABELS

@@ -129,9 +129,9 @@ export function Sidebar() {
 
   useEffect(() => {
     return subscribeUiCommand((command) => {
-      if (command !== 'open-agents') return
+      if (command !== 'open-agents' && command !== 'open-tasks') return
       setPanelHidden(false)
-      setMode('agents')
+      setMode(command === 'open-agents' ? 'agents' : 'tasks')
       if (window.matchMedia('(max-width: 767px)').matches) {
         setMobileSidebarOpen(true)
       }

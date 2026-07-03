@@ -35,12 +35,14 @@
 | Skill 创作 | skill-creator | ❌ |
 | **专家套件(多 Skill 组合)** | Expert Kit 可安装 | ❌ |
 | 持久记忆 | 跨会话偏好/上下文 | 不做(用户裁定:太重,暂不考虑,2026-07-03) |
-| 定时任务 | 内建 | ❌ |
+| 定时任务 | 内建 | 暂缓(用户裁定:现有规划全部完善后再议,2026-07-03) |
 | 办公产物(PPT/文档/网页) | Skill 驱动 | ✅ 产物系统 + 导出(docx/pptx) |
 
 ## 3. 路线图
 
-优先级依据用户定向:子 Agent 孵化是标志性诉求 > 模板陈列 + Skill 生态 > 专家套件(用户原话「未来」)> 定时自动化。长期记忆经用户裁定**暂不考虑**(太重),从路线图移除。
+优先级依据用户定向:子 Agent 孵化是标志性诉求 > 模板陈列 + Skill 生态 > 专家套件(用户原话「未来」)。与三个 Phase 并行的还有 **UX 打磨 track**(2026-07-03 全面体检驱动,见审计报告)。
+
+**明确暂缓**(用户裁定,2026-07-03):长期记忆(太重)、定时自动化(现有规划全部完善后再议)——两者都不排期,不要作为候选提出。
 
 ### Phase 1 — Agent 孵化子 Agent(`spawn_agent`)
 
@@ -74,13 +76,9 @@
 - 内置若干套件 + 文件级导入/导出(可分享给别人)
 - 套件与技能的关系:套件引用技能(不复制),卸载套件不删被共用的技能
 
-### Phase 4 — 定时自动化
-
-- 定时任务:cron 表达式触发某 Agent 在指定会话跑一个 prompt(晨报/巡检/周报)
-
 ## 4. 与现有 specs 的衔接
 
 - Phase 1 动 orchestrator/tools/stream-events 三个 capability,须新 openspec change(`add-agent-spawn`)
 - Phase 2 模板陈列扩 agent-builder capability;技能部分扩 agent-skills;skill-creator 是新工具 + 流程
 - Phase 3 新 capability(`expert-kits`),动 persistence/frontend
-- Phase 4 定时自动化独立 change
+- UX 打磨 track 按审计报告分批,小批次直改(fix/feat(ui)),大改动才立 change

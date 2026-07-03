@@ -41,6 +41,7 @@ button { font-family: inherit; }
         <sc-if value="{{ n.isAgents }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:21px;height:21px"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg></sc-if>
         <sc-if value="{{ n.isArt }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:21px;height:21px"><path d="M12 2 2 7l10 5 10-5-10-5Z"></path><path d="m2 17 10 5 10-5M2 12l10 5 10-5"></path></svg></sc-if>
         <sc-if value="{{ n.isUsage }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:21px;height:21px"><path d="M3 3v18h18"></path><path d="M7 15l3-4 3 2 4-6"></path></svg></sc-if>
+        <sc-if value="{{ n.isTasks }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:21px;height:21px"><rect x="3" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg></sc-if>
         <sc-if value="{{ n.badge }}"><span style="position:absolute;top:5px;right:7px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:var(--ac,#0d9488);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ n.badge }}</span></sc-if>
       </button>
     </sc-for>
@@ -155,6 +156,30 @@ button { font-family: inherit; }
           </button>
         </sc-for>
       </div>
+    </div>
+    </sc-if>
+
+    <!-- TASKS secondary: summary + filters -->
+    <sc-if value="{{ isTasks }}">
+    <div style="display:flex;flex-direction:column;height:100%">
+      <div style="padding:16px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:16px;font-weight:700;letter-spacing:-.01em">任务看板</div><div style="font-size:12px;color:#737373;margin-top:2px">跨会话聚合 · run 结束也不沉没</div></div>
+        <button onClick="{{ taskBoard.onNewTask }}" title="新建任务" style="width:30px;height:30px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#171717;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 5v14M5 12h14"></path></svg></button>
+      </div>
+      <div style="padding:2px 16px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="border:1px solid #eef0f2;border-radius:10px;padding:10px 12px;background:#fafafa"><div style="font-size:20px;font-weight:700;color:var(--ac,#0d9488);font-family:'JetBrains Mono',monospace">{{ taskBoard.runningCount }}</div><div style="font-size:11px;color:#737373;margin-top:1px">进行中</div></div>
+        <div style="border:1px solid #eef0f2;border-radius:10px;padding:10px 12px;background:#fafafa"><div style="font-size:20px;font-weight:700;color:#e11d48;font-family:'JetBrains Mono',monospace">{{ taskBoard.blockedCount }}</div><div style="font-size:11px;color:#737373;margin-top:1px">受阻</div></div>
+        <div style="border:1px solid #eef0f2;border-radius:10px;padding:10px 12px;background:#fafafa"><div style="font-size:20px;font-weight:700;color:#525252;font-family:'JetBrains Mono',monospace">{{ taskBoard.openCount }}</div><div style="font-size:11px;color:#737373;margin-top:1px">待办</div></div>
+        <div style="border:1px solid #eef0f2;border-radius:10px;padding:10px 12px;background:#fafafa"><div style="font-size:20px;font-weight:700;color:#16a34a;font-family:'JetBrains Mono',monospace">{{ taskBoard.doneCount }}</div><div style="font-size:11px;color:#737373;margin-top:1px">已完成</div></div>
+      </div>
+      <div style="padding:2px 16px 8px;font-size:11px;font-weight:600;color:#a3a3a3;letter-spacing:.03em;text-transform:uppercase">按来源筛选</div>
+      <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ taskBoard.filters }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.onClick }}" style="{{ f.style }};width:100%;text-align:left;display:flex;align-items:center" style-hover="background:#f5f5f5">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <div style="flex:1"></div>
+      <div style="padding:14px 16px;border-top:1px solid #f0f0f0;font-size:11px;color:#a3a3a3;line-height:1.6">拖动卡片可流转状态。Orchestrator 计划批准后子任务自动登记；Agent 可用 <span style="font-family:'JetBrains Mono',monospace;color:#7c3aed">create_task</span> 立单。</div>
     </div>
     </sc-if>
   </div>
@@ -318,20 +343,28 @@ button { font-family: inherit; }
 
                     <!-- tool use -->
                     <sc-if value="{{ p.isTool }}">
-                      <div style="margin-bottom:7px;border:1px solid #e5e5e5;border-radius:9px;background:#fff;overflow:hidden;max-width:520px">
+                      <div style="{{ p.cardStyle }}">
                         <button onClick="{{ p.onToggle }}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 11px;border:none;background:#fafafa;cursor:pointer;text-align:left" style-hover="background:#f3f3f3">
                           <sc-if value="{{ p.isBash }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none"><path d="m4 17 6-6-6-6"></path><path d="M12 19h8"></path></svg></sc-if>
+                          <sc-if value="{{ p.isMcp }}"><svg viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect></svg></sc-if>
                           <sc-if value="{{ p.isGenericTool }}"><svg viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg></sc-if>
                           <span style="font-size:12.5px;color:#404040;flex:1"><span style="font-weight:600;color:#171717;font-family:'JetBrains Mono',monospace">{{ p.toolName }}</span> {{ p.toolHint }}</span>
+                          <sc-if value="{{ p.isMcp }}"><span style="font-size:10px;font-weight:600;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;padding:1px 6px;border-radius:5px;flex:none">外部 MCP · {{ p.mcpServer }}</span></sc-if>
                           <span style="{{ p.statusStyle }}">{{ p.statusLabel }}</span>
                           <svg viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="{{ p.chevStyle }}"><path d="m6 9 6 6 6-6"></path></svg>
                         </button>
+                        <sc-if value="{{ p.pendingMcp }}">
+                          <div style="padding:11px 12px;border-top:1px solid #f0f0f0;background:#fffdf7">
+                            <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:9px"><svg viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;margin-top:1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><div style="font-size:11.5px;color:#92722a;line-height:1.55"><span style="font-weight:600">trust=ask · 本会话首次调用</span>：<span style="font-family:'JetBrains Mono',monospace">mcp__{{ p.mcpServer }}__*</span> 在 AgentHub 沙箱外运行。批准后本会话内该工具免再问。</div></div>
+                            <div style="display:flex;gap:8px"><button onClick="{{ p.onApproveMcp }}" style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 13px;border-radius:7px;border:none;background:var(--ac,#0d9488);color:#fff;font-size:12px;font-weight:500;cursor:pointer" style-hover="background:var(--acDk,#0f766e)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M20 6 9 17l-5-5"></path></svg>授权本会话</button><button onClick="{{ p.onRejectMcp }}" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#b91c1c;font-size:12px;cursor:pointer" style-hover="background:#fef2f2">拒绝</button></div>
+                          </div>
+                        </sc-if>
                         <sc-if value="{{ p.open }}">
                           <div style="padding:10px 12px;border-top:1px solid #f0f0f0">
                             <div style="font-size:11px;color:#a3a3a3;margin-bottom:3px">参数</div>
                             <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#404040;background:#fafafa;border:1px solid #f0f0f0;border-radius:6px;padding:7px 9px;white-space:pre-wrap;word-break:break-all">{{ p.argText }}</div>
                             <div style="font-size:11px;color:#a3a3a3;margin:8px 0 3px">结果</div>
-                            <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#15803d;background:#f0fdf4;border:1px solid #dcfce7;border-radius:6px;padding:7px 9px;white-space:pre-wrap;word-break:break-all">{{ p.resultText }}</div>
+                            <div style="{{ p.resultStyle }}">{{ p.resultText }}</div>
                           </div>
                         </sc-if>
                       </div>
@@ -356,23 +389,36 @@ button { font-family: inherit; }
                         </div>
                         <div style="padding:8px 8px">
                           <sc-for list="{{ dispatch.tasks }}" as="t" hint-placeholder-count="6">
-                            <div style="display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:8px" style-hover="background:#fafafa">
-                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#737373;width:20px;flex:none">{{ t.id }}</span>
-                              <div style="width:24px;height:24px;border-radius:6px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none">{{ t.avatar }}</div>
-                              <div style="flex:1;min-width:0"><div style="font-size:12.5px;color:#171717;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.task }}</div><div style="font-size:11px;color:#a3a3a3;margin-top:1px">{{ t.agentName }}<sc-if value="{{ t.hasDep }}"> · 依赖 {{ t.depText }}</sc-if></div></div>
+                            <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 8px;border-radius:8px" style-hover="background:#fafafa">
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#737373;width:20px;flex:none;padding-top:3px">{{ t.id }}</span>
+                              <div style="width:24px;height:24px;border-radius:6px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;margin-top:1px">{{ t.avatar }}</div>
+                              <div style="flex:1;min-width:0">
+                                <div style="display:flex;align-items:center;gap:6px"><div style="font-size:12.5px;color:#171717;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{{ t.task }}</div><sc-if value="{{ t.isNew }}"><span style="font-size:9.5px;font-weight:700;color:#fff;background:var(--ac,#0d9488);padding:1px 6px;border-radius:5px;flex:none">新增</span></sc-if><sc-if value="{{ t.isChanged }}"><span style="font-size:9.5px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:0 5px;border-radius:5px;flex:none">已调整</span></sc-if></div>
+                                <div style="font-size:11px;color:#a3a3a3;margin-top:1px">{{ t.agentName }}<sc-if value="{{ t.hasDep }}"> · 依赖 {{ t.depText }}</sc-if></div>
+                                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+                                  <span style="{{ t.kindStyle }}">{{ t.kindLabel }}</span>
+                                  <sc-for list="{{ t.contracts }}" as="c" hint-placeholder-count="2"><span style="{{ c.style }}">{{ c.text }}</span></sc-for>
+                                </div>
+                              </div>
                               <span style="{{ t.pillStyle }}"><sc-if value="{{ t.spinning }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:11px;height:11px;animation:hmSpin .8s linear infinite"><path d="M21 12a9 9 0 1 1-6.2-8.5"></path></svg></sc-if>{{ t.pillLabel }}</span>
                             </div>
                           </sc-for>
                         </div>
                         <sc-if value="{{ dispatch.isReview }}" hint-placeholder-val="{{ true }}">
                           <div style="padding:11px 14px;border-top:1px solid #f0f0f0;background:#fafafa">
+                            <sc-if value="{{ dispatch.isRevising }}">
+                              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 11px;background:var(--acSoft,#f0fdfa);border:1px solid var(--acBd,#99f6e4);border-radius:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:13px;height:13px;flex:none;animation:hmSpin .8s linear infinite;color:var(--ac,#0d9488)"><path d="M21 12a9 9 0 1 1-6.2-8.5"></path></svg><span style="font-size:12px;color:var(--acDk,#0f766e);font-weight:500">正在按你的反馈重新规划…（buildReviseContext）</span></div>
+                            </sc-if>
+                            <sc-if value="{{ dispatch.isRevised }}">
+                              <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:10px;padding:8px 11px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px"><svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;flex:none;margin-top:1px"><path d="M20 6 9 17l-5-5"></path></svg><span style="font-size:11.5px;color:#15803d;line-height:1.5">{{ dispatch.reviseLabel }}</span></div>
+                            </sc-if>
                             <div style="display:flex;gap:8px">
                               <button onClick="{{ dispatch.onApprove }}" style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border-radius:7px;border:1px solid var(--ac,#0d9488);background:var(--ac,#0d9488);color:#fff;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:var(--acDk,#0f766e)">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M20 6 9 17l-5-5"></path></svg>执行计划
                               </button>
                               <button onClick="{{ dispatch.onReject }}" style="height:34px;padding:0 14px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#404040;font-size:13px;cursor:pointer" style-hover="background:#f5f5f5">拒绝</button>
                             </div>
-                            <div style="font-size:11px;color:#a3a3a3;margin-top:9px">💡 想改计划？在下方输入框用一句话描述（走 revise，不会新建 run）</div>
+                            <div style="font-size:11px;color:#a3a3a3;margin-top:9px">💡 想改计划？在下方输入框用一句话描述（走 revise 重规划，不会新建 run）。合约含 <span style="font-family:'JetBrains Mono',monospace;color:#7c3aed">⇢ 输入</span> / <span style="font-family:'JetBrains Mono',monospace;color:var(--acDk,#0f766e)">输出:类型</span> / <span style="font-family:'JetBrains Mono',monospace;color:#b45309">✓ 验收</span></div>
                           </div>
                         </sc-if>
                         <sc-if value="{{ dispatch.isExecuting }}">
@@ -543,6 +589,53 @@ button { font-family: inherit; }
       </div>
     </sc-if>
 
+    <!-- TASKS VIEW (main) -->
+    <sc-if value="{{ isTasks }}">
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fbfbfc">
+        <div style="height:57px;flex:none;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid #e5e5e5;background:#fff">
+          <div style="font-size:14px;font-weight:700;color:#171717">全部任务</div>
+          <div style="font-size:12px;color:#a3a3a3">{{ taskBoard.total }} 项 · 拖动卡片改变状态</div>
+          <div style="flex:1"></div>
+          <button onClick="{{ taskBoard.onNewTask }}" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--ac,#0d9488);background:var(--ac,#0d9488);color:#fff;font-size:12.5px;font-weight:500;cursor:pointer" style-hover="background:var(--acDk,#0f766e)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 5v14M5 12h14"></path></svg>新建任务</button>
+        </div>
+        <div style="flex:1;overflow-x:auto;overflow-y:hidden;padding:18px">
+          <div style="display:flex;gap:14px;height:100%;min-width:920px">
+            <sc-for list="{{ taskBoard.columns }}" as="col" hint-placeholder-count="4">
+              <div style="{{ col.colStyle }}" onDragOver="{{ col.onDragOver }}" onDrop="{{ col.onDrop }}">
+                <div style="{{ col.headStyle }}">
+                  <span style="{{ col.dotStyle }}"></span>
+                  <span style="font-size:13px;font-weight:700;color:#171717">{{ col.label }}</span>
+                  <span style="font-size:11.5px;color:#a3a3a3;font-family:'JetBrains Mono',monospace">{{ col.count }}</span>
+                </div>
+                <div style="flex:1;overflow-y:auto;padding:2px 4px">
+                  <sc-for list="{{ col.items }}" as="t" hint-placeholder-count="2">
+                    <div style="{{ t.cardStyle }}" draggable="{{ t.draggable }}" onDragStart="{{ t.onDragStart }}" onDragEnd="{{ t.onDragEnd }}">
+                      <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                        <span style="{{ t.srcStyle }}">{{ t.srcIcon }} {{ t.srcLabel }}</span>
+                        <sc-if value="{{ t.hasDispatchId }}"><span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:#a3a3a3">{{ t.dispatchId }}</span></sc-if>
+                        <div style="flex:1"></div>
+                        <button onClick="{{ t.onDelete }}" title="删除" style="width:20px;height:20px;border-radius:5px;border:none;background:transparent;color:#c4c4c4;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none" style-hover="background:#fef2f2;color:#dc2626"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg></button>
+                      </div>
+                      <div style="font-size:13px;font-weight:600;color:#171717;line-height:1.45">{{ t.title }}</div>
+                      <sc-if value="{{ t.hasNote }}"><div style="font-size:11.5px;color:#737373;line-height:1.5;margin-top:4px">{{ t.note }}</div></sc-if>
+                      <sc-if value="{{ t.hasArt }}">
+                        <button onClick="{{ t.onOpenArt }}" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:3px 8px;border:1px solid #e5e5e5;border-radius:6px;background:#fafafa;font-size:11px;color:#404040;cursor:pointer" style-hover="border-color:var(--ac,#0d9488);color:var(--acDk,#0f766e)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M12 2 2 7l10 5 10-5-10-5Z"></path><path d="m2 17 10 5 10-5M2 12l10 5 10-5"></path></svg>{{ t.artTitle }}</button>
+                      </sc-if>
+                      <div style="display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:8px;border-top:1px solid #f3f3f3">
+                        <sc-if value="{{ t.hasAgent }}"><span style="font-size:13px">{{ t.agentAvatar }}</span></sc-if>
+                        <button onClick="{{ t.onGoto }}" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;font-size:11px;color:#a3a3a3;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" style-hover="color:var(--ac,#0d9488)">↩ {{ t.convTitle }}</button>
+                        <span style="font-size:10.5px;color:#c4c4c4;flex:none">{{ t.updated }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
   </div>
 
   <!-- ARTIFACT PREVIEW PANEL (slide-in overlay) -->
@@ -619,13 +712,72 @@ button { font-family: inherit; }
             </div>
           </sc-if>
         </sc-if>
+
+        <!-- PPT DECK -->
+        <sc-if value="{{ preview.isPpt }}">
+          <sc-if value="{{ preview.showSource }}"><div style="padding:18px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#404040;white-space:pre-wrap;line-height:1.7">{{ preview.sourceText }}</div></sc-if>
+          <sc-if value="{{ preview.showRendered }}">
+            <div style="display:flex;height:100%">
+              <!-- thumbnail rail -->
+              <div style="width:132px;flex:none;border-right:1px solid #f0f0f0;background:#fafafa;overflow-y:auto;padding:10px 8px">
+                <sc-for list="{{ preview.thumbs }}" as="th" hint-placeholder-count="6">
+                  <button onClick="{{ th.onClick }}" style="{{ th.style }}">
+                    <span style="{{ th.thumbStyle }}">{{ th.no }}</span>
+                    <span style="font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ th.label }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <!-- slide canvas -->
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:16px 18px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                  <span style="font-size:11px;font-weight:600;color:#1d5fd6;background:#eef4ff;border:1px solid #d7e3fb;padding:2px 8px;border-radius:5px;font-family:'JetBrains Mono',monospace">{{ preview.slideLayout }}</span>
+                  <span style="font-size:11.5px;color:#94a3b8">主题 · {{ preview.themeName }}</span>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ preview.onPrev }}" style="width:26px;height:26px;border-radius:6px;border:1px solid #e5e5e5;background:#fff;color:#404040;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m15 18-6-6 6-6"></path></svg></button>
+                  <span style="font-size:12px;color:#64748b;font-family:'JetBrains Mono',monospace">{{ preview.slideNo }} / {{ preview.slideTotal }}</span>
+                  <button onClick="{{ preview.onNext }}" style="width:26px;height:26px;border-radius:6px;border:1px solid #e5e5e5;background:#fff;color:#404040;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m9 18 6-6-6-6"></path></svg></button>
+                </div>
+                <div style="position:relative;width:100%;aspect-ratio:16/9;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 6px 22px rgba(15,23,42,.1);overflow:hidden;display:flex;flex-direction:column;justify-content:{{ preview.slideJustify }};padding:30px 34px;gap:9px">
+                  <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#1d5fd6"></div>
+                  <sc-for list="{{ preview.slideBlocks }}" as="b" hint-placeholder-count="3">
+                    <sc-if value="{{ b.isEyebrow }}"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1d5fd6">{{ b.text }}</div></sc-if>
+                    <sc-if value="{{ b.isSectionNo }}"><div style="font-size:56px;font-weight:800;color:#1d5fd6;line-height:1;font-family:'JetBrains Mono',monospace">{{ b.text }}</div></sc-if>
+                    <sc-if value="{{ b.isTitle }}"><div style="font-size:30px;font-weight:800;color:#0b2f6b;line-height:1.15;letter-spacing:-.01em">{{ b.text }}</div></sc-if>
+                    <sc-if value="{{ b.isSubtitle }}"><div style="font-size:15px;color:#475569;line-height:1.5">{{ b.text }}</div></sc-if>
+                    <sc-if value="{{ b.isMeta }}"><div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px"><sc-for list="{{ b.metaItems }}" as="mi" hint-placeholder-count="2"><span style="font-size:12px;color:#94a3b8">{{ mi }}</span></sc-for></div></sc-if>
+                    <sc-if value="{{ b.isQuote }}"><div style="font-size:22px;font-weight:600;color:#0b2f6b;line-height:1.5;max-width:90%">“{{ b.text }}”</div></sc-if>
+                    <sc-if value="{{ b.isCite }}"><div style="font-size:13px;color:#64748b;margin-top:2px">{{ b.text }}</div></sc-if>
+                    <sc-if value="{{ b.isMetrics }}"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px"><sc-for list="{{ b.metrics }}" as="mt" hint-placeholder-count="4"><div style="border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;background:#f8fafc"><div style="font-size:22px;font-weight:800;color:#1d5fd6;font-family:'JetBrains Mono',monospace">{{ mt.value }}</div><div style="font-size:12.5px;font-weight:600;color:#334155;margin-top:2px">{{ mt.label }}</div><div style="font-size:11px;color:#94a3b8;margin-top:1px">{{ mt.note }}</div></div></sc-for></div></sc-if>
+                    <sc-if value="{{ b.isColumns }}"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px"><sc-for list="{{ b.columns }}" as="cl" hint-placeholder-count="2"><div><div style="font-size:13px;font-weight:700;color:#0b2f6b;padding-bottom:6px;border-bottom:2px solid #1d5fd6;margin-bottom:8px">{{ cl.head }}</div><sc-for list="{{ cl.bullets }}" as="bl" hint-placeholder-count="3"><div style="display:flex;gap:7px;font-size:12.5px;color:#334155;line-height:1.55;margin-bottom:5px"><span style="color:#1d5fd6;flex:none">▪</span><span>{{ bl }}</span></div></sc-for></div></sc-for></div></sc-if>
+                    <sc-if value="{{ b.isTimeline }}"><div style="display:flex;gap:6px;margin-top:8px"><sc-for list="{{ b.timeline }}" as="tl" hint-placeholder-count="4"><div style="flex:1;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:#1d5fd6;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-bottom:7px">{{ tl.t }}</div><div style="font-size:12.5px;font-weight:600;color:#0b2f6b">{{ tl.head }}</div><div style="font-size:11px;color:#94a3b8;margin-top:1px">{{ tl.note }}</div></div></sc-for></div></sc-if>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </sc-if>
       </div>
       <!-- footer actions -->
+      <sc-if value="{{ preview.notPpt }}">
       <div style="flex:none;display:flex;align-items:center;gap:8px;padding:11px 16px;border-top:1px solid #e5e5e5;background:#fafafa">
         <button style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#404040;font-size:12.5px;cursor:pointer" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>面板内编辑</button>
         <div style="flex:1"></div>
         <button onClick="{{ onExportDocx }}" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:7px;border:1px solid var(--ac,#0d9488);background:var(--ac,#0d9488);color:#fff;font-size:12.5px;font-weight:500;cursor:pointer" style-hover="background:var(--acDk,#0f766e)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>导出 Word</button>
       </div>
+      </sc-if>
+      <sc-if value="{{ preview.isPpt }}">
+      <div style="flex:none;border-top:1px solid #e5e5e5;background:#fafafa;padding:10px 16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+          <span style="font-size:11.5px;color:#737373;flex:none">导出模式</span>
+          <button onClick="{{ preview.onEditableMode }}" style="{{ preview.editableBtnStyle }}">可编辑 · 原生形状</button>
+          <button onClick="{{ preview.onVisualMode }}" style="{{ preview.visualBtnStyle }}">视觉优先 · 图底</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:11px;color:#a3a3a3;line-height:1.5;flex:1"><sc-if value="{{ preview.exportEditable }}">语义 block 转 PowerPoint 文本框 / 形状，PPT 里可继续编辑。</sc-if><sc-if value="{{ preview.exportVisual }}">高设计版式逐页转图、图底成片，保真优先、不可编辑。</sc-if></div>
+          <button onClick="{{ preview.onPptExport }}" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:7px;border:none;background:#1d5fd6;color:#fff;font-size:12.5px;font-weight:500;cursor:pointer;flex:none" style-hover="background:#1749a8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>导出 .pptx</button>
+        </div>
+      </div>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -942,6 +1094,26 @@ button { font-family: inherit; }
     </div>
   </sc-if>
 
+  <!-- NEW TASK COMPOSER -->
+  <sc-if value="{{ taskBoard.composer.open }}">
+    <div onClick="{{ taskBoard.onCloseComposer }}" style="position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:hmIn .15s ease">
+      <div onClick="{{ noop }}" style="width:460px;max-width:100%;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden;animation:hmIn .2s ease">
+        <div style="flex:none;display:flex;align-items:center;gap:11px;padding:16px 20px;border-bottom:1px solid #f0f0f0">
+          <div style="width:32px;height:32px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex:none;font-size:15px">✎</div>
+          <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:#171717">新建任务</div><div style="font-size:12px;color:#737373;margin-top:1px">手动来源 · 自动关联当前会话，不触发 run</div></div>
+          <button onClick="{{ taskBoard.onCloseComposer }}" style="width:30px;height:30px;border-radius:7px;border:none;background:transparent;color:#737373;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        </div>
+        <div style="flex:1;padding:18px 20px">
+          <div style="font-size:12px;font-weight:600;color:#404040;margin-bottom:6px">任务标题</div>
+          <input value="{{ taskBoard.composer.title }}" onInput="{{ taskBoard.onTaskTitle }}" placeholder="要做什么…" style="width:100%;height:38px;border:1px solid #e5e5e5;border-radius:9px;padding:0 12px;font-size:13.5px;outline:none;font-family:inherit;margin-bottom:14px" style-focus="border-color:var(--ac,#0d9488)"></input>
+          <div style="font-size:12px;font-weight:600;color:#404040;margin-bottom:6px">备注 · 可选</div>
+          <textarea value="{{ taskBoard.composer.note }}" onInput="{{ taskBoard.onTaskNote }}" rows="3" placeholder="补充说明、上下文、验收要点…" style="width:100%;border:1px solid #e5e5e5;border-radius:9px;padding:9px 12px;font-size:13px;outline:none;resize:none;font-family:inherit;line-height:1.6" style-focus="border-color:var(--ac,#0d9488)"></textarea>
+        </div>
+        <div style="flex:none;display:flex;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid #f0f0f0;background:#fafafa"><div style="flex:1"></div><button onClick="{{ taskBoard.onCloseComposer }}" style="height:38px;padding:0 16px;border-radius:9px;border:1px solid #e5e5e5;background:#fff;color:#404040;font-size:13px;cursor:pointer" style-hover="background:#f5f5f5">取消</button><button onClick="{{ taskBoard.onSubmitTask }}" style="height:38px;padding:0 18px;border-radius:9px;border:none;background:var(--ac,#0d9488);color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:var(--acDk,#0f766e)">建任务</button></div>
+      </div>
+    </div>
+  </sc-if>
+
   <!-- SETTINGS MODAL -->
   <sc-if value="{{ settings.open }}">
     <div onClick="{{ settings.onClose }}" style="position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:hmIn .15s ease">
@@ -960,7 +1132,29 @@ button { font-family: inherit; }
           <div style="font-size:12px;font-weight:600;color:#a3a3a3;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px">强调色</div>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><sc-for list="{{ settings.swatches }}" as="sw" hint-placeholder-count="4"><button onClick="{{ sw.onClick }}" title="{{ sw.name }}" style="{{ sw.style }}"></button></sc-for></div>
           <div style="font-size:12px;font-weight:600;color:#a3a3a3;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px">界面密度</div>
-          <div style="display:flex;gap:8px"><button onClick="{{ settings.onComfort }}" style="{{ settings.densityComfortStyle }}">舒适</button><button onClick="{{ settings.onCompact }}" style="{{ settings.densityCompactStyle }}">紧凑</button></div>
+          <div style="display:flex;gap:8px;margin-bottom:24px"><button onClick="{{ settings.onComfort }}" style="{{ settings.densityComfortStyle }}">舒适</button><button onClick="{{ settings.onCompact }}" style="{{ settings.densityCompactStyle }}">紧凑</button></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:#a3a3a3;letter-spacing:.04em;text-transform:uppercase;flex:1">外部 MCP Server</div><button onClick="{{ settings.onAddMcp }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#404040;font-size:12px;cursor:pointer" style-hover="background:#f5f5f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"></path></svg>登记</button></div>
+          <div style="display:flex;align-items:flex-start;gap:7px;padding:9px 11px;margin-bottom:11px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px"><svg viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;margin-top:1px"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4M12 17h.01"></path></svg><div style="font-size:11.5px;color:#92722a;line-height:1.55">外部 MCP 在 AgentHub 沙箱之外、以应用权限运行——这是你授予的信任。<span style="font-weight:600">首次审批</span> 的 server 每会话首次调用某工具时弹审批门。</div></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ settings.mcpServers }}" as="m" hint-placeholder-count="3">
+              <div style="border:1px solid #ececec;border-radius:10px;padding:11px 12px;background:#fff">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:13px;font-weight:600;color:#171717;font-family:'JetBrains Mono',monospace">{{ m.name }}</span>
+                  <span style="{{ m.transportStyle }}">{{ m.transportLabel }}</span>
+                  <span style="{{ m.trustStyle }}">{{ m.trustLabel }}</span>
+                  <div style="flex:1"></div>
+                  <span style="{{ m.statusStyle }}">{{ m.statusLabel }}</span>
+                  <button onClick="{{ m.onToggle }}" style="{{ m.toggleStyle }}"><span style="{{ m.knobStyle }}"></span></button>
+                </div>
+                <div style="font-size:11px;color:#a3a3a3;font-family:'JetBrains Mono',monospace;margin-top:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.target }}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+                  <span style="font-size:11.5px;color:#737373;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.toolsLabel }}</span>
+                  <sc-if value="{{ m.hasSecret }}"><span style="font-size:10.5px;color:#a3a3a3;font-family:'JetBrains Mono',monospace">🔑 {{ m.secret }}</span></sc-if>
+                  <button onClick="{{ m.onTest }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #e5e5e5;background:#fff;color:#404040;font-size:11.5px;cursor:pointer;flex:none" style-hover="background:#f5f5f5">测试连接</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
         </div>
         <div style="flex:none;display:flex;align-items:center;padding:14px 20px;border-top:1px solid #f0f0f0;background:#fafafa"><div style="flex:1;font-size:11px;color:#a3a3a3">本地原型 · 设置仅存于当前会话</div><button onClick="{{ settings.onClose }}" style="height:38px;padding:0 20px;border-radius:9px;border:none;background:var(--ac,#0d9488);color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:var(--acDk,#0f766e)">完成</button></div>
       </div>
@@ -1159,6 +1353,20 @@ class Component extends DCLogic {
       editDraft: '',
       msgMenuId: null,
       docVersionsBumped: {},
+      // --- feature: task board ---
+      tasks: data.tasks,
+      taskDrag: null,
+      taskFilter: 'all',
+      taskComposer: { open: false, title: '', note: '' },
+      // --- feature: plan review v2 ---
+      planRevision: 0,
+      planRevising: false,
+      // --- feature: external MCP ---
+      mcpApproved: {},
+      mcpModal: { open: false },
+      // --- feature: ppt DSL preview ---
+      pptSlide: 0,
+      pptExportMode: 'editable',
     };
   }
 
@@ -1288,6 +1496,53 @@ class Component extends DCLogic {
           { label: '基础设施', nodes: ['信创政务云', '双活机房'], arrow: false },
         ],
       },
+      art_deck: {
+        id: 'art_deck', type: 'ppt', title: '投标澄清汇报 · 评审沟通', author: '商务标', version: 2,
+        theme: { name: '政务蓝', bg: '#ffffff', ink: '#0f172a', accent: '#1d5fd6', soft: '#eff4fe', muted: '#64748b', band: '#0b2f6b' },
+        sourceText: '{\n  "theme": "gov-blue",\n  "slides": [\n    { "layout": "title", "title": "智慧政务一体化平台", "subtitle": "投标澄清汇报" },\n    { "layout": "metrics", "title": "方案要点", "metrics": [ … ] },\n    …\n  ]\n}',
+        slides: [
+          { layout: 'title', label: '封面', blocks: [
+            { type: 'eyebrow', text: '智慧政务一体化平台 · 投标' },
+            { type: 'title', text: '澄清答疑与方案汇报' },
+            { type: 'subtitle', text: '面向评审委员会 · 技术标 + 商务标一体呈现' },
+            { type: 'meta', items: ['汇报单位：XX 科技', '2024-07-24', '统稿：润色统稿'] },
+          ] },
+          { layout: 'section', label: '章节', blocks: [
+            { type: 'sectionNo', text: '01' },
+            { type: 'title', text: '总体架构与技术路线' },
+            { type: 'subtitle', text: '一云 · 一网 · 一平台 · N 应用' },
+          ] },
+          { layout: 'metrics', label: '指标', blocks: [
+            { type: 'title', text: '关键能力指标' },
+            { type: 'metrics', items: [
+              { value: '99.9%', label: '平台可用性', note: '双活机房 + 容器自愈' },
+              { value: '等保三级', label: '安全合规', note: '一个中心三重防护' },
+              { value: '≤ 200ms', label: '核心接口时延', note: 'P95 全链路压测' },
+              { value: '3 年', label: '质保周期', note: '7×24 运维保障' },
+            ] },
+          ] },
+          { layout: 'two-column', label: '双栏', blocks: [
+            { type: 'title', text: '实施路径 · 两阶段交付' },
+            { type: 'columns', cols: [
+              { head: '阶段一 · 底座', bullets: ['信创政务云 PaaS 底座上线', '统一身份 IAM + 单点登录', '数据资源目录建设'] },
+              { head: '阶段二 · 应用', bullets: ['一网通办 / 一网统管接入', '低代码支撑 N 类政务应用', '运营监测与安全审计闭环'] },
+            ] },
+          ] },
+          { layout: 'timeline', label: '时间线', blocks: [
+            { type: 'title', text: '里程碑计划' },
+            { type: 'timeline', items: [
+              { t: 'M1', head: '需求确认', note: '需求矩阵冻结' },
+              { t: 'M2', head: '底座就绪', note: '政务云 + IAM' },
+              { t: 'M4', head: '试点上线', note: '3 个高频事项' },
+              { t: 'M6', head: '全量交付', note: '验收 + 移交' },
+            ] },
+          ] },
+          { layout: 'quote', label: '引言', blocks: [
+            { type: 'quote', text: '让数据多跑路，群众少跑腿——以统一平台支撑"高效办成一件事"。' },
+            { type: 'cite', text: '— 项目建设总目标' },
+          ] },
+        ],
+      },
     };
 
     const conversations = [
@@ -1314,7 +1569,28 @@ class Component extends DCLogic {
       ],
     };
 
-    return { agents: ag, artifacts, conversations, messagesByConv, files };
+    return { agents: ag, artifacts, conversations, messagesByConv, files, tasks: this.buildTasks(), mcp: this.buildMcp() };
+  }
+
+  buildTasks() {
+    return [
+      { id: 'tk1', title: '复核否决项 R-11 / R-26 的响应措辞', note: '聚合消息里 Orchestrator 点名要人工复核', status: 'in_progress', source: 'agent', agentSlug: 'editor', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', artId: 'art_resp', updated: '10 分钟前' },
+      { id: 'tk2', title: '补充 7×24 SLA 细则（R-22 当前部分响应）', note: 'create_task：审校在终审时发现的后续事项', status: 'open', source: 'agent', agentSlug: 'editor', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', updated: '10 分钟前' },
+      { id: 'tk3', title: '撰写《第3章 总体技术方案》', note: '', status: 'done', source: 'dispatch', dispatchTaskId: 't1', agentSlug: 'tech', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', artId: 'art_doc3', updated: '刚刚' },
+      { id: 'tk4', title: '生成系统总体架构图', note: '依赖 t1 总体架构定稿', status: 'done', source: 'dispatch', dispatchTaskId: 't4', agentSlug: 'chart', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', artId: 'art_arch', updated: '刚刚' },
+      { id: 'tk5', title: '第 4 章供配电：补 2N 冗余 + 负荷计算表', note: '', status: 'in_progress', source: 'dispatch', dispatchTaskId: 't2', agentSlug: 'tech', convId: 'conv2', convTitle: '区政务数据中心机房工程', updated: '3 分钟前' },
+      { id: 'tk6', title: '核对 12345 热线报价表 v2 分项', note: '手动记的待办：开标前再过一遍', status: 'blocked', source: 'manual', convId: 'conv3', convTitle: '12345 市民热线智能化升级', updated: '昨天' },
+      { id: 'tk7', title: '整理近三年政务云类似业绩清单', note: '资格 R-07 佐证材料', status: 'open', source: 'manual', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', updated: '昨天' },
+      { id: 'tk8', title: '导出投标文件 Word 终稿并盖章分册', note: 'R-26 格式否决项：商务/技术/报价分册', status: 'open', source: 'manual', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', updated: '2 天前' },
+    ];
+  }
+
+  buildMcp() {
+    return [
+      { id: 'mcp_fs', name: 'filesystem', transport: 'stdio', target: 'npx -y @modelcontextprotocol/server-filesystem ./workspace', trust: 'always', enabled: true, status: 'connected', tools: ['read_file', 'write_file', 'list_dir', 'search_files'], secret: '' },
+      { id: 'mcp_gh', name: 'github', transport: 'stdio', target: 'npx -y @modelcontextprotocol/server-github', trust: 'ask', enabled: true, status: 'connected', tools: ['search_repos', 'get_file', 'create_issue', 'list_prs'], secret: 'GITHUB_TOKEN=••••••••3f2a' },
+      { id: 'mcp_pg', name: 'postgres', transport: 'sse', target: 'https://mcp.internal.lan/postgres/sse', trust: 'ask', enabled: false, status: 'idle', tools: ['query', 'list_tables', 'describe'], secret: 'Authorization=Bearer ••••••7c1' },
+    ];
   }
 
   heroMessages() {
@@ -1348,6 +1624,11 @@ class Component extends DCLogic {
         { type: 'text', runs: [{ t: '已补充 2N 冗余供配电小节，并附负荷计算表（含 20% 设计余量）。文件已更新。' }] },
         { type: 'tool', tool: 'fs_write', hint: '写入 第4章-供配电.md', arg: '{ "path": "docs/第4章-供配电.md", "bytes": 3120 }', result: '{ applied: "auto", path: "docs/第4章-供配电.md" }', status: 'done' },
       ] },
+      { id: 's3', role: 'user', time: '09:58', parts: [{ type: 'text', runs: [{ t: '顺便去 GitHub 上找两个同类机房负荷计算的开源实现做参照。' }] }] },
+      { id: 's4', role: 'agent', agent: 'tech', time: '09:58', parts: [
+        { type: 'text', runs: [{ t: '需要用到外部 GitHub MCP，先经你授权：' }] },
+        { type: 'tool', tool: 'mcp__github__search_repos', hint: '检索 “datacenter power load calculation”', arg: '{ "query": "datacenter power load calculation 2N", "sort": "stars", "limit": 5 }', result: '{ ok: true, items: 5, top: "opendcim/opendcim" }', status: 'pending_mcp', mcpServer: 'github' },
+      ] },
     ];
   }
 
@@ -1355,10 +1636,10 @@ class Component extends DCLogic {
   conv() { return this.state.data.conversations.find(c => c.id === this.state.activeConvId); }
   msgs() { return this.state.data.messagesByConv[this.state.activeConvId] || []; }
   agentName(slug) { const a = this.state.data.agents[slug]; return a ? a.name : slug; }
-  artGlyph(t) { return t === 'document' ? '📄' : t === 'structured_table' ? '▦' : t === 'diagram' ? '📊' : t === 'web_app' ? '🌐' : '📦'; }
+  artGlyph(t) { return t === 'document' ? '📄' : t === 'structured_table' ? '▦' : t === 'diagram' ? '📊' : t === 'web_app' ? '🌐' : t === 'ppt' ? '▤' : '📦'; }
   artLabel(t) { return t === 'document' ? 'document' : t === 'structured_table' ? 'structured_table' : t === 'diagram' ? 'diagram' : t; }
   artIconStyle(t) {
-    const m = { document: ['#eff6ff', '#2563eb'], structured_table: ['var(--acSoft,#f0fdfa)', 'var(--ac,#0d9488)'], diagram: ['#fef3f2', '#dc2626'] };
+    const m = { document: ['#eff6ff', '#2563eb'], structured_table: ['var(--acSoft,#f0fdfa)', 'var(--ac,#0d9488)'], diagram: ['#fef3f2', '#dc2626'], ppt: ['#eef4ff', '#1d5fd6'] };
     const c = m[t] || ['#f5f5f5', '#737373'];
     return 'width:36px;height:36px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:' + c[0];
   }
@@ -1366,6 +1647,28 @@ class Component extends DCLogic {
   // ---------- HANDLERS ----------
   selectConv = (id) => { const c = this.state.data.conversations.find(x => x.id === id); if (c) c.unread = 0; this.setState({ activeConvId: id, view: 'chat', tokenOpen: false, preview: { open: false, artifactId: null, versionIdx: 0, tab: 'preview', diff: false } }); };
   setView = (v) => this.setState({ view: v, tokenOpen: false });
+
+  // ---------- TASK BOARD ----------
+  setTaskFilter = (f) => this.setState({ taskFilter: f });
+  moveTask = (id, status) => this.setState(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, status, updated: '刚刚' } : t), taskDrag: null }));
+  onTaskDragStart = (id) => this.setState({ taskDrag: id });
+  onTaskDragEnd = () => this.setState({ taskDrag: null });
+  onTaskDrop = (status) => { const id = this.state.taskDrag; if (id) this.moveTask(id, status); };
+  openTaskComposer = () => this.setState({ taskComposer: { open: true, title: '', note: '' } });
+  closeTaskComposer = () => this.setState({ taskComposer: { open: false, title: '', note: '' } });
+  onTaskTitle = (e) => { const v = e.target.value; this.setState(s => ({ taskComposer: { ...s.taskComposer, title: v } })); };
+  onTaskNote = (e) => { const v = e.target.value; this.setState(s => ({ taskComposer: { ...s.taskComposer, note: v } })); };
+  submitTask = () => {
+    const c = this.state.taskComposer; const title = c.title.trim();
+    if (!title) { this.showToast('请填写任务标题'); return; }
+    const conv = this.conv();
+    const task = { id: 'tk_' + Date.now(), title, note: c.note.trim(), status: 'open', source: 'manual', convId: this.state.activeConvId, convTitle: conv ? conv.title : '（未关联会话）', updated: '刚刚' };
+    this.setState(s => ({ tasks: [task, ...s.tasks], taskComposer: { open: false, title: '', note: '' } }));
+    this.showToast('已建任务 · 手动来源');
+  };
+  deleteTask = (id) => this.setState(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+  gotoTaskConv = (convId) => { const c = this.state.data.conversations.find(x => x.id === convId); if (c) c.unread = 0; this.setState({ activeConvId: convId, view: 'chat', tokenOpen: false, preview: { open: false, artifactId: null } }); };
+
   onConvSearch = (e) => this.setState({ convSearch: e.target.value });
   toggleArchived = () => this.setState({ showArchived: !this.state.showArchived });
   toggleThinking = (id) => this.setState(s => ({ openThinking: { ...s.openThinking, [id]: !s.openThinking[id] } }));
@@ -1554,6 +1857,11 @@ class Component extends DCLogic {
   // settings + write approval
   openSettings = () => this.setState({ settingsOpen: true });
   closeSettings = () => this.setState({ settingsOpen: false });
+  toggleMcpServer = (id) => this.setState(s => { const mcp = s.data.mcp.map(m => m.id === id ? { ...m, enabled: !m.enabled, status: !m.enabled ? 'connected' : 'idle' } : m); return { data: { ...s.data, mcp } }; });
+  testMcpServer = (id) => { const m = this.state.data.mcp.find(x => x.id === id); this.showToast('测试连接 ' + m.name + ' · connect + listTools 预览 ' + m.tools.length + ' 个工具'); };
+  addMcpServer = () => this.showToast('（原型）登记外部 MCP server → 全局 mcp_servers 表，Agent 侧再勾选启用');
+  approveMcp = (convId, server) => { this.setState(s => ({ mcpApproved: { ...s.mcpApproved, [convId + ':' + server]: true } })); this.showToast('已授权本会话调用 mcp__' + server + '__* · 后续免再问'); };
+  rejectMcp = (convId, server) => { this.setState(s => ({ mcpApproved: { ...s.mcpApproved, [convId + ':' + server]: 'rejected' } })); this.showToast('已拒绝 · 该次调用返回 isError'); };
   openWriteModal = () => this.setState({ writeModalOpen: true });
   closeWriteModal = () => this.setState({ writeModalOpen: false });
   approveWrite = () => { this.setState({ writeModalOpen: false, pendingResolved: true }); this.showToast('已批准写入：第3章-总体技术方案.md'); };
@@ -1568,21 +1876,57 @@ class Component extends DCLogic {
   setPreviewTab = (t) => this.setState({ preview: { ...this.state.preview, tab: t, diff: false } });
   setPreviewVersion = (e) => this.setState({ preview: { ...this.state.preview, versionIdx: parseInt(e.target.value, 10), diff: false } });
   toggleDiff = () => this.setState({ preview: { ...this.state.preview, diff: !this.state.preview.diff, tab: 'preview' } });
+  setPptSlide = (i) => this.setState({ pptSlide: i });
+  pptPrev = () => this.setState(s => ({ pptSlide: Math.max(0, s.pptSlide - 1) }));
+  pptNext = () => { const a = this.state.data.artifacts.art_deck; this.setState(s => ({ pptSlide: Math.min(a.slides.length - 1, s.pptSlide + 1) })); };
+  setPptExportMode = (mode) => this.setState({ pptExportMode: mode });
+  doPptExport = () => this.showToast(this.state.pptExportMode === 'editable' ? 'ppt-export：语义 block → 原生 PowerPoint 形状 / 文本框（可继续编辑）' : '视觉优先：HTML/CSS 版式 → 逐页转图 → 图底 .pptx（高保真、不可编辑）');
 
   approvePlan = () => {
-    this.setState({ planStatus: 'executing', taskStatus: { t1: 'running', t2: 'running', t3: 'running', t5: 'running', t4: 'pending', t6: 'pending' } });
+    const rev = this.state.planRevision;
+    const initial = { t1: 'running', t2: 'running', t3: 'running', t5: 'running', t4: 'pending', t6: 'pending' };
+    if (rev >= 1) initial.t7 = 'pending';
+    this.setState({ planStatus: 'executing', taskStatus: initial });
+    this.syncDispatchToBoard('in_progress');
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t1: 'complete' } })), 1500);
     this.later(() => { this.appendMsg('conv1', this.childMsg('tech', '已完成《第3章 总体技术方案》初稿（含安全合规小节）。', 'art_doc3')); }, 1600);
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t5: 'complete' } })), 2100);
     this.later(() => { this.appendMsg('conv1', this.childMsg('comm', '响应对照表已生成，逐条对应需求矩阵。', 'art_resp')); }, 2200);
+    if (rev >= 1) {
+      this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t7: 'running' } })), 2300);
+      this.later(() => { this.setState(s => ({ taskStatus: { ...s.taskStatus, t7: 'complete' } })); this.appendMsg('conv1', this.childMsg('comm', 'R-22 已补 7×24 SLA 细则，并回填响应对照表为「完全响应」。', 'art_resp')); }, 3600);
+    }
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t2: 'complete', t3: 'complete' } })), 2700);
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t4: 'running' } })), 2900);
     this.later(() => { this.setState(s => ({ taskStatus: { ...s.taskStatus, t4: 'complete' } })); this.appendMsg('conv1', this.childMsg('chart', '基于已定稿的总体架构，生成系统总体架构图。', 'art_arch')); }, 4400);
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t6: 'running' } })), 4600);
     this.later(() => this.setState(s => ({ taskStatus: { ...s.taskStatus, t6: 'complete' } })), 6000);
-    this.later(() => { this.setState({ planStatus: 'done' }); this.appendMsg('conv1', this.aggregateMsg()); }, 6300);
+    this.later(() => { this.setState({ planStatus: 'done' }); this.syncDispatchToBoard('done'); this.appendMsg('conv1', this.aggregateMsg()); }, 6300);
   };
   rejectPlan = () => { this.setState({ planStatus: 'rejected' }); this.showToast('已拒绝该计划，未启动任何子任务'); };
+  revisePlan = (feedback) => {
+    this.setState({ planRevising: true });
+    this.showToast('已作为 revise 反馈提交 · Orchestrator 重规划中');
+    this.later(() => {
+      const already = this.state.tasks.some(t => t.dispatchTaskId === 't7');
+      this.setState(s => ({
+        planRevising: false, planRevision: s.planRevision + 1,
+        tasks: already ? s.tasks : [{ id: 'tk_t7', title: '补充 7×24 SLA 细则并回填响应对照表（R-22）', note: 'Orchestrator 重规划新增 · 依赖 t5', status: 'open', source: 'dispatch', dispatchTaskId: 't7', agentSlug: 'comm', convId: 'conv1', convTitle: '「智慧政务一体化平台」投标技术方案', updated: '刚刚' }, ...s.tasks],
+      }));
+      this.appendMsg('conv1', { id: 'rv_' + Date.now(), role: 'agent', agent: 'orch', time: '现在', anim: true, parts: [
+        { type: 'thinking', label: '据反馈重新规划…', content: '读取 revise 反馈 → 保留已认可的 t1–t5 → 针对 R-22（质保 / SLA）新增 t7，并把 t6 的依赖与验收标准补齐 → 重新编译并校验 DAG（compileDispatchPlan：无环、依赖存在、输入引用匹配上游产出）。' },
+        { type: 'text', runs: [{ t: '已根据你的反馈重规划：新增 ' }, { t: 't7「7×24 SLA 细则」', b: true }, { t: '（商务标，依赖 t5），t6 依赖与验收标准同步更新。计划已重新进入审批，请复核后点「执行计划」。' }] },
+      ] });
+    }, 1150);
+  };
+  syncDispatchToBoard = (phase) => {
+    this.setState(s => ({ tasks: s.tasks.map(t => {
+      if (t.source !== 'dispatch' || t.convId !== 'conv1') return t;
+      if (phase === 'in_progress' && t.status === 'open') return { ...t, status: 'in_progress', updated: '刚刚' };
+      if (phase === 'done') return { ...t, status: 'done', updated: '刚刚' };
+      return t;
+    }) }));
+  };
 
   childMsg(slug, text, artId) {
     return { id: 'c_' + slug + '_' + Date.now(), role: 'agent', agent: slug, time: '10:3' + (3 + Math.floor(Math.random() * 6)), anim: true, parts: [{ type: 'text', runs: [{ t: text }] }, { type: 'artifact', artifactId: artId }] };
@@ -1622,6 +1966,9 @@ class Component extends DCLogic {
     const userMsg = { id: 'u_' + Date.now(), role: 'user', time: '现在', anim: true, parts: userParts };
     this.appendMsg(convId, userMsg);
     this.setState({ input: '', mentionOpen: false, quoteTarget: null });
+
+    // plan review (spec 17): while a plan is pending review, route composer to revise, not a new run
+    if (convId === 'conv1' && this.state.planStatus === 'review') { this.revisePlan(txt); return; }
 
     // @file directed edit → diff card
     const fileHit = this.fileChoices().find(f => txt.includes('@' + f.name));
@@ -1787,7 +2134,7 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const v = s.view;
-    const isChat = v === 'chat', isAgents = v === 'agents', isArt = v === 'artifacts', isUsage = v === 'usage';
+    const isChat = v === 'chat', isAgents = v === 'agents', isArt = v === 'artifacts', isUsage = v === 'usage', isTasks = v === 'tasks';
     const conv = this.conv();
     const allMsgs = isChat ? this.msgs() : [];
 
@@ -1795,13 +2142,15 @@ class Component extends DCLogic {
       { key: 'chat', label: '会话', isChat: true },
       { key: 'agents', label: 'Agent 库', isAgents: true },
       { key: 'artifacts', label: '产物库', isArt: true },
+      { key: 'tasks', label: '任务看板', isTasks: true },
       { key: 'usage', label: '用量分析', isUsage: true },
     ];
     const totalUnread = s.data.conversations.reduce((n, c) => n + (c.archived ? 0 : c.unread), 0);
+    const activeTaskCount = s.tasks.filter(t => t.status === 'in_progress').length;
     const nav = navDef.map(n => ({
       ...n,
       onClick: () => this.setView(n.key),
-      badge: n.isChat && totalUnread ? totalUnread : 0,
+      badge: n.isChat && totalUnread ? totalUnread : (n.isTasks && activeTaskCount ? activeTaskCount : 0),
       style: 'position:relative;width:40px;height:40px;border-radius:9px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;background:' + (v === n.key ? '#fff' : 'transparent') + ';color:' + (v === n.key ? 'var(--ac,#0d9488)' : '#737373') + ';box-shadow:' + (v === n.key ? '0 1px 2px rgba(0,0,0,.08),inset 0 0 0 1px #e5e5e5' : 'none'),
     }));
 
@@ -1882,7 +2231,7 @@ class Component extends DCLogic {
       if (isUser) {
         const editing = s.editingMsgId === m.id;
         return {
-          id: m.id, isUser: true, showAvatar: false, showName: false, ops, editing, showParts: !editing, editDraft: s.editDraft,
+          id: m.id, isNormal: true, isUser: true, showAvatar: false, showName: false, ops, editing, showParts: !editing, editDraft: s.editDraft,
           onEditDraft: this.onEditDraft, onSaveEdit: this.saveEdit, onCancelEdit: this.cancelEdit,
           rowStyle: animCss + hlCss + 'display:flex;flex-direction:column;align-items:flex-end',
           colStyle: 'max-width:78%;display:flex;flex-direction:column;align-items:flex-end;position:relative',
@@ -1890,7 +2239,7 @@ class Component extends DCLogic {
         };
       }
       return {
-        id: m.id, isUser: false, showAvatar: true, showName: groupTop, ops, editing: false, showParts: true,
+        id: m.id, isNormal: true, isUser: false, showAvatar: true, showName: groupTop, ops, editing: false, showParts: true,
         avatar: a ? a.avatar : '🤖', name: a ? a.name : 'Agent', isOrch, time: m.time,
         rowStyle: animCss + hlCss + 'display:flex;gap:11px;align-items:flex-start',
         avStyle: 'width:32px;height:32px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;margin-top:1px;background:' + (isOrch ? 'var(--acSoft,#f0fdfa)' : '#f3f3f3') + ';border:1px solid ' + (isOrch ? 'var(--acBd,#99f6e4)' : '#ececec') + (groupTop ? '' : ';visibility:hidden'),
@@ -1912,7 +2261,7 @@ class Component extends DCLogic {
       indent: f.indent ? 'padding-left:' + (8 + f.indent * 16) + 'px' : '',
       onClick: () => { if (f.art) this.openArtifact(f.art); else this.showToast('打开文件：' + f.name); },
     }));
-    const dockArtList = ['art_matrix', 'art_doc3', 'art_arch', 'art_resp'].map(id => { const a = s.data.artifacts[id]; return { title: a.title, glyph: this.artGlyph(a.type), meta: this.artLabel(a.type) + ' · v' + a.version, iconStyle: this.artIconStyle(a.type).replace('36px', '32px').replace('36px', '32px'), onOpen: () => this.openArtifact(id) }; });
+    const dockArtList = ['art_matrix', 'art_doc3', 'art_deck', 'art_arch', 'art_resp'].map(id => { const a = s.data.artifacts[id]; return { title: a.title, glyph: this.artGlyph(a.type), meta: this.artLabel(a.type) + ' · v' + a.version, iconStyle: this.artIconStyle(a.type).replace('36px', '32px').replace('36px', '32px'), onOpen: () => this.openArtifact(id) }; });
     const dock = {
       isFiles: s.dockTab === 'files', isArtifacts: s.dockTab === 'artifacts',
       quota: s.dockTab === 'files' ? '6.4M / 100M' : dockArtList.length + ' 件',
@@ -1962,6 +2311,7 @@ class Component extends DCLogic {
       dockBtnStyle: 'width:30px;height:30px;border-radius:7px;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;background:' + (s.dockOpen ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (s.dockOpen ? 'var(--ac,#0d9488)' : '#404040'),
       hasPinnedMsg, pinnedMsgText, pinnedMsgCount, onJumpPinned: firstPin ? () => this.jumpToMsg(firstPin.id) : (() => {}),
       isUsage, usage,
+      isTasks, taskBoard: this.taskBoardVM(),
       onCloseMsgMenu: this.closeMsgMenu,
       quotePreview, onClearQuote: this.clearQuote,
       messages, dispatch: dispatchVM,
@@ -1999,9 +2349,23 @@ class Component extends DCLogic {
     if (p.type === 'tool') {
       const open = !!s.openTool[m.id + '-' + pi];
       const isBash = p.tool === 'bash';
+      const isMcp = p.tool.indexOf('mcp__') === 0;
+      const mcpServer = p.mcpServer || (isMcp ? (p.tool.split('__')[1] || '') : '');
+      const approvedState = isMcp ? s.mcpApproved[s.activeConvId + ':' + mcpServer] : true;
+      const pendingMcp = p.status === 'pending_mcp' && approvedState !== true && approvedState !== 'rejected';
+      const rejectedMcp = p.status === 'pending_mcp' && approvedState === 'rejected';
       const running = p.status === 'running';
-      return { isTool: true, open, isBash, isGenericTool: !isBash, toolName: p.tool, toolHint: p.hint, argText: p.arg, resultText: p.result,
-        statusLabel: running ? '调用中' : '已完成', statusStyle: 'font-size:11px;padding:1px 7px;border-radius:5px;flex:none;background:' + (running ? '#fff7ed' : '#f0fdf4') + ';color:' + (running ? '#c2410c' : '#16a34a'),
+      const statusLabel = pendingMcp ? '待授权' : rejectedMcp ? '已拒绝' : running ? '调用中' : '已完成';
+      const sc = pendingMcp ? ['#fffbeb', '#b45309'] : rejectedMcp ? ['#fef2f2', '#b91c1c'] : running ? ['#fff7ed', '#c2410c'] : ['#f0fdf4', '#16a34a'];
+      const okResult = !rejectedMcp;
+      return { isTool: true, open: open || pendingMcp, isBash, isMcp, isGenericTool: !isBash && !isMcp, mcpServer,
+        cardStyle: 'margin-bottom:7px;border:1px solid ' + (pendingMcp ? '#fde68a' : (isMcp ? '#ede9fe' : '#e5e5e5')) + ';border-radius:9px;background:#fff;overflow:hidden;max-width:520px',
+        toolName: p.tool, toolHint: p.hint, argText: p.arg,
+        resultText: rejectedMcp ? '{ isError: true, reason: "user_rejected_mcp_tool" }' : p.result,
+        okResult, resultStyle: 'font-family:\'JetBrains Mono\',monospace;font-size:11.5px;white-space:pre-wrap;word-break:break-all;border-radius:6px;padding:7px 9px;' + (okResult ? 'color:#15803d;background:#f0fdf4;border:1px solid #dcfce7' : 'color:#b91c1c;background:#fef2f2;border:1px solid #fecaca'),
+        pendingMcp, rejectedMcp,
+        onApproveMcp: () => this.approveMcp(s.activeConvId, mcpServer), onRejectMcp: () => this.rejectMcp(s.activeConvId, mcpServer),
+        statusLabel, statusStyle: 'font-size:11px;padding:1px 7px;border-radius:5px;flex:none;background:' + sc[0] + ';color:' + sc[1],
         onToggle: () => this.toggleTool(m.id + '-' + pi), chevStyle: 'width:14px;height:14px;flex:none;transition:transform .15s;transform:rotate(' + (open ? '180' : '0') + 'deg)' };
     }
     if (p.type === 'artifact') {
@@ -2024,20 +2388,30 @@ class Component extends DCLogic {
   dispatchVM() {
     const s = this.state;
     const ts = s.taskStatus;
-    const defs = [
-      { id: 't1', slug: 'tech', task: '撰写《第3章 总体技术方案》（总体架构 + 技术路线）', dep: [] },
-      { id: 't2', slug: 'tech', task: '撰写《第4章 信息安全与等保合规》', dep: [] },
-      { id: 't3', slug: 'comm', task: '装配资质 / 业绩 + 报价表骨架（第6章）', dep: [] },
-      { id: 't5', slug: 'comm', task: '生成响应对照表（逐条对应需求矩阵）', dep: [] },
-      { id: 't4', slug: 'chart', task: '绘制系统总体架构图', dep: ['t1'] },
-      { id: 't6', slug: 'editor', task: '全文术语 / 口吻一致性 + 格式收口', dep: ['t1', 't2', 't3', 't4', 't5'] },
+    const rev = s.planRevision;
+    const base = [
+      { id: 't1', slug: 'tech', task: '撰写《第3章 总体技术方案》（总体架构 + 技术路线）', dep: [], kind: 'doc', out: [{ k: 'ch3', t: 'document' }], inp: [{ ref: 'matrix.reqs' }], crit: 2 },
+      { id: 't2', slug: 'tech', task: '撰写《第4章 信息安全与等保合规》', dep: [], kind: 'doc', out: [{ k: 'ch4', t: 'document' }], inp: [], crit: 1 },
+      { id: 't3', slug: 'comm', task: '装配资质 / 业绩 + 报价表骨架（第6章）', dep: [], kind: 'doc', out: [{ k: 'ch6', t: 'document' }], inp: [], crit: 1 },
+      { id: 't5', slug: 'comm', task: '生成响应对照表（逐条对应需求矩阵）', dep: [], kind: 'analysis', out: [{ k: 'resp', t: 'table' }], inp: [], crit: 1 },
+      { id: 't4', slug: 'chart', task: '绘制系统总体架构图', dep: ['t1'], kind: 'design', out: [{ k: 'arch', t: 'diagram' }], inp: [{ ref: 't1.ch3' }], crit: 1 },
+      { id: 't6', slug: 'editor', task: '全文术语 / 口吻一致性 + 格式收口', dep: ['t1', 't2', 't3', 't4', 't5'], kind: 'review', out: [{ k: 'final', t: 'document' }], inp: [{ ref: 't1.ch3' }, { ref: 't3.ch6' }], crit: 2 },
     ];
+    let defs = base;
+    if (rev >= 1) {
+      const t7 = { id: 't7', slug: 'comm', task: '补充 7×24 SLA 细则并回填响应对照表（R-22）', dep: ['t5'], kind: 'doc', out: [{ k: 'sla', t: 'document' }], inp: [{ ref: 't5.resp' }], crit: 1, isNew: true };
+      defs = base.map(d => d.id === 't6' ? { ...d, dep: [...d.dep, 't7'], inp: [...d.inp, { ref: 't7.sla' }], crit: 3, isChanged: true } : d);
+      const i6 = defs.findIndex(d => d.id === 't6');
+      defs = [...defs.slice(0, i6), t7, ...defs.slice(i6)];
+    }
+    const kindMeta = { doc: '📄 doc', analysis: '📊 analysis', design: '✎ design', review: '🔍 review', code: '❯ code', test: '✓ test' };
     const pill = (st) => {
       const map = { running: ['var(--acSoft,#f0fdfa)', 'var(--ac,#0d9488)', '运行中'], complete: ['#f0fdf4', '#16a34a', '完成'], pending: ['#f5f5f5', '#a3a3a3', '排队'], failed: ['#fef2f2', '#dc2626', '失败'], skipped: ['#f5f5f5', '#a3a3a3', '跳过'] };
       const c = map[st] || map.pending;
       return { bg: c[0], fg: c[1], label: c[2] };
     };
     const phase = s.planStatus;
+    const chip = (bg, fg, bd) => 'display:inline-flex;align-items:center;gap:3px;font-size:10px;font-family:\'JetBrains Mono\',monospace;padding:1px 6px;border-radius:5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + bd;
     const tasks = defs.map(d => {
       const st = phase === 'review' ? 'idle' : (ts[d.id] || 'pending');
       const pl = phase === 'review' ? { bg: '#f5f5f5', fg: '#737373', label: '待执行' } : pill(st);
@@ -2045,19 +2419,29 @@ class Component extends DCLogic {
         id: d.id, avatar: s.data.agents[d.slug].avatar, agentName: s.data.agents[d.slug].name, task: d.task,
         hasDep: d.dep.length > 0, depText: d.dep.join(', '),
         spinning: st === 'running', pillLabel: pl.label,
-        pillStyle: 'display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 9px;border-radius:6px;flex:none;background:' + pl.bg + ';color:' + pl.fg,
+        pillStyle: 'display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 9px;border-radius:6px;flex:none;margin-top:1px;background:' + pl.bg + ';color:' + pl.fg,
+        isNew: !!d.isNew, isChanged: !!d.isChanged,
+        kindLabel: kindMeta[d.kind] || d.kind, kindStyle: chip('#f8fafc', '#64748b', '#e2e8f0'),
+        contracts: [
+          ...d.inp.map(x => ({ text: '⇢ ' + x.ref, style: chip('#f5f3ff', '#7c3aed', '#ddd6fe') })),
+          ...d.out.map(x => ({ text: x.k + ':' + x.t, style: chip('var(--acSoft,#f0fdfa)', 'var(--acDk,#0f766e)', 'var(--acBd,#99f6e4)') })),
+          { text: '✓ ' + d.crit + ' 验收', style: chip('#fffbeb', '#b45309', '#fde68a') },
+        ],
       };
     });
+    const waves = rev >= 1 ? 4 : 3;
     const headMap = { review: ['#fffaf2', '#b45309', '待审批'], executing: ['var(--acSoft,#f0fdfa)', 'var(--ac,#0d9488)', '执行中'], done: ['#f0fdf4', '#16a34a', '已完成'], rejected: ['#fef2f2', '#dc2626', '已拒绝'] };
     const hc = headMap[phase] || headMap.review;
     return {
-      subtitle: '6 个子任务 · 3 波次 · 最大并发 4',
+      subtitle: defs.length + ' 个子任务 · ' + waves + ' 波次 · 最大并发 4' + (rev >= 1 ? ' · 第 ' + (rev + 1) + ' 版' : ''),
       tasks,
       headStatus: hc[2], headStatusStyle: 'font-size:11px;font-weight:600;padding:2px 9px;border-radius:6px;flex:none;background:' + hc[0] + ';color:' + hc[1],
       isReview: phase === 'review', isExecuting: phase === 'executing', isDone: phase === 'done',
+      isRevising: s.planRevising, isRevised: rev >= 1,
+      reviseLabel: rev >= 1 ? '已按你的反馈重规划：新增 t7（SLA 细则），t6 依赖与验收标准同步更新' : '',
       onApprove: this.approvePlan, onReject: this.rejectPlan,
       execLabel: '正在按 DAG 调度子任务（同波次并行，受全局并发上限约束）…',
-      doneLabel: '5/6 任务成功 · 已聚合为最终答复 · 0 写冲突',
+      doneLabel: (rev >= 1 ? '6/7' : '5/6') + ' 任务成功 · 已聚合为最终答复 · 0 写冲突',
     };
   }
 
@@ -2066,7 +2450,7 @@ class Component extends DCLogic {
     if (!pv.open) return { open: false };
     const a = s.data.artifacts[pv.artifactId];
     if (!a) return { open: false };
-    const isDoc = a.type === 'document', isTable = a.type === 'structured_table', isDiagram = a.type === 'diagram';
+    const isDoc = a.type === 'document', isTable = a.type === 'structured_table', isDiagram = a.type === 'diagram', isPpt = a.type === 'ppt';
     const hasVersions = isDoc && a.versions && a.versions.length > 1;
     const curV = isDoc && a.versions ? a.versions[pv.versionIdx].v : a.version;
     const showSource = pv.tab === 'source' && !pv.diff;
@@ -2076,304 +2460,9 @@ class Component extends DCLogic {
     const base = {
       open: true, title: a.title, author: a.author, typeLabel: this.artLabel(a.type),
       glyph: this.artGlyph(a.type), iconStyle: 'width:36px;height:36px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:' + (this.artIconStyle(a.type).split('background:')[1]),
-      isDocument: isDoc, isTable, isDiagram,
+      isDocument: isDoc, isTable, isDiagram, isPpt, notPpt: !isPpt,
       showSource, showDiff, showRendered,
       sourceText: a.sourceText || '',
-      sourceTabLabel: isDoc ? '源码 (md)' : isDiagram ? '源码 (mermaid)' : '源码',
+      sourceTabLabel: isDoc ? '源码 (md)' : isDiagram ? '源码 (mermaid)' : isPpt ? '源码 (JSON)' : '源码',
       onTabPreview: () => this.setPreviewTab('preview'), onTabSource: () => this.setPreviewTab('source'),
-      previewTabStyle: this.tabStyle(!showSource), sourceTabStyle: this.tabStyle(showSource),
-      hasVersions, curV, prevV: curV - 1, versionIdx: pv.versionIdx,
-      versionOpts: hasVersions ? a.versions.map((vv, i) => ({ idx: i, label: 'v' + vv.v + (i === a.versions.length - 1 ? ' (最新)' : '') })) : [],
-      onVersion: this.setPreviewVersion, onToggleDiff: this.toggleDiff,
-      diffBtnStyle: 'display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid ' + (pv.diff ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (pv.diff ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (pv.diff ? 'var(--ac,#0d9488)' : '#404040'),
-    };
-
-    if (isDoc) {
-      const blocks = (a.versions[pv.versionIdx].blocks).map(b => ({
-        isH1: b.type === 'h1', isH2: b.type === 'h2', isH3: b.type === 'h3', isP: b.type === 'p', isUl: b.type === 'ul', isQuote: b.type === 'quote', isTable: b.type === 'table',
-        text: b.text, items: b.items || [], cols: b.cols || [], rows: (b.rows || []).map(r => ({ cells: r.cells })),
-      }));
-      const diffBlocks = (a.diffBlocks || []).map(b => ({
-        text: b.text,
-        style: 'font-size:13px;line-height:1.7;padding:6px 12px;border-radius:6px;margin-bottom:4px;' + (b.st === 'add' ? 'background:#f0fdf4;color:#15803d;border-left:3px solid #16a34a' : b.st === 'rem' ? 'background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626;text-decoration:line-through;opacity:.75' : 'background:#fafafa;color:#404040;border-left:3px solid #e5e5e5'),
-      }));
-      return { ...base, blocks, diffBlocks };
-    }
-    if (isTable) {
-      const cols = a.cols.map(c => ({ label: c.label, style: 'text-align:' + (c.center ? 'center' : 'left') + ';padding:9px 12px;background:#fafafa;border-bottom:1px solid #e5e5e5;font-weight:600;color:#404040;position:sticky;top:0;white-space:nowrap;min-width:' + (c.w || 80) + 'px' }));
-      const rows = a.rows.map(r => {
-        const cells = r.map((val, ci) => {
-          const col = a.cols[ci];
-          if (col.key === 'substantive') {
-            if (val === true) return { isBadge: true, text: '否决项', badgeStyle: 'font-size:11px;font-weight:600;padding:1px 8px;border-radius:5px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca', style: 'padding:8px 12px;border-bottom:1px solid #f3f3f3;text-align:center' };
-            return { isText: true, text: '—', style: 'padding:8px 12px;border-bottom:1px solid #f3f3f3;text-align:center;color:#c4c4c4' };
-          }
-          if (col.key === 'status') {
-            const full = val === 'resp_full';
-            return { isBadge: true, text: full ? '完全响应' : '部分响应', badgeStyle: 'font-size:11px;font-weight:500;padding:1px 8px;border-radius:5px;border:1px solid ' + (full ? '#bbf7d0' : '#fde68a') + ';background:' + (full ? '#f0fdf4' : '#fffbeb') + ';color:' + (full ? '#15803d' : '#b45309'), style: 'padding:8px 12px;border-bottom:1px solid #f3f3f3;text-align:center' };
-          }
-          return { isText: true, text: String(val), style: 'padding:8px 12px;border-bottom:1px solid #f3f3f3;color:#3f3f46;text-align:' + (col.center ? 'center' : 'left') + (col.key === 'reqId' ? ";font-family:'JetBrains Mono',monospace;color:#737373" : '') };
-        });
-        const isVeto = a.cols.some((c, ci) => c.key === 'substantive' && r[ci] === true);
-        return { cells, rowStyle: isVeto ? 'background:#fffafa' : '' };
-      });
-      return { ...base, tableSchema: a.schema, tableMeta: a.rows.length + ' 行 × ' + a.cols.length + ' 列', tableCols: cols, tableRows: rows };
-    }
-    if (isDiagram) {
-      const nodeStyle = 'padding:9px 14px;border-radius:9px;font-size:12.5px;font-weight:500;background:#fff;border:1px solid #d4d4d8;color:#27272a;box-shadow:0 1px 2px rgba(0,0,0,.04)';
-      const accentStyle = 'padding:9px 14px;border-radius:9px;font-size:12.5px;font-weight:600;background:var(--acSoft,#f0fdfa);border:1px solid var(--acBr,#5eead4);color:var(--acDk,#0f766e)';
-      const layers = a.layers.map((L, li) => ({
-        label: L.label, hasArrow: L.arrow,
-        nodes: L.nodes.map(n => ({ text: n, style: (li === 2 ? accentStyle : nodeStyle) })),
-      }));
-      return { ...base, diagramLayers: layers };
-    }
-    return base;
-  }
-
-  // ---------- NEW SURFACE VMs ----------
-  toolList(a) { return (a.tools || []).map(t => ({ name: t })); }
-
-  agentPanelVM() {
-    const s = this.state, ap = s.agentPanel;
-    if (!ap.open) return { open: false };
-    const a = s.data.agents[ap.slug];
-    if (!a) return { open: false };
-    const sysPrompt = '你是「' + a.name + '」。' + a.role + '\n\n工作守则：\n· 只在你的能力范围内行动；越界任务交回投标统筹改派。\n· 写入产物前先读取相关上下文（需求矩阵 / 已有章节），避免重复与冲突。\n· 关键事实标注来源（条款号 / 文件名），不臆造数据。';
-    return {
-      open: true, slug: ap.slug, name: a.name, avatar: a.avatar, isOrch: !!a.isOrch, isCustom: !!a.custom,
-      role: a.role, adapter: a.adapter, model: a.model, caps: a.caps, tools: this.toolList(a),
-      sysPrompt,
-      avStyle: 'width:52px;height:52px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-size:25px;background:' + (a.isOrch ? 'var(--acSoft,#f0fdfa)' : '#f5f5f5') + ';border:1px solid ' + (a.isOrch ? 'var(--acBd,#99f6e4)' : '#ececec'),
-      onClose: this.closeAgentPanel,
-      onEdit: () => this.showToast('编辑 Agent：' + a.name + '（原型）'),
-      onDup: () => this.dupAgent(ap.slug),
-      onUse: () => { this.closeAgentPanel(); this.openNewConv(); this.toggleNCAgent(ap.slug); this.setNC({ mode: 'single' }); },
-    };
-  }
-
-  emojiChoices() { return ['🤖', '🧠', '📊', '🔬', '⚖️', '🧮', '🗂️', '🛠️', '📝', '🎯', '🔍', '💡']; }
-  capChoices() { return ['技术写作', '商务写作', '文件解析', '需求抽取', '架构', '流程图', '甘特图', '统稿', '一致性', '报价', '资质装配', '任务编排']; }
-  modelChoices() { return ['deepseek-chat', 'glm-4', 'qwen-max', 'claude-sonnet-4', 'kimi-k2']; }
-
-  createAgentVM() {
-    const s = this.state; if (!s.createAgentOpen) return { open: false };
-    const na = s.newAgent;
-    const seg = (on) => 'flex:1;height:36px;border-radius:8px;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (on ? 'var(--acDk,#0f766e)' : '#404040') + ';font-size:13px;font-weight:' + (on ? '600' : '500') + ';cursor:pointer';
-    const isCustom = na.adapter === 'custom';
-    const isCompat = isCustom && na.provider === 'openai-compatible';
-    const modelOpts = isCustom ? this.providerModels(na.provider) : this.adapterModels(na.adapter);
-    const valid = !!(na.name.trim() && na.role.trim() && na.sys.trim() && !(isCompat && (!na.apiKey.trim() || !na.apiBase.trim())));
-    const d = na.draft || {};
-    return {
-      open: true, step: na.step,
-      isPath: na.step === 'path', isDraft: na.step === 'draft', isReview: na.step === 'review', isForm: na.step === 'form',
-      isPathOrDraft: na.step === 'path' || na.step === 'draft',
-      showBack: na.step !== 'path' && !na.editing,
-      title: na.editing ? '编辑 Agent' : na.step === 'path' ? '新建 Agent' : na.step === 'draft' ? '对话创建' : na.step === 'review' ? '确认草稿' : '详细配置',
-      onBack: this.caBack, onClose: this.closeCreateAgent,
-      onPickDraft: this.caPickDraft, onPickForm: this.caPickForm,
-      draftInput: na.draftInput, onDraftInput: this.onDraftInput, drafting: na.drafting, idle: !na.drafting, onRunDraft: this.runDraft,
-      draftName: d.name, draftAvatar: d.avatar, draftDesc: d.desc, draftModel: d.modelLine, draftTools: d.tools || [], draftAssumptions: d.assumptions || [], draftSys: d.sys,
-      onDraftCreate: this.draftCreate, onDraftToForm: this.draftToForm,
-      name: na.name, onName: (e) => this.setNA({ name: e.target.value }),
-      role: na.role, onRole: (e) => this.setNA({ role: e.target.value }),
-      sys: na.sys, onSys: (e) => this.setNA({ sys: e.target.value }),
-      emoji: na.emoji,
-      emojis: this.emojiChoices().map(e => ({ e, style: 'width:38px;height:38px;border-radius:9px;font-size:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;border:1px solid ' + (e === na.emoji ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (e === na.emoji ? 'var(--acSoft,#f0fdfa)' : '#fff'), onClick: () => this.setNA({ emoji: e }) })),
-      caps: this.capChoices().map(c => { const on = na.caps.includes(c); return { c, on, style: 'padding:5px 11px;border-radius:7px;font-size:12px;cursor:pointer;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (on ? 'var(--acDk,#0f766e)' : '#525252') + ';font-weight:' + (on ? '600' : '400'), onClick: () => this.toggleNACap(c) }; }),
-      adapterCustomStyle: seg(na.adapter === 'custom'), adapterCCStyle: seg(na.adapter === 'claude-code'), adapterCodexStyle: seg(na.adapter === 'codex'),
-      onAdapterCustom: () => this.onCAAdapter('custom'), onAdapterCC: () => this.onCAAdapter('claude-code'), onAdapterCodex: () => this.onCAAdapter('codex'),
-      isCustom, isSdk: !isCustom, isCompat,
-      provider: na.provider, onProvider: this.onCAProvider, providerOpts: this.providerOpts(),
-      showAnthropicWarn: isCustom && na.provider === 'anthropic',
-      model: na.model, onModel: this.onCAModel, onModelInput: this.onCAModel, modelOpts,
-      showModelSelect: !isCompat && modelOpts.length > 0, showModelInput: isCompat,
-      apiKey: na.apiKey, onKey: (e) => this.setNA({ apiKey: e.target.value }),
-      apiBase: na.apiBase, onBase: (e) => this.setNA({ apiBase: e.target.value }), showApiBase: isCompat,
-      tools: this.toolCatalog().map(t => { const on = na.tools.includes(t.k); return { k: t.k, label: t.label, desc: t.desc, on, onClick: () => this.toggleCATool(t.k), style: 'display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;cursor:pointer;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#ececec') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff'), boxStyle: 'width:16px;height:16px;border-radius:5px;flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#d4d4d4') + ';background:' + (on ? 'var(--ac,#0d9488)' : '#fff') }; }),
-      presets: this.toolPresets().map(p => ({ name: p.name, onClick: () => this.applyCAPreset(p.set), style: 'padding:5px 10px;border-radius:7px;border:1px solid #e5e5e5;background:#fff;color:#525252;font-size:11.5px;cursor:pointer;font-weight:500' })),
-      vision: na.vision, onVision: this.toggleCAVision,
-      visionTrack: 'width:40px;height:22px;border-radius:11px;flex:none;cursor:pointer;position:relative;border:none;padding:0;background:' + (na.vision ? 'var(--ac,#0d9488)' : '#d4d4d4'),
-      visionKnob: 'position:absolute;top:2px;left:' + (na.vision ? '20px' : '2px') + ';width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)',
-      isCC: na.adapter === 'claude-code', notCC: na.adapter !== 'claude-code',
-      skillCount: na.skills.length, onOpenSkillMgr: this.openSkillMgr,
-      skillPkgs: this.skillCatalog().map(pkg => {
-        const qns = pkg.skills.map(sk => pkg.id + ':' + sk.name);
-        const allOn = qns.every(q => na.skills.includes(q));
-        const isBuiltin = pkg.source === 'builtin';
-        return {
-          id: pkg.id, name: pkg.name, icon: pkg.icon, sourceRef: pkg.sourceRef,
-          badge: isBuiltin ? '内置' : '已导入',
-          badgeStyle: 'font-size:9.5px;font-weight:600;padding:0 5px;border-radius:4px;flex:none;' + (isBuiltin ? 'color:#737373;background:#f0f0f0' : 'color:var(--acDk,#0f766e);background:var(--acSoft,#f0fdfa);border:1px solid var(--acBd,#99f6e4)'),
-          toggleAllLabel: allOn ? '全不选' : '全选', onToggleAll: () => this.togglePkgSkills(pkg.id),
-          skills: pkg.skills.map(sk => { const qn = pkg.id + ':' + sk.name; const on = na.skills.includes(qn); return {
-            name: sk.name, desc: sk.desc, on,
-            rowStyle: 'display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;background:transparent;cursor:pointer;text-align:left',
-            boxStyle: 'width:16px;height:16px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#d4d4d4') + ';background:' + (on ? 'var(--ac,#0d9488)' : '#fff'),
-            onClick: () => this.toggleNASkill(qn),
-          }; }),
-        };
-      }),
-      valid, submitStyle: 'height:38px;padding:0 18px;border-radius:9px;border:none;background:' + (valid ? 'var(--ac,#0d9488)' : '#cfcfcf') + ';color:#fff;font-size:13px;font-weight:600;cursor:' + (valid ? 'pointer' : 'not-allowed'),
-      onSubmit: this.submitAgent,
-    };
-  }
-
-  newConvVM() {
-    const s = this.state; if (!s.newConvOpen) return { open: false };
-    const nc = s.newConv;
-    const builtins = ['orch', 'rfp', 'tech', 'comm', 'chart', 'editor'];
-    const all = [...builtins, ...Object.keys(s.data.agents).filter(k => !builtins.includes(k))];
-    const segStyle = (on) => 'flex:1;height:40px;border-radius:9px;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (on ? 'var(--acDk,#0f766e)' : '#404040') + ';font-size:13px;font-weight:' + (on ? '600' : '500') + ';cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px';
-    const agents = all.map(slug => { const a = s.data.agents[slug]; const on = nc.agents.includes(slug); return {
-      slug, name: a.name, avatar: a.avatar, role: a.role.slice(0, 18) + '…', on, isOrch: !!a.isOrch,
-      style: 'display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:9px;cursor:pointer;text-align:left;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#ececec') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff'),
-      avStyle: 'width:30px;height:30px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:' + (a.isOrch ? '#fff' : '#f5f5f5') + ';border:1px solid #ececec',
-      onClick: () => this.toggleNCAgent(slug),
-    }; });
-    const needOrchNote = nc.mode === 'group' && nc.agents.length > 0 && !nc.agents.includes('orch');
-    const wsSeg = (on) => 'flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:9px;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';cursor:pointer;text-align:left';
-    const dirEntries = ['投标-智慧政务', '投标-数据中心', 'docs', 'node_modules', '.ssh'];
-    return {
-      open: true, title: nc.title, mode: nc.mode,
-      isGroup: nc.mode === 'group', isSingle: nc.mode === 'single',
-      groupStyle: segStyle(nc.mode === 'group'), singleStyle: segStyle(nc.mode === 'single'),
-      agents, count: nc.agents.length, needOrchNote,
-      wsMode: nc.wsMode, isSandbox: nc.wsMode === 'sandbox', isLocal: nc.wsMode === 'local',
-      sandboxStyle: wsSeg(nc.wsMode === 'sandbox'), localStyle: wsSeg(nc.wsMode === 'local'),
-      onSandbox: () => this.setWsMode('sandbox'), onLocal: () => this.setWsMode('local'),
-      boundPath: nc.boundPath, boundPathLabel: nc.boundPath || '未选择目录（如 /Users/me/projects/bid-gov）', onOpenDir: this.openDirPicker,
-      dirPickerOpen: nc.dirPickerOpen, dirPath: nc.dirPath,
-      dirEntries: dirEntries.map(n => ({ name: n, onClick: () => this.dirInto(n) })),
-      onDirUp: this.dirUp, onChooseDir: this.chooseDir, onCloseDir: this.closeDirPicker,
-      canSubmit: nc.agents.length > 0,
-      submitStyle: 'height:38px;padding:0 18px;border-radius:9px;border:none;font-size:13px;font-weight:600;cursor:' + (nc.agents.length ? 'pointer' : 'default') + ';background:' + (nc.agents.length ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';color:' + (nc.agents.length ? '#fff' : '#a3a3a3'),
-      onTitle: (e) => this.setNC({ title: e.target.value }),
-      onGroup: () => this.setNC({ mode: 'group' }),
-      onSingle: () => this.setNC({ mode: 'single', agents: nc.agents.slice(0, 1) }),
-      onClose: this.closeNewConv, onSubmit: this.submitConv,
-    };
-  }
-
-  settingsVM() {
-    const s = this.state; if (!s.settingsOpen) return { open: false };
-    const swatches = Object.keys(Component.ACCENTS).map(hex => ({
-      hex, name: Component.ACCENTS[hex].name, on: s.accent === hex,
-      style: 'width:30px;height:30px;border-radius:8px;cursor:pointer;background:' + hex + ';box-shadow:0 0 0 ' + (s.accent === hex ? '2px #fff,0 0 0 4px ' + hex : '1px rgba(0,0,0,.1)'),
-      onClick: () => this.setAccent(hex),
-    }));
-    const dSeg = (on) => 'flex:1;height:36px;border-radius:8px;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff') + ';color:' + (on ? 'var(--acDk,#0f766e)' : '#404040') + ';font-size:13px;font-weight:' + (on ? '600' : '400') + ';cursor:pointer';
-    const aSeg = (on) => dSeg(on);
-    const isReview = s.approvalMode === 'review';
-    return {
-      open: true,
-      adapters: [
-        { name: 'DeepSeek', key: 'sk-••••••••••••3f2a', status: '已连接' },
-        { name: '智谱 GLM', key: 'glm-••••••••••7c11', status: '已连接' },
-        { name: 'Claude Code', key: '（本地 CLI）', status: '本地' },
-        { name: '通义千问', key: '未配置', status: '未配置' },
-      ].map(x => ({ ...x, statusStyle: 'font-size:11px;padding:1px 8px;border-radius:5px;flex:none;background:' + (x.status === '未配置' ? '#f5f5f5' : 'var(--acSoft,#f0fdfa)') + ';color:' + (x.status === '未配置' ? '#a3a3a3' : 'var(--acDk,#0f766e)') })),
-      swatches,
-      densityComfortStyle: dSeg(s.density === 'comfortable'),
-      densityCompactStyle: dSeg(s.density === 'compact'),
-      approvalReviewStyle: aSeg(isReview),
-      approvalAutoStyle: aSeg(!isReview),
-      onComfort: () => this.setDensity('comfortable'),
-      onCompact: () => this.setDensity('compact'),
-      onReview: () => this.setState({ approvalMode: 'review' }),
-      onAuto: () => this.setState({ approvalMode: 'auto' }),
-      onClose: this.closeSettings,
-    };
-  }
-
-  writeModalVM() {
-    const s = this.state; if (!s.writeModalOpen) return { open: false };
-    const art = s.data.artifacts.art_doc3;
-    const diff = (art.diffBlocks || []).map(b => ({
-      text: b.text,
-      style: 'font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.65;padding:5px 11px;border-radius:5px;margin-bottom:3px;white-space:pre-wrap;' + (b.st === 'add' ? 'background:#f0fdf4;color:#15803d;border-left:3px solid #16a34a' : b.st === 'rem' ? 'background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626;text-decoration:line-through;opacity:.7' : 'background:#fafafa;color:#525252;border-left:3px solid #e5e5e5'),
-    }));
-    return {
-      open: true, path: 'docs/第3章-总体技术方案.md', agent: '技术方案', bytes: '8.1 KB', tool: 'fs_write',
-      added: diff.filter(d => d.text && true).length, diff,
-      addCount: (art.diffBlocks || []).filter(b => b.st === 'add').length,
-      remCount: (art.diffBlocks || []).filter(b => b.st === 'rem').length,
-      onClose: this.closeWriteModal, onApprove: this.approveWrite, onReject: this.rejectWrite,
-    };
-  }
-
-  askUserVM() {
-    const s = this.state; if (!s.askUser.open) return { open: false };
-    const defs = s._askDefs || [], ans = s._askAnswers || {};
-    const questions = defs.map(q => ({
-      header: q.header, question: q.question,
-      options: q.options.map(o => { const on = ans[q.id] === o.label; return {
-        label: o.label, desc: o.desc, rec: !!o.rec, on,
-        style: 'display:flex;align-items:flex-start;gap:11px;width:100%;padding:11px 13px;border-radius:10px;cursor:pointer;text-align:left;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff'),
-        dotOuter: 'width:17px;height:17px;border-radius:50%;flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center;border:2px solid ' + (on ? 'var(--ac,#0d9488)' : '#cbcbcb'),
-        onClick: () => this.pickAskAnswer(q.id, o.label),
-      }; }),
-    }));
-    return { open: true, questions, freeform: s.askUser.freeform || '', onFreeform: this.onAskFreeform, onSubmit: this.submitAskUser, onClose: () => this.setState({ askUser: { open: false } }) };
-  }
-
-  bashModalVM() {
-    const s = this.state; if (!s.bashModalOpen) return { open: false };
-    return {
-      open: true,
-      cmd: 'pandoc 章节/*.md -o 投标文件_智慧政务.docx \\\n  --reference-doc=templates/gov.docx --toc --number-sections',
-      cwd: '.agenthub-data/workspaces/conv1',
-      agent: '技术方案', reason: 'pandoc 调用外部二进制生成文档，属依赖/构建类关键命令，执行前需人工批准。',
-      onApprove: this.approveBash, onReject: this.rejectBash, onClose: this.closeBashModal,
-    };
-  }
-
-  exportVM() {
-    const s = this.state; if (!s.exportOpen) return { open: false };
-    const o = s.exportOpts;
-    const tplSeg = (on) => 'display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;cursor:pointer;text-align:left;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#e5e5e5') + ';background:' + (on ? 'var(--acSoft,#f0fdfa)' : '#fff');
-    const tpl = (k, label, desc) => ({ k, label, desc, on: o.template === k, style: tplSeg(o.template === k), onClick: () => this.setExportTemplate(k) });
-    const toggle = (k, label, desc) => { const on = !!o[k]; return { k, label, desc, on, onClick: () => this.setExportOpt(k),
-      boxStyle: 'width:18px;height:18px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid ' + (on ? 'var(--ac,#0d9488)' : '#cbcbcb') + ';background:' + (on ? 'var(--ac,#0d9488)' : '#fff') }; };
-    return {
-      open: true,
-      templates: [ tpl('gov', '政府采购标书', 'reference.docx · 仿宋_GB2312 / 三号'), tpl('eng', '工程建设投标', '黑体标题 / 宋体正文 / 多级编号'), tpl('it', 'IT 解决方案', '封面 + 目录 + 章节编号'), tpl('design', '设计方案', '图文混排 · 无废标约束') ],
-      options: [ toggle('toc', '生成目录（--toc）', '从各级标题自动生成可跳转目录'), toggle('numbered', '章节自动编号（--number-sections）', '1 / 1.1 / 1.1.1 多级编号'), toggle('pageNumbers', '页眉页脚 + 页码', '套模板的页眉页脚与页码'), toggle('tablesAsDocx', '强结构表格走 docx 表格', '响应对照 / 报价表不并入 Markdown 正文') ],
-      onClose: this.closeExport, onExport: this.doExport,
-    };
-  }
-
-  usageVM() {
-    const s = this.state;
-    const convs = s.data.conversations.filter(c => !c.archived);
-    const tokByConv = { conv1: 42400, conv2: 9800, conv3: 31200, conv4: 6400 };
-    let total = 0; const convRows = convs.map(c => { const t = tokByConv[c.id] || 5200; total += t; return { id: c.id, title: c.title, tok: t, onClick: () => this.selectConv(c.id) }; });
-    const maxTok = Math.max(...convRows.map(r => r.tok), 1);
-    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : '' + n);
-    const yuan = (n) => '¥ ' + (n / 1000 * 0.005).toFixed(2);
-    convRows.forEach(r => { r.tokLabel = fmt(r.tok); r.cost = yuan(r.tok); r.barW = Math.round(r.tok / maxTok * 100) + '%'; });
-    const agentRows = [
-      { name: '技术方案', avatar: '📐', tok: 28600, model: 'claude-sonnet-4' },
-      { name: '商务标', avatar: '💼', tok: 16400, model: 'deepseek-chat' },
-      { name: '招标解析', avatar: '🔍', tok: 21800, model: 'deepseek-chat' },
-      { name: '投标统筹', avatar: '🎯', tok: 14200, model: 'deepseek-chat' },
-      { name: '图表', avatar: '📈', tok: 6800, model: 'glm-4' },
-      { name: '润色统稿', avatar: '✍️', tok: 9400, model: 'deepseek-chat' },
-    ];
-    const maxA = Math.max(...agentRows.map(r => r.tok));
-    agentRows.forEach(r => { r.tokLabel = fmt(r.tok); r.barW = Math.round(r.tok / maxA * 100) + '%'; });
-    const modelRows = [
-      { name: 'deepseek-chat', tok: 61800, price: '¥1 / ¥2 每百万', cost: '¥ 0.19' },
-      { name: 'claude-sonnet-4', tok: 28600, price: '$3 / $15 每百万', cost: '¥ 1.34' },
-      { name: 'glm-4', tok: 6800, price: '¥0.5 / ¥0.5 每百万', cost: '¥ 0.01' },
-    ];
-    return {
-      totalTok: fmt(total), totalCost: '¥ 1.54', cacheRate: '46%', runCount: 37,
-      convRows, agentRows, modelRows,
-    };
-  }
-}
-</script>
-</body>
-</html>
+   

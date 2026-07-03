@@ -244,6 +244,7 @@ app_settings {
   deployment_publish_enabled int NOT NULL // boolean，默认 false
   deployment_publish_dir     text         // 外部静态发布目录，绝对路径
   deployment_public_base_url text         // 外部静态服务公开根 URL
+  model_prices        text (JSON)         // 用户对本地价目表的字段级覆盖 ModelPriceTable；null=无覆盖
   updated_at          int  NOT NULL
 }
 ```
@@ -255,6 +256,7 @@ app_settings {
 - 与 `agents.api_key` / `agents.api_base_url` 不冲突：per-agent 字段优先级最高，本表是「全局兜底」
 - **不**外键关联 agents（provider 与 agent 是多对多关系，agent 通过 `model_provider` / `adapter_name` 选 key）
 - `deployment_publish_enabled=true` 只有在 `deployment_publish_dir` 与 `deployment_public_base_url` 均非空时才会让 `deploy_artifact` / `deploy_workspace` 尝试外部静态发布；否则仍只生成本地静态部署。
+- `model_prices` 存 `Record<model, ModelPrice>`（`src/shared/model-pricing.ts`），是对内置默认价目表的**字段级**覆盖：`resolvePriceTable` 按模型条目 merge（未填字段沿用默认；切换币种的条目视为整条替换，不混入旧币种 cache 价）。用量页「按模型」表行内改价即写此列；`null`=清除全部覆盖。成本纯按 token × 生效价目自算，不读 provider 的 total_cost（详见 openspec `usage-cost`）。
 
 **Key 解析优先级**（详见 Spec 05「API key fallback」与 `agent-runner.ts:buildAdapterInput`）：
 

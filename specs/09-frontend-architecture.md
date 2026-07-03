@@ -54,6 +54,7 @@ interface AppState {
   dispatchesByRunId: Record<string, DispatchState>
 
   // ─── UI 状态 ──────────────────────────────────────
+  railMode: RailMode                                          // 'conversations'|'artifacts'|'agents'|'analytics'|'tasks'；主区据此在会话/用量页间切换（首个非会话主区视图先例）
   activeConversationId: string | null
   previewArtifactId: string | null
   fileExplorerOpen: boolean                                   // 与 previewArtifactId 互斥
@@ -72,7 +73,7 @@ interface AppState {
 - **实体 normalize 成 `Record<id, Row>`**，不放在 conversations 的嵌套里（避免重复存储 + 局部更新困难）
 - **关系用「id 列表」分桶**，渲染时 map 拿实体。这样新增 / 删除消息只动 id 列表 + 实体 map，不破坏 React shallow equality
 - **UI 状态按 conversationId 分桶**（pendingAttachments / replyTarget），切会话不会污染
-- **不放在 store 的东西**：表单 draft、modal 开关、临时 hover 状态——这些用组件内 `useState`
+- **不放在 store 的东西**：表单 draft、modal 开关、临时 hover 状态——这些用组件内 `useState`（例外：`railMode` 从 sidebar 本地 state 提升为 store 切片，因为它现在驱动**主区**在会话/用量页间切换，跨组件；二级面板折叠 `panelHidden` 仍是 sidebar 本地态）
 - **例外：`boardTasks` 是扁平数组，不像其它实体那样 normalize 成 `Record<id, Row>`**。任务看板数据量小（个人本地场景），`setBoardTasks`/`upsertBoardTask`/`removeBoardTask` 直接对数组线性查找，换取实现最简单
 
 ---
@@ -88,7 +89,7 @@ interface AppState {
 | `heartbeat` | 无变更（仅作连接保活信号，由 SSE 端定期发） |
 | `run.start` | `runsByConv[convId][runId] = { ...event, status: 'running', usage: null }` |
 | `run.end` | 更新 run 的 `status` / `finishedAt` / `error`；当 status 为 `failed` / `aborted` 时，把同 run 的 streaming 消息改为 `error` / `aborted`，并为未配对 `tool_result` 的 `tool_use` 补本地错误结果，避免工具卡停在「调用中」 |
-| `run.usage` | 更新 run 的 `usage` 字段（input/output/cache tokens）；派生 hook `useConversationUsageTotal` 据此聚合 |
+| `run.usage` | 更新 run 的 `usage` 字段（input/output/cache tokens + model）；派生 hook `useConversationUsageTotal` 聚合 token，`useConversationModelUsage` 按 model 归类四段供 UsageBadge 成本自算（× 生效价目表，未定价/无 model 不计）。注：`runsByConv` 只由本会话本次 SSE 填（无重放），刷新/切走再回则退回 messages 兜底 |
 | `message.start` | 在 `messages[messageId]` 创建空 parts 的 streaming agent 消息，挂入 `messageIdsByConv` |
 | `message.end` | `messages[messageId].status = 'complete'`；若用户不在该会话（`activeConversationId !== conversationId`）则 `unreadByConv[conversationId] +1`。**不在 message.start 计未读**——claude-code-adapter 整 run 只发一次 message.start，那时用户通常仍在该会话被抑制，后续切走再无 +1 机会 |
 | `part.start` | `messages[messageId].parts[partIndex] = event.part`（按 index 插入，不 push） |
@@ -206,12 +207,15 @@ app/page.tsx
     │   ├── <NewConversationDialog />
     │   ├── <ConversationItem />  ── 单条会话（置顶/最近分组渲染）+ hover 置顶/归档/重命名/删除 + 激活态 3px 主色左条
     │   ├── <ArtifactLibrary />
+    │   ├── <UsageDashboard />    ── rail「分析」二级面板（瘦身版）：时间桶 + 按会话列表（条形 + tok，点击 setActiveConversation + setRailMode('conversations') 跳会话并切回会话模式）；按 Agent / 按模型已移入主区用量页
     │   ├── <AgentLibrary />
     │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME；claude-code 提供 Agent Skills 勾选 + <SkillLibraryDialog />（Spec 10）
     │   ├── <TaskBoardPanel />    ── 任务看板：按状态分组（进行中/待办/受阻/已完成）+ 顶部内联「+ 新任务」+ hover 状态切换 select / 删除；行点击若有 conversationId 则 setActiveConversation 跳转来源会话
     │   └── <RenameInput />       ── 内联重命名
-    ├── <ChatPanel />             ── 当前会话主区
-    │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分）
+    ├── <MainView />              ── 主区分支容器（client 边界；page.tsx 是 server component）：railMode==='analytics' 渲染 <UsagePage />，否则 <ChatPanel />
+    │   ├── <UsagePage />         ── rail「分析」主区 880px 用量页：4 指标卡（总 tokens / 成本自算(formatCost, teal) / cache 命中率(null→'—') / 总 run 数）+ 按 Agent 条形（头像 + 主用 model + tok）+ 按模型价目表（单价**行内可编辑**，保存 PATCH settings.modelPrices 后重拉 summary 重算）；成本口径见 openspec usage-cost
+    ├── <ChatPanel />             ── 当前会话主区（railMode==='conversations' 时由 MainView 渲染）
+    │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分 + 「成本（自算）」行：按各 run 的 model × 生效价目分币种求和）
     │   ├── tab bar（openFiles 非空时显示）: 「对话」+ 每个打开的文件 / diff tab
     │   ├── 主体（按 activeTab 切换）:
     │   │   ├── activeTab === 'chat': <PinnedMessagesBar> + <MessageList> + <PendingWritesPanel> + <MessageInput>

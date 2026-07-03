@@ -62,7 +62,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 工具系统 | ✅ | write/deploy/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
 | Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL + 本地静态发布/源码包/容器包) / document(md) / image / 版本对比 diff（历史 diff 只读兼容） / **ppt(幻灯片分页预览 + 完整 theme token + 导出真 .pptx)** · code_file workspace 预览/编辑 · 版本链 v1↔v2 · 选区改写 · 面板内编辑(CodeMirror)→提交新版本 · 导出 |
 | Workspace 沙箱 | ✅ | sandbox/local 双模式 · fs_write 审批(Review/Auto) · 双平台 Bash 黑名单 |
-| Token 计量 | ✅ | per-run/per-message · cache 命中率 · 全局分析 Tab |
+| Token 计量 + 成本自算 | ✅ | per-run/per-message · cache 命中率 · 主区 880px 用量页（4 指标卡 / 按 Agent / 按模型价目表，单价行内可编辑）· 成本按 token × 本地价目表自算（不读 provider total_cost；未定价/无 model 不计；多币种分桶不折算）· 会话 UsageBadge 成本行 |
 | 跨 run 对话记忆 | ✅ | 历史序列化注入 · token 预算 · 群聊跨 agent 可见 · 手动压缩 |
 | 平台抽象（Win/POSIX） | ✅ | shell 选择 · 多盘符 DirPicker · 子进程清理 |
 | Electron 桌面版 | ✅ | DMG / EXE 打包 · userData 路径迁移 |
@@ -70,7 +70,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 跨会话任务看板（openspec task-board） | ✅ | IconRail 第五导航「任务」(open+blocked badge) · 手动建单/拖动状态(select 循环) · Orchestrator dispatch 子任务自动登记+单向状态同步 · Agent `create_task` 工具主动立单 · 看板不反向触发 run（v1 无 `task.update` StreamEvent，面板挂载时 fetch 兜底） |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
-| UI 重设计（teal 体系） | ✅ | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒/弹窗族全部落地（设计稿 `docs/design/`）；主区 880px 用量页+成本自算另行立项 |
+| UI 重设计（teal 体系） | ✅ | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒/弹窗族全部落地（设计稿 `docs/design/`）；主区 880px 用量页 + 成本自算已落地（openspec add-usage-cost：railMode 提升为 store 切片，主区首个非会话视图先例） |
 | 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service / task-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度 + 任务看板**（mock agent 走真实 write_artifact / plan_tasks / report_task_result / create_task 协议） |
 
 ---
@@ -90,7 +90,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 ### L5 UI 组件（`src/components/`）
 | 区域 | 文件 |
 |---|---|
-| 应用壳（图标栏+二级面板） | `icon-rail.tsx` · `sidebar.tsx` |
+| 应用壳（图标栏+二级面板） | `icon-rail.tsx` · `sidebar.tsx` · `main-view.tsx`（主区 railMode 分支：会话 / 用量页） |
 | 任务看板 | `task-board-panel.tsx` |
 | 聊天主面板 | `chat-panel.tsx` · `message-list.tsx` · `message-item.tsx` · `message-parts.tsx` |
 | 输入框（附件/审批模式/选区引用/斜杠命令） | `message-input.tsx` · `edit-message-input.tsx` |
@@ -98,7 +98,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 产物预览 / 产物库 | `artifact-preview-panel.tsx` · `artifact-library.tsx` |
 | fs_write 审批面板 + diff | `pending-writes-panel.tsx` · `pending-write-diff-tab.tsx` |
 | ask_user 结构化弹窗 | `ask-user-question-dialog.tsx` |
-| Token 计量 | `usage-dashboard.tsx` · `usage-badge.tsx` |
+| Token 计量 + 成本自算 | `usage-page.tsx`（主区 880px 用量页 + 行内改价）· `usage-dashboard.tsx`（侧栏瘦身：时间桶 + 按会话）· `usage-badge.tsx`（成本行）· 定价领域 `shared/model-pricing.ts` |
 | 文件浏览器 | `file-explorer-panel.tsx` · `file-tab.tsx` · `file-library-dialog.tsx` |
 | 选区改写 / 引用 | `selection-popover.tsx` · `quoted-message.tsx` |
 | 导航辅助 | `pinned-messages-bar.tsx` · `conversation-outline.tsx` |
@@ -163,7 +163,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/<conv_xxx>/`（sandbox 模式）。
 
 ### 共享类型（`src/shared/`）
-`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单） · `ppt-theme.ts`（`PptTheme` 解析 + 专业默认,预览/导出共用）。
+`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单） · `model-pricing.ts`（本地价目表 + `resolvePriceTable` / `computeBucketCost` / `formatCost` 纯函数,成本自算 client/server 共用） · `ppt-theme.ts`（`PptTheme` 解析 + 专业默认,预览/导出共用）。
 
 ### 桌面（`electron/`）& 移动（`apps/mobile/`）
 - Electron：`main.ts`（主进程） · `paths.ts`（userData 路径迁移） · `server-bootstrap.ts`（拉起 Next standalone）。`specs/12`。
@@ -178,6 +178,7 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 ## 附 · 当前现状（易过时,以 git 为准）
 
 ### ✅ 近期完成（最新一批）
+- **主区用量页 + 成本自算**（openspec add-usage-cost）：`shared/model-pricing.ts` 本地价目表（公开牌价快照 + 用户字段级覆盖，存 `app_settings.model_prices`）+ `/api/usage/summary` 四段细分/成本/cacheRate 扩展 + `main-view.tsx` 主区 railMode 分支 + `usage-page.tsx`（880px，按模型价目表单价行内可编辑，保存即重算）+ 侧栏 `usage-dashboard.tsx` 瘦身（时间桶 + 按会话）+ UsageBadge 成本行；成本纯 token × 价目自算（不读 provider total_cost，未定价/无 model 不计，多币种分桶）；`railMode` 提升为 store 切片（主区首个非会话视图先例）；mock adapter 发 `run.usage` 支撑 e2e 全链路
 - **跨会话任务看板**（openspec task-board）：`tasks` 表 + `task-service.ts` + `/api/tasks` + `create_task` 工具（claude-code/codex MCP bridge + custom adapter + builder 勾选） + Orchestrator dispatch 单向状态同步 + IconRail 第五导航「任务」+ `task-board-panel.tsx`；v1 看板不反向触发 run，也没有 `task.update` StreamEvent（面板挂载时 fetch 兜底，deferred v1.1）
 - **UI 重设计 Phase A-D**（openspec redesign-ui-shell）：teal token 体系、IconRail+二级面板应用壳、聊天列 760px 居中 + 统筹 chip、一体化输入盒、右侧面板对齐
 - **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
@@ -200,4 +201,4 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ---
 
-*最后更新：2026-07-03 · 同步跨会话任务看板（openspec task-board：tasks 表 / task-service / create_task 工具 / IconRail 任务导航 / task-board-panel）到功能矩阵、代码地图、当前现状三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*
+*最后更新：2026-07-03 · 同步主区用量页 + 成本自算（openspec add-usage-cost：`shared/model-pricing.ts` 价目表 / `app_settings.model_prices` 覆盖 / `/api/usage/summary` 成本扩展 / `main-view.tsx` 主区分支 / `usage-page.tsx` 行内改价 / railMode 提升为 store 切片 / UsageBadge 成本行）到功能矩阵、代码地图、共享类型三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*

@@ -30,7 +30,7 @@
 |---|---|---|
 | 用户自建 Agent(身份/模型/工具) | Custom Agents | ✅ agent-builder(角色、模型、工具集、技能勾选、effort) |
 | Agent 编排协作 | Cowork 模式 | ✅ Orchestrator:计划审批、并行 wave、冲突检测、任务看板登记 |
-| **Agent 孵化子 Agent** | 引擎内建 | ❌ **只能 dispatch 给既有 roster,不能运行时定义新角色** |
+| Agent 孵化子 Agent | 引擎内建 | 后备(用户裁定不是当下重点,2026-07-03;方向保留待前三 Phase 后再议) |
 | Skill 供用户选择 | 28 内置 + 热加载 | ⚠️ 有 SkillPackage 导入 + per-agent 勾选,但内置库薄 |
 | Skill 创作 | skill-creator | ❌ |
 | **专家套件(多 Skill 组合)** | Expert Kit 可安装 | ❌ |
@@ -40,20 +40,13 @@
 
 ## 3. 路线图
 
-优先级依据用户定向:子 Agent 孵化是标志性诉求 > 模板陈列 + Skill 生态 > 专家套件(用户原话「未来」)。与三个 Phase 并行的还有 **UX 打磨 track**(2026-07-03 全面体检驱动,见审计报告)。
+优先级(用户重排,2026-07-03 晚):**模板陈列 + 技能生态是当下重点** > 专家套件(依赖技能生态)> 外部 MCP 接入(设计稿已画完整 UI)。与各 Phase 并行的还有 **UX 打磨 track**(全面体检驱动,见审计报告)。
 
 **明确暂缓**(用户裁定,2026-07-03):长期记忆(太重)、定时自动化(现有规划全部完善后再议)——两者都不排期,不要作为候选提出。
 
-### Phase 1 — Agent 孵化子 Agent(`spawn_agent`)
+**后备(方向认可、暂不排期)**:`spawn_agent` 子 Agent 孵化——用户裁定「不是当下重点」(2026-07-03 晚,提案已撤销);方向本身未被否,待前三个 Phase 落地后再议,重启时重新设计。
 
-任意 Agent 在运行中定义并孵化**临时子 Agent**去执行任务:给定角色名、system prompt、工具集(≤ 父 Agent 权限)、可选技能,子 Agent 在同 workspace 跑完任务把结果交回父 Agent。
-
-- 复用 AgentRunner + dispatch 基建(子 run 挂 parentRunId,已有事件族 dispatch.start/end 可扩展)
-- 临时 Agent 不进 Agent 库(ephemeral,run 结束即弃),但会话内可见其消息流与工具卡
-- 安全边界:子 Agent 工具权限是父的子集;审批模式继承会话设置;孵化深度限制(防递归爆炸)
-- 与 Orchestrator 的关系:Orchestrator 仍是「调度既有专家」;spawn_agent 是「临时造一个帮手」,两者互补不合并
-
-### Phase 2 — Agent 招新模板库 + 技能生态扩容
+### Phase 1 — Agent 招新模板库 + 技能生态扩容
 
 **Agent 招新模板库**(用户钦点的 Helio 式创建体验,2026-07-03 截图定向):
 
@@ -65,10 +58,12 @@
 **技能生态扩容**:
 
 - **内置技能库**对标 LobsterAI 的基础盘:web-search、数据分析、文章写作等(docx/pptx/网页已有产物工具覆盖,不重复造)
-- **skill-creator**:让 Agent 帮用户写技能包(SKILL.md + 资源文件),写完热加载进技能库——吃我们自己的 spawn_agent 狗粮
+- **skill-creator**:让 Agent 帮用户写技能包(SKILL.md + 资源文件),写完热加载进技能库(走普通工具链 fs_write + 导入,不依赖 spawn)
 - 技能库 UI 升级:分类、搜索、启用统计(哪些 Agent 在用)
 
-### Phase 3 — 专家套件(Expert Kit)
+**开工前置**:模板陈列是 UI 工作——按约定先 DesignSync 重拉最新设计稿(施工中),模板陈列以 Helio 截图为设计范本;设计稿若已含相应区域以设计稿为准。
+
+### Phase 2 — 专家套件(Expert Kit)
 
 新实体 `ExpertKit` = 技能组合 + 预设 Agent 模板(system prompt、工具集、默认模型档位):
 
@@ -76,9 +71,14 @@
 - 内置若干套件 + 文件级导入/导出(可分享给别人)
 - 套件与技能的关系:套件引用技能(不复制),卸载套件不删被共用的技能
 
+### Phase 3 — 外部 MCP Server 接入
+
+用户设计稿(2026-07-03 更新)已画完整 UI;仓库 `specs/15-external-mcp.md` 已有设计提案。核心:设置面板登记外部 MCP server(全局表)→ Agent 侧勾选启用 → 每会话首次调用某工具弹审批门(批准后本会话免再问)→ 工具卡带「外部 MCP · server」徽标。信任边界文案:外部 MCP 在 AgentHub 沙箱之外、以应用权限运行。**等设计稿定稿后再立 change。**
+
 ## 4. 与现有 specs 的衔接
 
-- Phase 1 动 orchestrator/tools/stream-events 三个 capability,须新 openspec change(`add-agent-spawn`)
-- Phase 2 模板陈列扩 agent-builder capability;技能部分扩 agent-skills;skill-creator 是新工具 + 流程
-- Phase 3 新 capability(`expert-kits`),动 persistence/frontend
+- Phase 1 模板陈列扩 agent-builder capability;技能部分扩 agent-skills;skill-creator 是新工具 + 流程
+- Phase 2 新 capability(`expert-kits`),动 persistence/frontend
+- Phase 3 落 spec 15(外部 MCP),动 tools/adapters/platform-security/frontend
 - UX 打磨 track 按审计报告分批,小批次直改(fix/feat(ui)),大改动才立 change
+- 后备 spawn_agent 重启时须重新立 change(旧提案 78ad67c 已撤销,不复用)

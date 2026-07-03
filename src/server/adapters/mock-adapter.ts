@@ -45,6 +45,10 @@ export class MockAdapter implements AgentPlatformAdapter {
     for (const step of script) {
       if (signal.aborted) break
 
+      // partIndex 记「下一个 part 的绝对下标」——part.start 按此下标写入。text/thinking/code
+      // 各占 1 个 part（这里 ++ 一次即够）；tool/create_task/write_artifact 通过 push 追加
+      // tool_use + tool_result（+ artifact_ref），须在分支末尾把多出的 part 补进 partIndex，
+      // 否则后续 part.start 会用过期下标覆盖掉 tool_result（工具卡卡在「调用中」）。
       partIndex++
 
       if (step.kind === 'text') {
@@ -154,6 +158,7 @@ export class MockAdapter implements AgentPlatformAdapter {
           result: step.result ?? { ok: true },
           isError: false,
         }
+        partIndex++ // tool_result（tool_use 已由顶部 ++ 计入）
       } else if (step.kind === 'write_artifact') {
         // 真实执行 L3 write_artifact（与 CustomAgentAdapter 同一约定），
         // 让 E2E 能覆盖「产物落库 → artifact_ref → 预览面板」全链路。
@@ -212,8 +217,10 @@ export class MockAdapter implements AgentPlatformAdapter {
                 createdAt: artifact.createdAt,
               },
             }
+            partIndex++ // Runner 收到 artifact.create 后追加的 artifact_ref part
           }
         }
+        partIndex++ // tool_result（tool_use 已由顶部 ++ 计入）
       } else if (step.kind === 'create_task') {
         // 真实执行 L3 create_task（与 write_artifact 分支同一约定），
         // 让 E2E 能覆盖「Agent 建单 → 任务看板出现该任务」全链路。任务看板 v1 无
@@ -246,6 +253,7 @@ export class MockAdapter implements AgentPlatformAdapter {
           result: value,
           isError: !result.ok,
         }
+        partIndex++ // tool_result（tool_use 已由顶部 ++ 计入）
       }
     }
 

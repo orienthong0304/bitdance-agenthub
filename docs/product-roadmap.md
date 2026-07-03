@@ -51,7 +51,16 @@
 - 安全边界:子 Agent 工具权限是父的子集;审批模式继承会话设置;孵化深度限制(防递归爆炸)
 - 与 Orchestrator 的关系:Orchestrator 仍是「调度既有专家」;spawn_agent 是「临时造一个帮手」,两者互补不合并
 
-### Phase 2 — 技能生态扩容
+### Phase 2 — Agent 招新模板库 + 技能生态扩容
+
+**Agent 招新模板库**(用户钦点的 Helio 式创建体验,2026-07-03 截图定向):
+
+- 创建 Agent 的第一步改为**模板陈列**:「从空白开始」+ 分类人格模板卡(文档编辑、表格分析师、PPT 助手、调研员、周报助手、工程师、代码评审…),每卡 = 头像缩写 + 名字 + 一句人话简介 + 领域标签,顶部分类 tab(全部/推荐/Documentation/Personal Productivity/Engineering/Data…)
+- 选模板 → 预填草稿进既有向导流(引擎/模型 → 资料:头像/名字/简介 → 完成),「从空白开始」走已有对话式/详细表单双路径
+- 模板 = 轻量预设(persona prompt + 建议工具集 + 分类),存内置常量即可,不新增实体;与 P3 ExpertKit 的关系:Kit 安装后把成品 Agent 模板注入同一个陈列(模板库是 Kit 的展示面)
+- 地基:`add-agent-create-wizard` 已交付「对话式草稿 + 详细表单」双路径,本项在其前面加一层模板选择,复用 AgentConfigDraft 预填机制
+
+**技能生态扩容**:
 
 - **内置技能库**对标 LobsterAI 的基础盘:web-search、数据分析、文章写作等(docx/pptx/网页已有产物工具覆盖,不重复造)
 - **skill-creator**:让 Agent 帮用户写技能包(SKILL.md + 资源文件),写完热加载进技能库——吃我们自己的 spawn_agent 狗粮

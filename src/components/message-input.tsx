@@ -61,6 +61,9 @@ interface SlashTrigger {
   query: string
 }
 
+// 本机「已确认 Auto 审批风险」标记：首次切到 Auto 才弹确认，之后不再打扰
+const AUTO_APPROVAL_ACK_KEY = 'agenthub.fs-auto-approval-ack'
+
 const SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'deploy',
@@ -270,6 +273,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   const removePendingAttachment = useAppStore((s) => s.removePendingAttachment)
   const clearPendingAttachments = useAppStore((s) => s.clearPendingAttachments)
   const [modeBusy, setModeBusy] = useState(false)
+  const [autoConfirmOpen, setAutoConfirmOpen] = useState(false)
 
   // 引用回复目标
   const replyTargetId = useAppStore((s) => s.replyTargetByConv[conversationId])
@@ -757,9 +761,8 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   }
 
   const approvalMode = conversation?.fsWriteApprovalMode ?? 'review'
-  const toggleApprovalMode = async () => {
-    if (modeBusy || !conversation) return
-    const nextMode = approvalMode === 'review' ? 'auto' : 'review'
+  const applyApprovalMode = async (nextMode: 'review' | 'auto') => {
+    if (!conversation) return
     setModeBusy(true)
     try {
       const updated = await setFsWriteApprovalMode(conversationId, nextMode)
@@ -770,9 +773,39 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
       setModeBusy(false)
     }
   }
+  const toggleApprovalMode = () => {
+    if (modeBusy || !conversation) return
+    if (approvalMode === 'auto') {
+      void applyApprovalMode('review')
+      return
+    }
+    // → Auto 是安全关键切换：首次开启弹一次风险确认（本机记忆，之后直接切）
+    let acked = false
+    try {
+      acked =
+        typeof window !== 'undefined' && window.localStorage.getItem(AUTO_APPROVAL_ACK_KEY) === '1'
+    } catch {
+      // localStorage 不可用时按未确认处理（与 setItem 的守卫对称）
+    }
+    if (!acked) {
+      setAutoConfirmOpen(true)
+      return
+    }
+    void applyApprovalMode('auto')
+  }
+  const confirmAutoApproval = () => {
+    try {
+      window.localStorage.setItem(AUTO_APPROVAL_ACK_KEY, '1')
+    } catch {
+      // localStorage 不可用时忽略：仅影响「首次确认」记忆，不影响功能
+    }
+    setAutoConfirmOpen(false)
+    void applyApprovalMode('auto')
+  }
 
   return (
-    <div className="relative shrink-0 border-t bg-background p-3">
+    <div className="shrink-0 border-t bg-background">
+    <div className="relative mx-auto w-full max-w-[808px] px-6 pb-4 pt-3">
       {/* 引用预览 */}
       {replyMessage && (
         <div className="mb-2">
@@ -786,10 +819,10 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
 
       {/* 选区改写引用块 */}
       {pendingQuote && (
-        <div className="mb-2 flex items-start gap-2 rounded-md border border-[#3370FF]/30 bg-[#3370FF]/5 px-2 py-1.5 text-xs">
-          <Sparkles className="mt-0.5 size-3 shrink-0 text-[#3370FF]" />
+        <div className="mb-2 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs">
+          <Sparkles className="mt-0.5 size-3 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-[#3370FF]">
+            <div className="font-medium text-primary">
               {pendingQuote.kind === 'ask' ? '提问' : '改写'} · {pendingQuote.sourceLabel}
             </div>
             <pre className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words font-mono text-[10px] text-muted-foreground">
@@ -897,6 +930,33 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={autoConfirmOpen} onOpenChange={setAutoConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="size-4 text-destructive" />
+              切换到 Auto 审批模式？
+            </DialogTitle>
+            <DialogDescription>
+              Auto 模式下，本会话 Agent 的写盘与命令将直接执行，不再逐条向你确认。请仅在信任当前任务时开启，随时可切回 Review。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAutoConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={modeBusy}
+              onClick={confirmAutoApproval}
+            >
+              开启 Auto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <SlashCommandHelpDialog
         open={slashHelpOpen}
         commands={SLASH_COMMANDS}
@@ -941,7 +1001,75 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      {/* Auto 态持续警示：写盘 / 命令将直接执行，不再逐条审批 */}
+      {approvalMode === 'auto' && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+          <Zap className="size-3 shrink-0" />
+          <span>Auto：写盘与命令将直接执行，不再逐条审批</span>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          'flex items-end gap-1.5 rounded-xl border bg-background p-2 pl-2 transition focus-within:ring-[3px]',
+          approvalMode === 'auto'
+            ? 'border-destructive/50 focus-within:border-destructive focus-within:ring-destructive/10'
+            : 'focus-within:border-primary focus-within:ring-primary/10',
+        )}
+      >
+        {/* 文件上传 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void handleFileSelect(e.target.files)
+            e.target.value = '' // 允许同名文件再次选择
+          }}
+        />
+        {/* 左侧辅助组：附件 + 审批模式 */}
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isRunning}
+          title="附件 / 图片"
+          className="shrink-0 self-end"
+        >
+          <Paperclip className="size-4" />
+        </Button>
+        {/* fs_write 审批模式开关：带文字标签（Review 安全 / Auto 直写），安全关键状态可辨识 */}
+        <button
+          type="button"
+          onClick={toggleApprovalMode}
+          disabled={modeBusy}
+          aria-label={
+            approvalMode === 'review'
+              ? '审批模式：Review · Agent 写入需审批，点击切换到 Auto'
+              : '审批模式：Auto · Agent 写入直接生效，点击切回 Review'
+          }
+          title={
+            approvalMode === 'review'
+              ? 'Review 模式 · Agent 写入需审批（点击切到 Auto，直接生效 ⚠）'
+              : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
+          }
+          className={cn(
+            'flex h-8 shrink-0 items-center gap-1 self-end rounded-lg border px-2 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30 disabled:opacity-50',
+            approvalMode === 'review'
+              ? 'border-border text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400'
+              : 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20',
+          )}
+        >
+          {approvalMode === 'review' ? (
+            <Shield className="size-3.5" />
+          ) : (
+            <Zap className="size-3.5" />
+          )}
+          <span>{approvalMode === 'review' ? 'Review' : 'Auto'}</span>
+        </button>
+
         <Textarea
           ref={textareaRef}
           data-testid="composer-input"
@@ -958,68 +1086,21 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
                   ? '输入消息，@ 指定 Agent，Enter 发送，Shift+Enter 换行'
                   : '输入消息，Enter 发送，Shift+Enter 换行'
           }
-          className="min-h-[44px] max-h-40 resize-none"
+          className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none placeholder:truncate focus-visible:ring-0 dark:bg-transparent"
           disabled={composerLocked}
         />
 
-        {/* 文件上传 */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void handleFileSelect(e.target.files)
-            e.target.value = '' // 允许同名文件再次选择
-          }}
-        />
-        {/* 辅助按钮组（紧贴）—— 让 Paperclip + 审批模式视觉成一组，与右侧主操作按钮 send 区分 */}
-        <div className="flex items-center">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isRunning}
-            title="附件 / 图片"
-          >
-            <Paperclip className="size-4" />
-          </Button>
-          {/* fs_write 审批模式开关：绿色 = Review（默认安全），红色 = Auto（直写） */}
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => void toggleApprovalMode()}
-            disabled={modeBusy}
-            title={
-              approvalMode === 'review'
-                ? 'Review 模式 · Agent 写入需审批（点击切到 Auto，直接生效 ⚠）'
-                : '⚠ Auto 模式 · Agent 写入直接生效（点击切回 Review）'
-            }
-            className={cn(
-              approvalMode === 'review'
-                ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
-                : 'text-[#FE3B25] hover:text-[#FE3B25] dark:text-[#FE3B25]',
-            )}
-          >
-            {approvalMode === 'review' ? (
-              <Shield className="size-4" />
-            ) : (
-              <Zap className="size-4" />
-            )}
-          </Button>
-        </div>
         {composerLocked ? (
           <Button
             onClick={() => void abortAll()}
             disabled={aborting}
             size="icon"
-            variant="destructive"
+            variant="ghost"
             title="中止全部"
             data-testid="composer-abort"
+            className="size-[34px] shrink-0 self-end rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
           >
-            <Square className="size-4 fill-current" />
+            <Square className="size-3.5 fill-current" />
           </Button>
         ) : (
           <Button
@@ -1028,11 +1109,13 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
             size="icon"
             title="发送 (Enter)"
             data-testid="composer-send"
+            className="size-[34px] shrink-0 self-end rounded-lg"
           >
             <Send className="size-4" />
           </Button>
         )}
       </div>
+    </div>
     </div>
   )
 }

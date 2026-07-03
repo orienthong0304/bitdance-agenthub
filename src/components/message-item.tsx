@@ -189,8 +189,13 @@ function MessageItemImpl({ message }: { message: MessageRow }) {
 
       <div className={cn('flex max-w-[80%] min-w-0 flex-1 flex-col gap-1', isUser && 'items-end')}>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="font-medium">{name}</span>
-          <span>{formatTime(message.createdAt)}</span>
+          <span className="text-[12.5px] font-semibold text-foreground">{name}</span>
+          {!isUser && agent?.isOrchestrator && (
+            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 text-[10px] font-semibold text-primary">
+              统筹
+            </span>
+          )}
+          <span className="text-[11px] text-muted-foreground/60">{formatTime(message.createdAt)}</span>
           {isBookmarked && (
             <span className="text-amber-500" title="已收藏（导航书签）">
               <Star className="size-3 fill-amber-400" />

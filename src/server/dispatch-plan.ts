@@ -44,6 +44,8 @@ const DISPATCH_TASK_KINDS = new Set<DispatchTaskKind>([
   'design',
   'doc',
   'analysis',
+  'research',
+  'writing',
 ])
 
 export const CODE_TASK_PROJECT_OUTPUT_ID = 'project'

@@ -5,8 +5,17 @@
  */
 
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import type { ArtifactContent, ArtifactType, AdapterName, MessagePart, ModelProvider } from '@/shared/types'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import type {
+  ArtifactContent,
+  ArtifactType,
+  AdapterName,
+  EffortLevel,
+  MessagePart,
+  ModelProvider,
+  SkillSummary,
+} from '@/shared/types'
+import type { ModelPriceTable } from '@/shared/model-pricing'
 
 // ─── Agents ──────────────────────────────────────────────────
 export const agents = sqliteTable('agents', {
@@ -37,9 +46,18 @@ export const agents = sqliteTable('agents', {
 
   toolNames: text('tool_names', { mode: 'json' }).$type<string[]>().notNull(),
 
+  /** 启用的 Agent Skills（SKILL.md name 或 `pkg:skill` 限定名）。仅 claude-code adapter 消费；空数组 = 无 skill。 */
+  skillNames: text('skill_names', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
+
   isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
   isOrchestrator: integer('is_orchestrator', { mode: 'boolean' }).notNull().default(false),
   supportsVision: integer('supports_vision', { mode: 'boolean' }).notNull().default(false),
+
+  /** 思考深度档位（仅 claude-code adapter 消费）。NULL = SDK 默认（high）。 */
+  effort: text('effort').$type<EffortLevel>(),
 
   createdAt: integer('created_at').notNull(),
 })
@@ -243,6 +261,59 @@ export const contextSummaries = sqliteTable(
   (t) => [index('idx_context_summaries_conv_created').on(t.conversationId, t.createdAt)],
 )
 
+// ─── SkillPackages (Agent Skills 安装注册表) ─────────────────
+/**
+ * 已安装的 skill 包。builtin 包来自只读资源目录（启动时发现并注册），
+ * imported 包由用户从 GitHub / 本地路径导入到 <dataDir>/agent-skills/ 下。
+ * skill 以 SDK local plugin 形式装载，详见 specs/05 与 openspec agent-skills。
+ */
+export const skillPackages = sqliteTable('skill_packages', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  source: text('source', { enum: ['builtin', 'imported'] }).notNull(),
+  sourceRef: text('source_ref').notNull(),
+  installPath: text('install_path').notNull(),
+  skills: text('skills', { mode: 'json' }).$type<SkillSummary[]>().notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
+export type SkillPackageRow = typeof skillPackages.$inferSelect
+export type SkillPackageInsert = typeof skillPackages.$inferInsert
+
+// ─── Tasks (跨会话任务看板) ────────────────────────────────
+/**
+ * 跨会话任务看板条目。三种来源：manual（用户在看板直接创建）/ dispatch（Orchestrator plan
+ * 批准时登记，随子任务执行状态单向同步）/ agent（create_task 工具创建）。
+ * conversationId 故意不建外键 —— 删除会话 SHALL NOT 级联删除任务，只是来源链接失去指向
+ * （见 openspec task-board spec「跨会话聚合」）。
+ */
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    note: text('note'),
+    status: text('status', { enum: ['open', 'in_progress', 'done', 'blocked'] }).notNull(),
+    source: text('source', { enum: ['manual', 'dispatch', 'agent'] }).notNull(),
+    conversationId: text('conversation_id'),
+    messageId: text('message_id'),
+    artifactId: text('artifact_id'),
+    /** dispatch 来源的幂等键：`${runId}:${taskId}`；plan 重复批准 / replan 时靠它 upsert 而非重复插入。 */
+    dispatchTaskId: text('dispatch_task_id'),
+    createdByAgentId: text('created_by_agent_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_tasks_status').on(t.status),
+    uniqueIndex('idx_tasks_dispatch').on(t.dispatchTaskId).where(sql`dispatch_task_id IS NOT NULL`),
+  ],
+)
+
+export type TaskRow = typeof tasks.$inferSelect
+export type TaskInsert = typeof tasks.$inferInsert
+
 // ─── AppSettings (全局 API key / endpoint) ──────────────────
 /**
  * 全局应用设置。单行表（PK 固定 'singleton'），存用户在「设置」面板填写的
@@ -264,6 +335,8 @@ export const appSettings = sqliteTable('app_settings', {
     .default(false),
   deploymentPublishDir: text('deployment_publish_dir'),
   deploymentPublicBaseUrl: text('deployment_public_base_url'),
+  /** 用户覆盖的本地价目表（按模型条目字段级 merge 到内置默认）。NULL = 无覆盖，全走默认。 */
+  modelPrices: text('model_prices', { mode: 'json' }).$type<ModelPriceTable>(),
   updatedAt: integer('updated_at').notNull(),
 })
 

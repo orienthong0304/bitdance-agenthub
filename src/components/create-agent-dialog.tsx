@@ -1,9 +1,10 @@
 'use client'
 
-import { Cpu, MessageSquareText, SlidersHorizontal, Sparkles, User, Wrench } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Cpu, MessageSquareText, Puzzle, SlidersHorizontal, Sparkles, User, Wrench } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { AgentCreateWizard } from '@/components/agent-create-wizard'
+import { SkillLibraryDialog } from '@/components/skill-library-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -19,11 +20,13 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AgentRow } from '@/db/schema'
 import {
   createAgent,
+  fetchSkillPackages,
   updateAgent,
   type CreateAgentBody,
   type UpdateAgentBody,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { EFFORT_LEVELS, type EffortLevel, type SkillPackage } from '@/shared/types'
 import {
   AGENT_BUILDER_PROVIDER_DEFAULTS as PROVIDER_DEFAULTS,
   AGENT_TOOL_META as TOOL_META,
@@ -86,6 +89,12 @@ export function CreateAgentDialog({
   const [supportsVision, setSupportsVision] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
+  // 思考深度（仅 claude-code）；'' = 默认（high）
+  const [effort, setEffort] = useState<EffortLevel | ''>('')
+  // Agent Skills（仅 claude-code）
+  const [skillNames, setSkillNames] = useState<Set<string>>(new Set())
+  const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([])
+  const [skillLibraryOpen, setSkillLibraryOpen] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -121,6 +130,8 @@ export function CreateAgentDialog({
       setSupportsVision(agent.supportsVision)
       setApiKey(agent.apiKey ?? '')
       setApiBaseUrl(agent.apiBaseUrl ?? '')
+      setEffort((agent.effort as EffortLevel | null) ?? '')
+      setSkillNames(new Set(agent.skillNames ?? []))
     } else {
       setAdapterKind('custom')
       setName('')
@@ -133,6 +144,8 @@ export function CreateAgentDialog({
       setSupportsVision(true)
       setApiKey('')
       setApiBaseUrl('')
+      setEffort('')
+      setSkillNames(new Set())
       setCreateStep('choose')
     }
     if (agent) setCreateStep('detail')
@@ -143,6 +156,10 @@ export function CreateAgentDialog({
 
   const handleAdapterKindChange = (kind: AdapterKind) => {
     setAdapterKind(kind)
+    if (kind !== 'claude-code') {
+      setEffort('') // effort / skills 仅 claude-code 有意义
+      setSkillNames(new Set())
+    }
     if (kind === 'claude-code') {
       setModelId(CLAUDE_CODE_DEFAULT_MODEL)
     } else if (kind === 'codex') {
@@ -158,6 +175,54 @@ export function CreateAgentDialog({
     setProvider(p)
     // 切换 provider 时把 modelId 自动重置到该 provider 的默认（避免跨家串）
     setModelId(PROVIDER_DEFAULTS[p].defaultModel)
+  }
+
+  // 打开时拉一次技能包列表（失败静默为「无技能包」，不阻塞表单）
+  useEffect(() => {
+    if (!open) return
+    fetchSkillPackages()
+      .then(setSkillPackages)
+      .catch(() => setSkillPackages([]))
+  }, [open])
+
+  // 扁平化技能列表；跨包重名的 skill 用 pkg:skill 限定名启用并标记冲突
+  const availableSkills = useMemo(() => {
+    const bareNameCount = new Map<string, number>()
+    for (const pkg of skillPackages) {
+      for (const s of pkg.skills) {
+        bareNameCount.set(s.name, (bareNameCount.get(s.name) ?? 0) + 1)
+      }
+    }
+    return skillPackages.flatMap((pkg) =>
+      pkg.skills.map((s) => {
+        const collision = (bareNameCount.get(s.name) ?? 0) > 1
+        return {
+          key: collision ? s.qualifiedName : s.name,
+          name: s.name,
+          description: s.description,
+          qualifiedName: s.qualifiedName,
+          packageName: pkg.name,
+          collision,
+        }
+      }),
+    )
+  }, [skillPackages])
+
+  const isSkillEnabled = (skill: (typeof availableSkills)[number]) =>
+    skillNames.has(skill.key) || skillNames.has(skill.name) || skillNames.has(skill.qualifiedName)
+
+  const toggleSkill = (skill: (typeof availableSkills)[number]) => {
+    setSkillNames((prev) => {
+      const next = new Set(prev)
+      if (isSkillEnabled(skill)) {
+        next.delete(skill.key)
+        next.delete(skill.name)
+        next.delete(skill.qualifiedName)
+      } else {
+        next.add(skill.key)
+      }
+      return next
+    })
   }
 
   const toggleTool = (t: string) => {
@@ -286,6 +351,8 @@ export function CreateAgentDialog({
           supportsVision,
           apiKey: trimmedApiKey || null,
           apiBaseUrl: trimmedApiBaseUrl || null,
+          effort: isClaudeCode ? (effort || null) : null,
+          skillNames: isClaudeCode ? Array.from(skillNames) : [],
         }
         const updated = await updateAgent(agent.id, patch)
         upsertAgent(updated)
@@ -303,6 +370,8 @@ export function CreateAgentDialog({
           supportsVision,
           apiKey: trimmedApiKey || undefined,
           apiBaseUrl: trimmedApiBaseUrl || undefined,
+          effort: isClaudeCode && effort ? effort : undefined,
+          skillNames: isClaudeCode && skillNames.size > 0 ? Array.from(skillNames) : undefined,
         }
         const created = await createAgent(body)
         upsertAgent(created)
@@ -524,6 +593,29 @@ export function CreateAgentDialog({
                   </div>
                 )}
 
+                {adapterKind === 'claude-code' && (
+                  <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+                    <Label>思考深度</Label>
+                    <div>
+                      <select
+                        value={effort}
+                        onChange={(e) => setEffort(e.target.value as EffortLevel | '')}
+                        className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                      >
+                        <option value="">默认（high）</option>
+                        {EFFORT_LEVELS.map((lv) => (
+                          <option key={lv} value={lv}>
+                            {lv}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        控制 Claude 的思考深度（effort）。档位越高越能深入推理、质量越好，但更慢更费 token。留「默认」走 SDK 默认（high）。
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {(adapterKind === 'claude-code' ||
                   adapterKind === 'codex' ||
                   (adapterKind === 'custom' && provider === 'openai-compatible')) && (
@@ -723,6 +815,66 @@ export function CreateAgentDialog({
                   </div>
                 )}
 
+                {adapterKind === 'claude-code' ? (
+                  <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+                    <Label>Agent Skills</Label>
+                    <div className="space-y-1.5">
+                      {availableSkills.length === 0 ? (
+                        <div className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                          还没有可用的技能。先在「管理技能包」里导入，或检查内置技能包是否就位。
+                        </div>
+                      ) : (
+                        availableSkills.map((skill) => (
+                          <label
+                            key={skill.qualifiedName}
+                            className={cn(
+                              'flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition hover:border-foreground/30',
+                              isSkillEnabled(skill) && 'border-primary bg-primary/5',
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSkillEnabled(skill)}
+                              onChange={() => toggleSkill(skill)}
+                              className="mt-0.5 accent-primary"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Puzzle className="size-3 text-muted-foreground" />
+                                <span className="text-xs font-medium">{skill.name}</span>
+                                <code className="font-mono text-[10px] text-muted-foreground">
+                                  {skill.collision ? skill.qualifiedName : skill.packageName}
+                                </code>
+                              </div>
+                              <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
+                                {skill.description}
+                              </div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSkillLibraryOpen(true)}
+                        className="w-full rounded-md border border-dashed px-3 py-1.5 text-[11px] text-muted-foreground transition hover:border-foreground/30 hover:text-foreground"
+                      >
+                        管理技能包（浏览 / 导入）
+                      </button>
+                      <div className="text-[10px] text-muted-foreground">
+                        部分技能依赖宿主环境工具（如 docx 需要 pandoc / python / LibreOffice），缺失时对应命令会失败但不影响其它功能。
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+                    <Label>Agent Skills</Label>
+                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                      Agent Skills 仅 Claude Code adapter 支持（Codex / Custom 没有对应的 skill
+                      运行机制）。切换到 Claude Code SDK 后可启用。
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-[80px_1fr] items-start gap-3">
                   <Label required>System Prompt</Label>
                   <Textarea
@@ -743,6 +895,12 @@ export function CreateAgentDialog({
           )}
         </div>
         )}
+
+        <SkillLibraryDialog
+          open={skillLibraryOpen}
+          onOpenChange={setSkillLibraryOpen}
+          onPackagesChanged={setSkillPackages}
+        />
 
         {showDetailForm && (
           <DialogFooter>

@@ -9,14 +9,19 @@ import type {
 } from '@/db/schema'
 import type {
   AskUserAnswer,
+  BoardTask,
+  BoardTaskStatus,
   DeployCandidateRecord,
   DeployStatusRecord,
+  EffortLevel,
   PendingBashCommand,
   PendingDispatchPlan,
   PendingQuestion,
   PendingWrite,
+  SkillPackage,
 } from '@/shared/types'
 import type { AgentConfigDraft, AgentDraftRequest } from '@/shared/agent-builder-config'
+import type { ModelPrice, ModelPriceTable } from '@/shared/model-pricing'
 
 export interface ArtifactListItem {
   id: string
@@ -62,6 +67,10 @@ export interface CreateAgentBody {
   apiKey?: string
   /** 自定义 API base URL。Claude/Codex 对 endpoint 协议兼容性要求不同；空走默认 */
   apiBaseUrl?: string
+  /** 思考深度（仅 claude-code adapter）；省略 = SDK 默认 high */
+  effort?: EffortLevel
+  /** 启用的 Agent Skills（仅 claude-code adapter）；省略 = 无 */
+  skillNames?: string[]
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {
@@ -87,7 +96,7 @@ export async function createAgentDraft(body: AgentDraftRequest): Promise<AgentCo
 }
 
 export type UpdateAgentBody = Partial<
-  Omit<CreateAgentBody, 'avatar' | 'apiKey' | 'apiBaseUrl' | 'modelId'>
+  Omit<CreateAgentBody, 'avatar' | 'apiKey' | 'apiBaseUrl' | 'modelId' | 'effort'>
 > & {
   // SDK adapter 可用 null 清空，表示走 SDK 默认模型；custom 仍必须有非空 modelId
   modelId?: string | null
@@ -95,6 +104,67 @@ export type UpdateAgentBody = Partial<
   apiKey?: string | null
   // 同上
   apiBaseUrl?: string | null
+  // 思考深度：null 清除（回退 SDK 默认 high）；undefined 不改
+  effort?: EffortLevel | null
+}
+
+// ─── Agent Skills ───────────────────────────────
+export async function fetchSkillPackages(): Promise<SkillPackage[]> {
+  const { packages } = await json<{ packages: SkillPackage[] }>(fetch('/api/skills'))
+  return packages
+}
+
+export async function importSkillPackage(body: {
+  gitUrl?: string
+  localPath?: string
+}): Promise<SkillPackage> {
+  const { package: pkg } = await json<{ package: SkillPackage }>(
+    fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+  return pkg
+}
+
+export async function deleteSkillPackage(packageId: string): Promise<void> {
+  await json<{ ok: boolean }>(fetch(`/api/skills/${packageId}`, { method: 'DELETE' }))
+}
+
+// ─── Task Board ─────────────────────────────────
+export async function fetchBoardTasks(): Promise<BoardTask[]> {
+  const { tasks } = await json<{ tasks: BoardTask[] }>(fetch('/api/tasks'))
+  return tasks
+}
+
+export async function createBoardTask(body: { title: string; note?: string }): Promise<BoardTask> {
+  const { task } = await json<{ task: BoardTask }>(
+    fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+  return task
+}
+
+export async function updateBoardTask(
+  taskId: string,
+  patch: { title?: string; note?: string; status?: BoardTaskStatus },
+): Promise<BoardTask> {
+  const { task } = await json<{ task: BoardTask }>(
+    fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  )
+  return task
+}
+
+export async function deleteBoardTask(taskId: string): Promise<void> {
+  await json<{ ok: boolean }>(fetch(`/api/tasks/${taskId}`, { method: 'DELETE' }))
 }
 
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {
@@ -729,6 +799,7 @@ export function attachmentDownloadUrl(attachmentId: string): string {
 }
 
 // ─── Usage / Analytics ─────────────────────────────
+// 形状与 /api/usage/summary route 导出保持一致（成本自算见 shared/model-pricing）。
 export interface UsageBucket {
   inputTokens: number
   outputTokens: number
@@ -736,6 +807,25 @@ export interface UsageBucket {
   cacheCreationTokens: number
   totalTokens: number
   runs: number
+}
+
+/** byModel / byAgent 行携带的 token 细分，与 UsageBucket 同形。 */
+export type UsageTokenBreakdown = UsageBucket
+
+export interface UsageModelRow extends UsageTokenBreakdown {
+  model: string
+  /** 生效单价（默认 + 用户覆盖后）；未定价为 null */
+  price: ModelPrice | null
+  /** 成本（price.currency 的元）；未定价为 null，不计入 totalCost */
+  cost: number | null
+}
+
+export interface UsageAgentRow extends UsageTokenBreakdown {
+  agentId: string
+  name: string
+  avatar: string | null
+  /** 该 agent token 数最多的 model；无 model 用量时 null */
+  topModel: string | null
 }
 
 export interface UsageSummary {
@@ -749,8 +839,16 @@ export interface UsageSummary {
     runs: number
     updatedAt: number
   }>
-  byAgent: Array<{ agentId: string; name: string; totalTokens: number; runs: number }>
-  byModel: Array<{ model: string; totalTokens: number; runs: number }>
+  byAgent: UsageAgentRow[]
+  byModel: UsageModelRow[]
+  /** 按币种分桶的成本总额（不折算） */
+  totalCost: { usd: number; cny: number }
+  /** allTime 桶的 cache 命中率；分母 0 → null */
+  cacheRate: number | null
+  /** 未计入成本的 token 数（未定价模型 + 无 model 的 run） */
+  unpricedTokens: number
+  /** 生效价目表（默认 + 用户覆盖） */
+  pricing: ModelPriceTable
 }
 
 export async function fetchUsageSummary(): Promise<UsageSummary> {
@@ -788,6 +886,8 @@ export interface AppSettingsPatchBody {
   deploymentPublishEnabled?: boolean
   deploymentPublishDir?: string | null
   deploymentPublicBaseUrl?: string | null
+  /** 价目表覆盖：record(model → price)；null 清除全部覆盖，undefined 不改 */
+  modelPrices?: ModelPriceTable | null
 }
 
 export async function updateAppSettings(patch: AppSettingsPatchBody): Promise<AppSettingsRow> {

@@ -26,6 +26,7 @@ interface Agent {
   apiBaseUrl?: string           // per-agent 自定义 API endpoint；openai-compatible 必填；NULL 时 Claude Code 可走 app_settings.anthropicBaseUrl，Codex 走隔离 CODEX_HOME + SDK 默认 endpoint
 
   toolNames: string[]           // 该 Agent 可调用的工具，引用 Spec 07
+  skillNames: string[]          // 启用的 Agent Skills（SKILL.md name 或 `pkg:skill` 限定名）；仅 claude-code adapter 消费，空数组 = 无 skill（openspec agent-skills）
 
   isBuiltin: boolean            // 内置（不可删；可改）
   isOrchestrator: boolean       // 标记为协调者；同会话最多 1 个
@@ -45,6 +46,7 @@ type ModelProvider = 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'open
 - `adapterName === 'claude-code'` 时 `modelProvider` 忽略；`modelId` 可选（默认走 SDK 默认模型 `claude-opus-4-7`）；`toolNames` 强制 `[]`（Claude Code 用 SDK 内置工具集，详见 Spec 07）
 - `adapterName === 'codex'` 时 `modelProvider` 忽略；`modelId` 可选（默认 `gpt-5-codex`）；`toolNames` 强制 `[]`（Codex 用 SDK 内置工具集，详见 Spec 05）；`apiBaseUrl` 必须是 Codex/Responses 兼容 endpoint
 - `apiKey` / `apiBaseUrl` 是 per-agent 凭据：`apiBaseUrl` 非空时，`apiKey` 作为对应 SDK / endpoint 的 token；Claude Code、Codex、Custom openai-compatible 的 Base URL 协议不相同，Chat Completions-only provider 走 Custom adapter
+- `skillNames` 仅 `adapterName === 'claude-code'` 时可非空（其它 adapter 无 skill 运行机制，create/update 会拒绝）；切换 adapter 时清空
 - `isBuiltin: true` 的 Agent 不可删除但可修改配置（详见 Spec 10）
 - 删除 Agent 不级联删除使用它的 Conversation；前端应展示「已停用 Agent」灰态
 
@@ -267,6 +269,37 @@ interface Attachment {
 
 ---
 
+## 9. Task（跨会话任务看板）
+
+跨会话聚合的一等实体（openspec task-board）。看板视图按 `status` 分组展示；**不反向触发 run**（第一版）——编辑 / 切换状态只改任务记录，不创建消息、不唤起 Agent，纯粹是可视化与备忘层。
+
+```typescript
+interface Task {
+  id: string                    // task_<nanoid>
+  title: string
+  note?: string
+  status: 'open' | 'in_progress' | 'done' | 'blocked'
+  source: 'manual' | 'dispatch' | 'agent'
+
+  conversationId?: string       // 来源会话被删除后置空，任务记录保留
+  messageId?: string
+  artifactId?: string
+  dispatchTaskId?: string       // dispatch 来源幂等键 `${runId}:${taskId}`
+  createdByAgentId?: string
+
+  createdAt: number
+  updatedAt: number
+}
+```
+
+**约束**：
+- 三种来源：`manual`（用户在看板直接创建）/ `dispatch`（Orchestrator plan 批准时登记，子任务执行状态单向同步）/ `agent`（`create_task` 工具创建，详见 Spec 07）
+- `conversationId` / `messageId` / `artifactId` 均**无外键约束**，逻辑保证——同 AgentRun.parentRunId 的风格；来源会话被删除时这些字段置空，任务记录本身保留
+- `dispatchTaskId` 上有唯一索引（允许 NULL），plan 重复批准 / replan 时靠它 upsert 而非重复插入（见 Spec 08）
+- dispatch 状态 → 看板状态映射：`pending→open`、`running→in_progress`、`complete→done`、`failed/aborted/blocked/skipped→blocked`；同步方向单向（看板编辑不影响 dispatch 执行）
+
+---
+
 ## ID 命名规范
 
 | 实体 | 前缀 |
@@ -278,6 +311,7 @@ interface Attachment {
 | Workspace | `ws_` |
 | AgentRun | `run_` |
 | Attachment | `att_` |
+| Task | `task_` |
 | ToolCall（内存中） | `call_` |
 
 ID 用 `nanoid(12)`，URL-safe alphabet。详见 `src/server/ids.ts`。

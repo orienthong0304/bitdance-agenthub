@@ -6,7 +6,7 @@ import {
   validateOpenAICompatibleApiKey,
   validateOpenAICompatibleBaseUrl,
 } from '@/shared/openai-compatible'
-import type { AdapterName, ModelProvider } from '@/shared/types'
+import type { AdapterName, EffortLevel, ModelProvider } from '@/shared/types'
 
 /**
  * 用户自建 Agent 的服务。
@@ -33,12 +33,20 @@ export interface CreateAgentArgs {
   apiKey?: string | null
   /** 自定义 API base URL。Claude/Codex 对 endpoint 协议兼容性要求不同；NULL 走默认 */
   apiBaseUrl?: string | null
+  /** 思考深度（仅 claude-code adapter 消费）；NULL/省略 = SDK 默认 high */
+  effort?: EffortLevel | null
+  /** 启用的 Agent Skills（仅 claude-code adapter 支持；其它 adapter 必须为空） */
+  skillNames?: string[]
 }
 
 export async function createCustomAgent(args: CreateAgentArgs) {
   const id = newAgentId()
   const createdAt = Date.now()
   const adapterName: AdapterName = args.adapterName ?? 'custom'
+
+  if ((args.skillNames?.length ?? 0) > 0 && adapterName !== 'claude-code') {
+    throw new Error('Agent Skills are only supported by the claude-code adapter')
+  }
 
   if (adapterName === 'custom') {
     if (!args.modelProvider || !args.modelId) {
@@ -64,9 +72,12 @@ export async function createCustomAgent(args: CreateAgentArgs) {
     apiBaseUrl: args.apiBaseUrl?.trim() || null,
     // SDK adapter 走各自内置工具集，不消费 toolNames；强制空数组避免 UI 残留
     toolNames: adapterName === 'custom' ? args.toolNames : [],
+    skillNames: adapterName === 'claude-code' ? (args.skillNames ?? []) : [],
     isBuiltin: false,
     isOrchestrator: false,
     supportsVision: args.supportsVision ?? false,
+    // effort 仅对 claude-code 有意义；其它 adapter 强制 null
+    effort: adapterName === 'claude-code' ? (args.effort ?? null) : null,
     createdAt,
   }
 
@@ -106,6 +117,10 @@ export interface UpdateAgentPatch {
   apiKey?: string | null
   /** 传 null 显式清除自定义 base URL；undefined 表示不动 */
   apiBaseUrl?: string | null
+  /** 思考深度（仅 claude-code）；传 null 清除（回退 SDK 默认 high）；undefined 不动 */
+  effort?: EffortLevel | null
+  /** 启用的 Agent Skills（仅 claude-code）；undefined 不动 */
+  skillNames?: string[]
 }
 
 export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch) {
@@ -142,6 +157,16 @@ export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch
   if (patch.supportsVision !== undefined) updates.supportsVision = patch.supportsVision
   if (patch.apiKey !== undefined) updates.apiKey = patch.apiKey?.trim() || null
   if (patch.apiBaseUrl !== undefined) updates.apiBaseUrl = patch.apiBaseUrl?.trim() || null
+  if (patch.effort !== undefined) updates.effort = patch.effort
+  // effort / skillNames 仅对 claude-code 有意义：切到其它 adapter 时清除
+  if (patch.adapterName !== undefined && nextAdapterName !== 'claude-code') updates.effort = null
+  if (patch.skillNames !== undefined) {
+    if (patch.skillNames.length > 0 && nextAdapterName !== 'claude-code') {
+      throw new Error('Agent Skills are only supported by the claude-code adapter')
+    }
+    updates.skillNames = patch.skillNames
+  }
+  if (patch.adapterName !== undefined && nextAdapterName !== 'claude-code') updates.skillNames = []
 
   if (nextAdapterName === 'custom') {
     if (patch.modelProvider !== undefined) updates.modelProvider = patch.modelProvider

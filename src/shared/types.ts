@@ -187,12 +187,66 @@ export interface DiffHunk {
 // ─── Adapter 名称 ──────────────────────────────────────────
 export type AdapterName = 'claude-code' | 'codex' | 'custom' | 'mock'
 
+// ─── 思考深度（reasoning effort）──────────────────────────
+/** Anthropic 模型的思考深度档位。仅 claude-code adapter 消费；NULL = 走 SDK 默认（high）。 */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
 export type ModelProvider =
   | 'anthropic'
   | 'openai'
   | 'deepseek'
   | 'volcano-ark'
   | 'openai-compatible'
+
+// ─── Agent Skills（仅 claude-code adapter 消费）─────────────
+export type SkillSource = 'builtin' | 'imported'
+
+/** 一个 skill 包内的单个 skill（来自 SKILL.md frontmatter）。 */
+export interface SkillSummary {
+  name: string
+  description: string
+  /** `<packageName>:<skillName>`，跨包重名时用它精确启用（SDK plugin:skill 语义） */
+  qualifiedName: string
+}
+
+/** skill 包 = 安装单位（目录内含一或多个 SKILL.md skill）；skill = 启用单位。 */
+export interface SkillPackage {
+  id: string
+  name: string
+  description: string
+  source: SkillSource
+  /** builtin: 资源目录名；imported: GitHub URL 或本地来源路径 */
+  sourceRef: string
+  /** SDK local plugin 目录绝对路径 */
+  installPath: string
+  skills: SkillSummary[]
+  createdAt: number
+}
+
+// ─── Task Board（跨会话任务看板）─────────────────────────────
+export type BoardTaskStatus = 'open' | 'in_progress' | 'done' | 'blocked'
+export type BoardTaskSource = 'manual' | 'dispatch' | 'agent'
+
+/**
+ * 跨会话任务看板条目。看板是可视化与备忘层，不反向触发 run（第一版）；
+ * conversationId/messageId/artifactId 均为可选回链，来源会话被删除后置空但任务保留。
+ */
+export interface BoardTask {
+  id: string
+  title: string
+  note: string | null
+  status: BoardTaskStatus
+  source: BoardTaskSource
+  conversationId: string | null
+  messageId: string | null
+  artifactId: string | null
+  /** dispatch 来源的幂等键 `${runId}:${taskId}`；manual / agent 任务为 null。 */
+  dispatchTaskId: string | null
+  createdByAgentId: string | null
+  createdAt: number
+  updatedAt: number
+}
 
 // ─── 调度 plan ────────────────────────────────────────────
 export interface DispatchPlanItem {
@@ -210,7 +264,15 @@ export interface DispatchPlanItem {
   requiredEvidence?: string[]
 }
 
-export type DispatchTaskKind = 'code' | 'test' | 'review' | 'design' | 'doc' | 'analysis'
+export type DispatchTaskKind =
+  | 'code'
+  | 'test'
+  | 'review'
+  | 'design'
+  | 'doc'
+  | 'analysis'
+  | 'research'
+  | 'writing'
 
 export interface DispatchExpectedOutput {
   id: string
@@ -426,6 +488,8 @@ export type StreamEvent = BaseEvent &
     | { type: 'bash_command.resolved'; pendingId: string; approved: boolean }
     | { type: 'ask_user.pending'; pendingQuestion: PendingQuestion }
     | { type: 'ask_user.resolved'; pendingId: string; answered: boolean }
+    // 任务看板实时同步：agent 建单 / dispatch 状态变化时广播；conversationId 空串 = 全局任务
+    | { type: 'task.update'; task: BoardTask }
     | { type: 'heartbeat' }
   )
 

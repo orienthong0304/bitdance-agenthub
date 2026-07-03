@@ -105,7 +105,7 @@ export function NewConversationDialog({
     >
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>新建对话</DialogTitle>
+          <DialogTitle className="text-base font-bold">新建对话</DialogTitle>
           <DialogDescription>
             选择 1 个 Agent 创建单聊，选择 2 个或更多创建群聊
           </DialogDescription>
@@ -126,8 +126,8 @@ export function NewConversationDialog({
                   type="button"
                   onClick={() => toggle(a.id)}
                   className={cn(
-                    'flex w-full items-start gap-3 rounded-md border p-3 text-left transition hover:border-foreground/30',
-                    isSelected && 'border-primary bg-primary/5',
+                    'flex w-full items-start gap-3 rounded-md border p-3 text-left transition hover:border-foreground/30 hover:bg-muted/60',
+                    isSelected && 'border-primary bg-primary/5 hover:bg-primary/10',
                   )}
                 >
                   <AgentAvatar agent={a} size="lg" />
@@ -150,7 +150,7 @@ export function NewConversationDialog({
 
         {/* 工作目录 */}
         <div className="space-y-2 border-t pt-3">
-          <div className="text-xs font-medium text-muted-foreground">工作目录</div>
+          <div className="text-xs font-semibold text-foreground/80">工作目录</div>
           <label className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition hover:border-foreground/30">
             <input
               type="radio"
@@ -186,7 +186,7 @@ export function NewConversationDialog({
                       value={boundPath}
                       onChange={(e) => setBoundPath(e.target.value)}
                       placeholder={boundPathPlaceholder}
-                      className="flex-1 font-mono text-xs"
+                      className="h-9 flex-1 font-mono text-xs focus-visible:border-primary"
                     />
                     <Button
                       type="button"
@@ -221,7 +221,11 @@ export function NewConversationDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={() => void submit()} disabled={selected.size === 0 || creating}>
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => void submit()}
+            disabled={selected.size === 0 || creating}
+          >
             {creating ? '创建中...' : '创建'}
           </Button>
         </DialogFooter>

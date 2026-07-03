@@ -41,6 +41,7 @@ import {
   type ConnectionHint,
 } from '@/lib/api'
 import { subscribeUiCommand } from '@/lib/ui-command-events'
+import { cn } from '@/lib/utils'
 
 interface SettingsForm {
   anthropicApiKey: string
@@ -246,7 +247,7 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100vh-2rem)] max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>设置</DialogTitle>
+          <DialogTitle className="text-base font-bold">设置</DialogTitle>
           <DialogDescription className="sr-only">AgentHub 设置</DialogDescription>
         </DialogHeader>
 
@@ -375,7 +376,11 @@ export function SettingsDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             取消
           </Button>
-          <Button onClick={() => void handleSave()} disabled={busy || loading}>
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => void handleSave()}
+            disabled={busy || loading}
+          >
             {busy ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
@@ -468,6 +473,7 @@ function MobileConnectionHints({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
+                  className="rounded-[7px]"
                   aria-label="复制设备 token"
                   title="复制 token"
                   onClick={() => onCopyText(mobileDeviceToken)}
@@ -519,6 +525,7 @@ function MobileConnectionHints({
                 type="button"
                 size="icon-sm"
                 variant="ghost"
+                className="rounded-[7px]"
                 aria-label={`复制 ${hint.label} 地址`}
                 title="复制"
                 onClick={() => onCopy(hint)}
@@ -573,6 +580,7 @@ function DeploymentPublishSettings({
             value={publishDir}
             onChange={(event) => onPublishDirChange(event.target.value)}
             placeholder="D:\\sites\\agenthub"
+            className="h-9 focus-visible:border-primary"
           />
           <p className="text-[11px] leading-4 text-muted-foreground">
             AgentHub 会写入该目录下的 dep_xxx 子目录。
@@ -584,6 +592,7 @@ function DeploymentPublishSettings({
             value={publicBaseUrl}
             onChange={(event) => onPublicBaseUrlChange(event.target.value)}
             placeholder="https://example.com/apps"
+            className="h-9 focus-visible:border-primary"
           />
           <p className="text-[11px] leading-4 text-muted-foreground">
             部署卡片会返回公开根 URL 加 deployment id 的地址。
@@ -631,7 +640,7 @@ function KeyField({
           onChange={(e) => onChange(e.target.value)}
           autoComplete="off"
           spellCheck={false}
-          className={onToggleReveal ? 'pr-9 font-mono text-xs' : 'font-mono text-xs'}
+          className={cn('h-9 font-mono text-xs focus-visible:border-primary', onToggleReveal && 'pr-9')}
         />
         {onToggleReveal && (
           <button

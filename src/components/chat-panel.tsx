@@ -109,8 +109,8 @@ export function ChatPanel() {
   const participantAgents = conv.agentIds.map((id) => agents[id]).filter(Boolean)
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="flex shrink-0 items-center gap-3 overflow-hidden border-b px-3 py-2">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:min-w-[360px]">
+      <header className="flex h-[57px] shrink-0 items-center gap-3 overflow-hidden border-b px-3.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {/* 移动端汉堡按钮：打开 sidebar 抽屉 */}
           <Button
@@ -125,7 +125,7 @@ export function ChatPanel() {
           <ParticipantStack agents={participantAgents} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="min-w-0 truncate text-sm font-medium">{conv.title}</span>
+              <span className="min-w-0 truncate text-sm font-bold">{conv.title}</span>
               {conv.workspaceMode === 'local' && conv.workspaceBoundPath && (
                 <span
                   title={`本地工作目录：${conv.workspaceBoundPath}`}
@@ -203,7 +203,7 @@ export function ChatPanel() {
                   key={tabId}
                   label={`diff: ${name}`}
                   tooltip={pw?.path}
-                  icon={<FilePenLine className="size-3 text-[#3370FF]" />}
+                  icon={<FilePenLine className="size-3 text-primary" />}
                   active={activeTab === tabId}
                   onClick={() => setActiveTab(conv.id, tabId)}
                   onClose={() => closeFile(conv.id, tabId)}
@@ -324,7 +324,7 @@ function TabButton({
         'group flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 transition',
         active
           ? highlight
-            ? 'border-[#3370FF]/40 bg-[#3370FF]/5 text-foreground shadow-sm'
+            ? 'border-primary/40 bg-primary/5 text-foreground shadow-sm'
             : 'border-primary/30 bg-background shadow-sm'
           : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
       )}

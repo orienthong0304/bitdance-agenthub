@@ -9,9 +9,11 @@ import { AttachmentChip } from '@/components/attachment-chip'
 import { Button } from '@/components/ui/button'
 import { CodeBlock } from '@/components/code-block'
 import { Markdown } from '@/components/markdown'
+import { transformArtifactRefs } from '@/lib/artifact-ref-text'
 import { artifactPreviewPath } from '@/lib/artifact-preview'
 import { deployConversationArtifact, fetchArtifact } from '@/lib/api'
-import { getToolDisplayName, isBashToolName } from '@/lib/tool-display'
+import { getToolDisplayName, isBashToolName, isCreateTaskToolName } from '@/lib/tool-display'
+import { emitUiCommand } from '@/lib/ui-command-events'
 import { cn } from '@/lib/utils'
 import type { MessagePart } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
@@ -125,21 +127,95 @@ function PartRenderer({
 
 // ─── Text ──────────────────────────────────────────────
 function TextPart({ content }: { content: string }) {
+  // store 里已知的产物集合：裸 art_ 词命中才转 chip（标签无论命中都转，命中与否交给 chip）。
+  const artifacts = useAppStore((s) => s.artifacts)
   if (!content) return null
   // 把消息体里 <quoted_selection ...>...</quoted_selection> 块抠出来，渲染成卡片；
-  // 剩余文本走 Markdown。规避了纯文本里裸 XML 显丑的问题。
+  // 剩余文本先把行内产物引用改写成内联 chip，再走 Markdown。规避了纯文本里裸 XML / 裸标签显丑。
   const segments = splitQuotedSelections(content)
+  const isKnown = (id: string) => Boolean(artifacts[id])
   return (
     <div className="space-y-2">
       {segments.map((seg, i) =>
         seg.kind === 'quote' ? (
           <QuotedSelectionCard key={i} {...seg} />
         ) : (
-          <Markdown key={i}>{seg.text}</Markdown>
+          <Markdown key={i} artifactChip={(id) => <InlineArtifactChip artifactId={id} />}>
+            {transformArtifactRefs(seg.text, isKnown)}
+          </Markdown>
         ),
       )}
     </div>
   )
+}
+
+// 行内产物引用 chip：命中 store → 可点开预览的产物 chip；未命中 → 弱化「产物（不可用）」，
+// 绝不透出原始 <artifact_ref> 标签。标签引用可能未预加载，按需 fetch（404 视为不可用）。
+function InlineArtifactChip({ artifactId }: { artifactId: string }) {
+  const artifact = useAppStore((s) => s.artifacts[artifactId])
+  const upsertArtifact = useAppStore((s) => s.upsertArtifact)
+  const openPreview = useAppStore((s) => s.openArtifactPreview)
+  const [missing, setMissing] = useState(!artifactId)
+
+  useEffect(() => {
+    if (!artifactId || artifact) return
+    let cancelled = false
+    setMissing(false)
+    fetchArtifact(artifactId)
+      .then((row) => {
+        if (!cancelled) upsertArtifact(row)
+      })
+      .catch(() => {
+        if (!cancelled) setMissing(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [artifactId, artifact, upsertArtifact])
+
+  if (artifact) {
+    return (
+      <button
+        type="button"
+        title={`打开产物预览 · ${artifact.title}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          openPreview(artifact.id)
+        }}
+        className="mx-0.5 inline-flex max-w-[16rem] items-center gap-1 rounded border border-primary/30 bg-primary/5 px-1.5 py-0.5 align-baseline text-[12px] font-medium text-primary transition hover:bg-primary/10"
+      >
+        <InlineArtifactIcon type={artifact.type} />
+        <span className="truncate">{artifact.title}</span>
+      </button>
+    )
+  }
+
+  if (missing) {
+    return (
+      <span
+        title={artifactId || undefined}
+        className="mx-0.5 inline-flex items-center gap-1 rounded border border-dashed border-muted-foreground/30 bg-muted/40 px-1.5 py-0.5 align-baseline text-[12px] text-muted-foreground"
+      >
+        <XCircle className="size-3 shrink-0" />
+        产物（不可用）
+      </span>
+    )
+  }
+
+  return (
+    <span className="mx-0.5 inline-flex items-center gap-1 rounded border border-dashed border-muted-foreground/30 bg-muted/40 px-1.5 py-0.5 align-baseline text-[12px] text-muted-foreground">
+      <Loader2 className="size-3 shrink-0 animate-spin" />
+      产物…
+    </span>
+  )
+}
+
+function InlineArtifactIcon({ type }: { type: string }) {
+  if (type === 'image') return <ImageIcon className="size-3 shrink-0" />
+  if (type === 'document') return <FileText className="size-3 shrink-0" />
+  if (type === 'ppt') return <Presentation className="size-3 shrink-0" />
+  if (type === 'project') return <FolderGit2 className="size-3 shrink-0" />
+  return <Layers className="size-3 shrink-0" />
 }
 
 interface QuotedSegment {
@@ -194,10 +270,10 @@ function QuotedSelectionCard({ source, artifactId, filePath, text }: QuotedSegme
   const lines = text.split('\n')
   const collapsed = lines.length > 4
   return (
-    <div className="overflow-hidden rounded-md border border-[#3370FF]/30 bg-[#3370FF]/5 text-xs">
-      <div className="flex items-center gap-1.5 border-b border-[#3370FF]/20 bg-[#3370FF]/10 px-2.5 py-1 text-[11px]">
-        <Sparkles className="size-3 text-[#3370FF]" />
-        <span className="font-medium text-[#3370FF]">引用</span>
+    <div className="overflow-hidden rounded-md border border-primary/30 bg-primary/5 text-xs">
+      <div className="flex items-center gap-1.5 border-b border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px]">
+        <Sparkles className="size-3 text-primary" />
+        <span className="font-medium text-primary">引用</span>
         {source && (
           <>
             <span className="text-muted-foreground">·</span>
@@ -287,6 +363,10 @@ function ToolUsePart({
           ? { output: completion.result }
           : null)
       : null
+  const createTaskConfirm =
+    isCreateTaskToolName(toolName) && completion && !completion.isError
+      ? extractCreateTaskResult(completion.result)
+      : null
 
   const state: 'running' | 'success' | 'error' = !completion
     ? 'running'
@@ -360,6 +440,9 @@ function ToolUsePart({
             tone={completion?.isError ? 'error' : 'neutral'}
           />
         )}
+        {createTaskConfirm && (
+          <CreateTaskConfirm taskId={createTaskConfirm.taskId} title={createTaskConfirm.title} />
+        )}
 
         {showDetails && (
           <div className="min-w-0 space-y-2 pt-1">
@@ -373,9 +456,9 @@ function ToolUsePart({
                 tone={completion.isError ? 'error' : 'neutral'}
               />
             )}
-            <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground">
-              <span>{toolName}</span>
-              <span>{callId}</span>
+            <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground/60">
+              <span className="min-w-0 truncate">{toolName}</span>
+              <span className="min-w-0 truncate">{callId}</span>
             </div>
           </div>
         )}
@@ -392,6 +475,33 @@ function CommandPreview({ command, expanded }: { command: string; expanded: bool
       copyTitle="复制命令"
       expanded={expanded}
     />
+  )
+}
+
+// create_task 成功后的确认行：主显立单标题 + 跳看板按钮；内部 task_ id 只进 title 提示，不裸露。
+function CreateTaskConfirm({ taskId, title }: { taskId: string; title: string }) {
+  return (
+    <div
+      title={`任务 ${taskId}`}
+      className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-[11px]"
+    >
+      <Check className="size-3.5 shrink-0 text-primary" />
+      <span className="min-w-0 max-w-full flex-1 truncate">
+        <span className="font-medium text-primary">已立单</span>
+        <span className="text-primary/70">：</span>
+        <span className="text-foreground/90">{title}</span>
+      </span>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          emitUiCommand('open-tasks')
+        }}
+        className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 font-medium text-primary transition hover:bg-primary/10"
+      >
+        在看板查看
+      </button>
+    </div>
   )
 }
 
@@ -544,6 +654,37 @@ function extractBashResult(value: unknown): BashResultPreview | null {
     truncated: typeof value.truncated === 'boolean' ? value.truncated : undefined,
     timedOut: typeof value.timedOut === 'boolean' ? value.timedOut : undefined,
   }
+}
+
+// create_task 结果形态：mock 直接 { taskId, title }；Claude Code MCP 回来是
+// JSON 字符串或 [{type:'text', text: JSON.stringify(value)}] 数组，都要能解出来。
+function extractCreateTaskResult(value: unknown): { taskId: string; title: string } | null {
+  const fromRecord = (obj: Record<string, unknown>): { taskId: string; title: string } | null => {
+    if (typeof obj.taskId !== 'string' || !obj.taskId) return null
+    return { taskId: obj.taskId, title: typeof obj.title === 'string' ? obj.title : '' }
+  }
+  const tryParse = (s: string): { taskId: string; title: string } | null => {
+    try {
+      const parsed = JSON.parse(s) as unknown
+      return isPlainRecord(parsed) ? fromRecord(parsed) : null
+    } catch {
+      return null
+    }
+  }
+  if (isPlainRecord(value)) {
+    const direct = fromRecord(value)
+    if (direct) return direct
+  }
+  if (typeof value === 'string') return tryParse(value)
+  if (Array.isArray(value)) {
+    for (const blk of value) {
+      if (blk && typeof blk === 'object' && 'text' in blk && typeof (blk as { text: unknown }).text === 'string') {
+        const r = tryParse((blk as { text: string }).text)
+        if (r) return r
+      }
+    }
+  }
+  return null
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

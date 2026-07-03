@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { classifyBashApproval, waitForBashApproval } from '@/server/bash-command-approval'
 import { db, schema } from '@/db/client'
 import type { WorkspaceRow } from '@/db/schema'
+import { recordFileWriteFromDisk } from '@/server/dispatch-file-writes'
 import { recordRunFileWrite } from '@/server/dispatch-run-evidence'
 import { readIfExists } from '@/server/fs-service'
 import { newMessageId, newToolCallId } from '@/server/ids'
@@ -21,7 +22,11 @@ import { findBannedPattern } from '@/server/security'
 import { REPORT_TASK_RESULT_TOOL_NAME } from '@/server/task-result-report'
 import { toolRegistry } from '@/server/tools/registry'
 import type { ToolContext } from '@/server/tools/types'
-import { assertPathWithinWorkspace, getEffectiveCwd } from '@/server/workspace-utils'
+import {
+  assertPathWithinWorkspace,
+  assertSandboxWriteQuota,
+  getEffectiveCwd,
+} from '@/server/workspace-utils'
 import type { DeployStatusRecord, StreamEvent } from '@/shared/types'
 
 import { buildChildProcessEnv, createAdapterEvent } from './adapter-utils'
@@ -127,7 +132,9 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
                   id: z.string(),
                   agentId: z.string(),
                   task: z.string(),
-                  taskKind: z.enum(['code', 'test', 'review', 'design', 'doc', 'analysis']).optional(),
+                  taskKind: z
+                    .enum(['code', 'test', 'review', 'design', 'doc', 'analysis', 'research', 'writing'])
+                    .optional(),
                   dependsOn: z.array(z.string()).optional(),
                   expectedOutputs: z
                     .array(
@@ -406,13 +413,33 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
             }
           },
         ),
+        tool(
+          'create_task',
+          'Log a follow-up to-do on the global cross-conversation task board when you notice something that should happen later but is outside the current task (e.g. a bug to fix, a doc to update, a decision the user still owes). Not for tracking your own in-progress steps. Returns the created taskId.',
+          {
+            title: z.string(),
+            note: z.string().optional(),
+          },
+          async (args) => {
+            const result = await toolRegistry.execute('create_task', args, toolCtx)
+            if (!result.ok) {
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${result.error}` }],
+                isError: true,
+              }
+            }
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify(result.value) }],
+            }
+          },
+        ),
       ]
     const agenthubMcpServer = createSdkMcpServer({
       name: 'agenthub',
       version: '1.0.0',
       instructions: isPlanStage
         ? 'AgentHub Orchestrator planning tools: inspect context with fs_list/read_artifact/read_attachment when needed, ask finite blocking questions with ask_user, then call plan_tasks exactly once. Do not write files, run commands, deploy, or complete child work in the planning stage.'
-        : '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片 / PPT / Mermaid 图），流程、架构、时序、依赖关系优先用 type="diagram" 且 content 为 { syntax: "mermaid", source }；Mermaid 图会在写入时做预检，中文/数学/括号等 label 写成 A["..."]，不要传 ```mermaid fence，若工具返回 Invalid Mermaid diagram 必须修正 source 后重试；PPT 优先使用 semantic blocks（heading、paragraph、bullets、metric、quote、timeline、columns、callout、divider、spacer），不要在 PPT JSON 中嵌入 base64/data URI 大资产；用 read_artifact 读其他 Agent 的产物，用 fs_list 查看 AgentHub workspace 目录，用 deploy_artifact 为 web_app artifact 生成本地预览路径，用 deploy_workspace 为当前 workspace 内 dist/build/out 等静态目录生成部署卡。需要用户在有限方案中选择时，用 ask_user 发起结构化问答，不要只在普通文本里提问。被分派为子任务时，结束前必须调用 report_task_result 上报真实任务结果。部署工具返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。',
+        : '内置 AgentHub 工具：用 write_artifact 创建可预览产物（网页 / 文档 / 图片 / PPT / Mermaid 图），流程、架构、时序、依赖关系优先用 type="diagram" 且 content 为 { syntax: "mermaid", source }；Mermaid 图会在写入时做预检，中文/数学/括号等 label 写成 A["..."]，不要传 ```mermaid fence，若工具返回 Invalid Mermaid diagram 必须修正 source 后重试；PPT 优先使用 semantic blocks（heading、paragraph、bullets、metric、quote、timeline、columns、callout、divider、spacer），不要在 PPT JSON 中嵌入 base64/data URI 大资产；用 read_artifact 读其他 Agent 的产物，用 fs_list 查看 AgentHub workspace 目录，用 deploy_artifact 为 web_app artifact 生成本地预览路径，用 deploy_workspace 为当前 workspace 内 dist/build/out 等静态目录生成部署卡。需要用户在有限方案中选择时，用 ask_user 发起结构化问答，不要只在普通文本里提问。被分派为子任务时，结束前必须调用 report_task_result 上报真实任务结果。部署工具返回的 previewPath 是当前 AgentHub 实例下的相对路径；不要把它改写成公网域名或自造完整 URL，面向用户时让用户点击部署卡片按钮或原样引用 previewPath。发现后续待办事项时，用 create_task 在全局任务看板立一张任务单。',
       tools: filterAgentHubMcpToolsForRun(input.toolNames, mcpTools),
     })
 
@@ -438,6 +465,16 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       settingSources: ['project'],
       permissionMode: 'default', // 自己 canUseTool 接管
       env: buildSdkEnv(input.apiKey, input.apiBaseUrl),
+      // 思考深度：agent.effort 非空时传给 SDK；为空走 SDK 默认（high）
+      ...(input.effort ? { effort: input.effort } : {}),
+      // Agent Skills：已由 skills-service 解析（plan stage 时 runner 不注入）。
+      // plugins 装载 skill 包目录，skills 只启用点名的（SDK 是 context filter 非 sandbox）。
+      ...(input.skills?.length && input.skillPluginPaths?.length
+        ? {
+            skills: input.skills,
+            plugins: input.skillPluginPaths.map((p) => ({ type: 'local' as const, path: p })),
+          }
+        : {}),
       ...(previousSessionId ? { resume: previousSessionId } : {}),
       canUseTool: (toolName, toolInput) =>
         bridgePermission(toolName, toolInput, { workspace, approvalMode, input, signal }),
@@ -702,17 +739,12 @@ function recordClaudeSdkFileWrite(
     bytes,
     applied: 'auto',
   })
+  // 冲突检测哈希：SDK 已写完盘，从磁盘读回（specs/06 代码冲突检测）
+  recordFileWriteFromDisk(runId, absolutePath)
 }
 
 // ─── canUseTool 桥 ────────────────────────────────────────
 
-/**
- * 构造给 SDK 子进程的 env：
- *  - 配了 apiBaseUrl（第三方网关如 anyrouter）：设 ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN，
- *    并清空 ANTHROPIC_API_KEY（避免 process env 覆盖 AUTH_TOKEN）
- *  - 只配了 apiKey：当 ANTHROPIC_API_KEY 传给 SDK
- *  - 都没配：透传 process.env，SDK fallback 到 env / ~/.claude OAuth
- */
 function parseArtifactIdFromMcpResult(content: unknown): string | null {
   // MCP tool_result.content 可能是字符串 / 数组 of {type:'text', text} / object
   // 我们在 handler 里返回的是 [{type:'text', text: JSON.stringify(value)}]
@@ -775,11 +807,26 @@ function isDeployStatusRecord(value: unknown): value is DeployStatusRecord {
   )
 }
 
-function buildSdkEnv(
+/** Claude OAuth 订阅令牌前缀（`claude setup-token` / Pro·Max 登录生成）。 */
+const OAUTH_TOKEN_PREFIX = 'sk-ant-oat'
+
+/**
+ * 构造给 SDK 子进程的 env：
+ *  - apiKey 是 OAuth 订阅令牌（sk-ant-oat...）：走 CLAUDE_CODE_OAUTH_TOKEN，清空 ANTHROPIC_API_KEY
+ *    （这类令牌不能当 x-api-key 用，否则官方 API 报 Invalid API key · Fix external API key）
+ *  - 配了 apiBaseUrl（第三方网关如 anyrouter）：设 ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN，
+ *    并清空 ANTHROPIC_API_KEY（避免 process env 覆盖 AUTH_TOKEN）
+ *  - 只配了 apiKey：当 ANTHROPIC_API_KEY 传给 SDK
+ *  - 都没配：透传 process.env，SDK fallback 到 env / ~/.claude OAuth
+ */
+export function buildSdkEnv(
   apiKey: string | null,
   apiBaseUrl: string | null,
 ): Record<string, string | undefined> {
   const base: Record<string, string | undefined> = buildChildProcessEnv()
+  if (apiKey?.startsWith(OAUTH_TOKEN_PREFIX)) {
+    return { ...base, CLAUDE_CODE_OAUTH_TOKEN: apiKey, ANTHROPIC_API_KEY: '' }
+  }
   if (apiBaseUrl) {
     return {
       ...base,
@@ -852,15 +899,8 @@ async function bridgePermission(
 
   // 3. fs_write 审批 (Write / Edit)
   if (FS_WRITE_TOOLS.has(toolName)) {
-    if (ctx.approvalMode === 'auto') return allow()
     const target = (toolInput.file_path as string) ?? (toolInput.path as string)
     if (!target) return deny('Missing file_path/path')
-
-    const oldContent = readIfExists(ctx.workspace, target)
-    const newContent = computeNewContent(toolName, toolInput, oldContent)
-    if (newContent instanceof Error) {
-      return deny(newContent.message)
-    }
 
     let absPath: string
     try {
@@ -868,6 +908,43 @@ async function bridgePermission(
     } catch (e) {
       return deny(e instanceof Error ? e.message : 'Path outside workspace')
     }
+
+    const oldContent = readIfExists(ctx.workspace, target)
+
+    // readIfExists 对「>1MB 拒读」也返回 null:Edit 既有大文件时无法重建 diff,
+    // 不能误报「文件不存在」——Auto 走近似配额后放行(维持 b156615 之前的可编辑性),Review 提示切 Auto
+    if (toolName === 'Edit' && oldContent === null && isExistingFile(absPath)) {
+      if (ctx.approvalMode === 'auto') {
+        try {
+          // 旧内容读不到,增量按 new_string 字节数近似(单次替换的增长上界)
+          const approxBytes = Buffer.byteLength(
+            (toolInput.new_string as string | undefined) ?? '',
+            'utf8',
+          )
+          assertSandboxWriteQuota(ctx.workspace, approxBytes)
+        } catch (e) {
+          return deny(e instanceof Error ? e.message : 'Workspace quota exceeded')
+        }
+        return allow()
+      }
+      return deny(
+        `Edit target exceeds diffable size (1 MB): ${target}; Review mode cannot render a diff — switch fs_write approval to Auto mode.`,
+      )
+    }
+
+    const newContent = computeNewContent(toolName, toolInput, oldContent)
+    if (newContent instanceof Error) {
+      return deny(newContent.message)
+    }
+
+    // sandbox 配额闸：SDK 自己写盘不经过 fs-service，只能在审批桥拦（Auto / Review 都拦）
+    try {
+      assertSandboxWriteQuota(ctx.workspace, Buffer.byteLength(newContent, 'utf8'))
+    } catch (e) {
+      return deny(e instanceof Error ? e.message : 'Workspace quota exceeded')
+    }
+
+    if (ctx.approvalMode === 'auto') return allow()
 
     const pending = pendingWrites.register({
       conversationId: ctx.input.conversationId,
@@ -912,6 +989,15 @@ async function bridgePermission(
 
   // 5. 默认放行（Read / Grep / Glob / WebFetch / WebSearch / Task / TodoWrite / ...）
   return allow()
+}
+
+/** target 已存在且是普通文件(absPath 必须先过 assertPathWithinWorkspace)。 */
+function isExistingFile(absPath: string): boolean {
+  try {
+    return statSync(absPath).isFile()
+  } catch {
+    return false
+  }
 }
 
 /** 把 Write/Edit 的输入转成「应用后的完整文件内容」用于 diff viewer。 */

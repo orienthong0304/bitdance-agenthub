@@ -5,18 +5,21 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { CodeBlock } from '@/components/code-block'
+import { parseArtifactRefHref } from '@/lib/artifact-ref-text'
 import { cn } from '@/lib/utils'
 
 interface MarkdownProps {
   children: string
   className?: string
+  /** 命中产物引用链接（`#artifact-ref-<id>`）时渲染的内联 chip；不传则按普通链接渲染。 */
+  artifactChip?: (artifactId: string) => ReactNode
 }
 
 /**
  * 受控的 Markdown 渲染器。fenced code block 交给 CodeBlock（shiki 双主题高亮），
  * 其他元素直接用 Tailwind 贴合聊天泡泡。
  */
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ children, className, artifactChip }: MarkdownProps) {
   return (
     <div className={cn('text-sm leading-6 text-foreground', className)}>
       <ReactMarkdown
@@ -30,16 +33,20 @@ export function Markdown({ children, className }: MarkdownProps) {
           ul: ({ children }) => <ul className="my-1.5 list-disc space-y-0.5 pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="my-1.5 list-decimal space-y-0.5 pl-5">{children}</ol>,
           li: ({ children }) => <li className="leading-6">{children}</li>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline-offset-2 hover:underline"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const refId = parseArtifactRefHref(href)
+            if (refId !== null && artifactChip) return <>{artifactChip(refId)}</>
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                {children}
+              </a>
+            )
+          },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
           blockquote: ({ children }) => (

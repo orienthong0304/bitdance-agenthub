@@ -51,6 +51,12 @@ Messages SHALL reference artifacts via `artifact_ref` parts instead of embedding
 - **WHEN** `write_artifact` returns an artifact id
 - **THEN** AgentRunner injects an `artifact_ref` part into the current message.
 
+#### Scenario: A text part embeds an inline artifact reference
+- **WHEN** a `text` part's markdown contains an inline `<artifact_ref id="art_..."/>` tag or a bare `art_<id>` word
+- **THEN** the renderer rewrites it to an inline artifact chip (click opens the preview) before markdown rendering
+- **AND** a bare `art_<id>` word is only converted when the artifact is known in the store (otherwise kept verbatim to avoid false positives)
+- **AND** the raw `<artifact_ref>` tag text is never shown; an unresolvable reference falls back to a de-emphasized "产物（不可用）" chip.
+
 ### Requirement: Deployment status SHALL be structured
 
 Messages SHALL represent deploy preview results with a `deploy_status` part instead of plain text so the UI can render open/copy actions.

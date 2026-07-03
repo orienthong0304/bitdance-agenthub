@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { db, schema } from '@/db/client'
 import { verifyInternalToolToken } from '@/server/internal-tool-auth'
 import { askUserTool } from '@/server/tools/ask-user'
+import { createTaskTool } from '@/server/tools/create-task'
 import { deployArtifactTool } from '@/server/tools/deploy-artifact'
 import { deployWorkspaceTool } from '@/server/tools/deploy-workspace'
 import { fsListTool } from '@/server/tools/fs-list'
@@ -28,6 +29,7 @@ const EXPOSED_TOOLS = {
   fs_list: fsListTool,
   plan_tasks: planTasksTool,
   read_attachment: readAttachmentTool,
+  create_task: createTaskTool,
 }
 
 const BodySchema = z.object({

@@ -142,7 +142,7 @@ export function MessageList({ conversationId }: { conversationId: string }) {
 
   return (
     <ScrollArea className="min-h-0 flex-1" viewportRef={viewportRef}>
-      <div className="space-y-4 p-4">
+      <div className="mx-auto flex max-w-[760px] flex-col gap-[18px] px-6 py-5">
         {messages.map((m) => (
           <MessageItem key={m.id} message={m} />
         ))}

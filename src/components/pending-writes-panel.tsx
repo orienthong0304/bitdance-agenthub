@@ -108,8 +108,8 @@ function PendingWriteCard({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-lg border bg-card px-3 py-2 text-xs shadow-sm transition',
-        isViewing && 'border-[#3370FF]/50 ring-1 ring-[#3370FF]/20',
+        'flex items-center gap-3 rounded-lg border border-amber-200 bg-card px-3 py-2 text-xs shadow-sm transition dark:border-amber-900/50',
+        isViewing && 'border-primary/50 ring-1 ring-primary/20 dark:border-primary/50',
       )}
     >
       <div className="flex shrink-0 items-center gap-2">
@@ -121,7 +121,7 @@ function PendingWriteCard({
         {isNew ? (
           <FilePlus2 className="size-4 text-emerald-600" />
         ) : (
-          <FilePenLine className="size-4 text-[#3370FF]" />
+          <FilePenLine className="size-4 text-primary" />
         )}
       </div>
 
@@ -129,7 +129,7 @@ function PendingWriteCard({
         <div className="flex items-center gap-1.5">
           <span className="shrink-0 font-medium">{agent?.name ?? 'Agent'}</span>
           <span className="shrink-0 text-muted-foreground">想{isNew ? '创建' : '修改'}</span>
-          <code className="truncate font-mono text-[11px]">{pending.path}</code>
+          <code className="truncate rounded-lg bg-muted px-1.5 py-0.5 font-mono text-xs">{pending.path}</code>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
           {added > 0 && <span className="font-mono text-emerald-600">+{added}</span>}
@@ -155,7 +155,7 @@ function PendingWriteCard({
           variant="ghost"
           onClick={handleReject}
           disabled={!!busy}
-          className="h-7 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
+          className="h-7 px-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
           title="拒绝"
         >
           {busy === 'reject' ? (
@@ -169,7 +169,7 @@ function PendingWriteCard({
           size="sm"
           onClick={handleApprove}
           disabled={!!busy}
-          className="h-7 bg-[#3370FF] px-2.5 text-white hover:bg-[#2860e5]"
+          className="h-7 bg-primary px-2.5 text-primary-foreground hover:bg-primary/90"
           title="应用"
         >
           {busy === 'approve' ? (

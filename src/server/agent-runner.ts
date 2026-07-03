@@ -41,6 +41,7 @@ import {
   recordRunCommand,
   type RunToolEvidence,
 } from './dispatch-run-evidence'
+import { resolveAgentSkills } from './skills-service'
 import {
   buildReplanContext,
   buildReviseContext,
@@ -65,6 +66,7 @@ import {
   readTaskResultReportFromToolResult,
   REPORT_TASK_RESULT_TOOL_NAME,
 } from './task-result-report'
+import { syncDispatchTaskStatus, upsertDispatchTask } from './task-service'
 import { executeBashCommand } from './tools/bash'
 import { assertPathWithinWorkspace, getEffectiveCwd } from './workspace-utils'
 
@@ -519,6 +521,21 @@ async function executeOrchestratorRun(
       plan: approvedPlan,
     })
     for (const item of approvedPlan) planItemsById.set(item.id, item)
+
+    // 看板登记：dispatchTaskId 用父 orchestrator runId（补救轮复用同一 runId），跨轮对同一 item.id 幂等；
+    // 登记失败不阻塞调度，但先 await 完成再进 executeDag，避免第一波 dispatch.start 同步先于登记落地。
+    await Promise.all(
+      approvedPlan.map((item) =>
+        upsertDispatchTask({
+          dispatchTaskId: `${runId}:${item.id}`,
+          title: item.task.slice(0, 120),
+          conversationId: args.conversationId,
+          agentId: item.agentId,
+        }).catch((err) => {
+          console.warn(`[agent-runner] upsertDispatchTask failed for ${runId}:${item.id}`, err)
+        }),
+      ),
+    )
 
     // ─── EXECUTE (DAG) ───
     const { results, conflicts } = await executeDag(approvedPlan, {
@@ -1049,6 +1066,10 @@ async function runChildTaskAttempt(
     agentId: task.agentId,
   })
 
+  await syncDispatchTaskStatus(`${ctx.parentRunId}:${task.id}`, 'running').catch((err) => {
+    console.warn(`[agent-runner] syncDispatchTaskStatus(running) failed for ${ctx.parentRunId}:${task.id}`, err)
+  })
+
   const raw = await promise
   const verificationResults =
     raw.status === 'aborted'
@@ -1506,6 +1527,12 @@ function publishDispatchEnd(
     taskId,
     status: result.status,
     error: result.error,
+  })
+
+  // 看板同步不阻塞 DAG 收尾：部分调用点在同步的清理路径里（如 abort 时的 markRemainingTasksAborted），
+  // 不 await，失败只 console.warn。
+  syncDispatchTaskStatus(`${ctx.parentRunId}:${taskId}`, result.status).catch((err) => {
+    console.warn(`[agent-runner] syncDispatchTaskStatus(${result.status}) failed for ${ctx.parentRunId}:${taskId}`, err)
   })
 }
 
@@ -2027,6 +2054,20 @@ async function buildAdapterInput(
     })
   }
 
+  // Agent Skills：仅 claude-code 消费；plan stage（带 plan_tasks 的编排规划轮）保持 skill-free，
+  // 让规划确定性且省 token（spec agent-skills）。解析失败降级为无 skill，不让整个 run 崩。
+  let resolvedSkills: { skills: string[]; pluginPaths: string[] } | null = null
+  if (
+    agent.adapterName === 'claude-code' &&
+    (agent.skillNames?.length ?? 0) > 0 &&
+    !toolNames.includes('plan_tasks')
+  ) {
+    resolvedSkills = await resolveAgentSkills(agent.skillNames).catch((err) => {
+      console.warn('[agent-runner] resolveAgentSkills failed; continuing without skills', err)
+      return null
+    })
+  }
+
   return {
     agentId: agent.id,
     conversationId: args.conversationId,
@@ -2038,6 +2079,10 @@ async function buildAdapterInput(
     apiBaseUrl: effectiveApiBaseUrl,
     modelId: agent.modelId,
     toolNames,
+    effort: agent.effort ?? undefined,
+    skills: resolvedSkills && resolvedSkills.skills.length > 0 ? resolvedSkills.skills : undefined,
+    skillPluginPaths:
+      resolvedSkills && resolvedSkills.pluginPaths.length > 0 ? resolvedSkills.pluginPaths : undefined,
     attachments: attachments.length > 0 ? attachments : undefined,
     history: history.length > 0 ? history : undefined,
     customConfig:
@@ -2215,7 +2260,7 @@ function buildAgentHubToolGuidance(
       '硬性要求：调用前必须已经准备好完整参数；严禁 write_artifact({})，严禁先空调用工具再补参数。',
       '调用前自检：type 必须是工具 schema 允许的枚举值，title 必须是非空字符串，content 必须是对应类型的原始对象。',
       'web_app 正确参数：write_artifact({ type: "web_app", title: "登录页原型", content: { files: { "index.html": "<!doctype html>...", "style.css": "body { ... }", "script.js": "..." }, entry: "index.html" } })。',
-      'document 完整模板：write_artifact({ type: "document", title: "PRD", content: { format: "markdown", content: "# PRD\\n\\n## 1. 背景\\n...\\n\\n## 2. 目标\\n...\\n\\n## 3. 方案\\n..." } })。',
+      'document 完整模板：write_artifact({ type: "document", title: "文章标题", content: { format: "markdown", content: "# 文章标题\\n\\n## 引言\\n...\\n\\n## 正文小节\\n...\\n\\n## 结尾\\n..." } })。',
       'diagram 正确参数：write_artifact({ type: "diagram", title: "系统调用流程", content: { syntax: "mermaid", source: "flowchart TD\\n  U[\\"用户\\"] --> A[\\"AgentHub\\"]\\n  A --> LLM[\\"LLM\\"]\\n  LLM --> T[\\"工具调用\\"]", theme: "default" } })。适合流程图、时序图、架构图、依赖关系图；不要把 Mermaid 放进 document 代码块里冒充图产物。',
       'diagram 规则：中文、数学公式、括号、冒号、斜杠等 label 一律写成 A["..."]；一行只写一条边；不要把 ```mermaid fence 传给 source。write_artifact 会校验 Mermaid，若返回 Invalid Mermaid diagram，必须根据错误修正 source 后重新调用工具。',
       'ppt 正确参数：write_artifact({ type: "ppt", title: "Q2 复盘", content: { title: "Q2 复盘", theme: { primary: "1A3C6E", background: "F8F9FA", surface: "FFFFFF", textBody: "2C3E50", textMuted: "6B7280", accentPositive: "2B7A4B", accentNegative: "C0392B", divider: "E0E4E8", fontHeading: "Inter", fontBody: "Inter" }, slides: [{ title: "Q2 复盘", subtitle: "关键指标", layout: "metrics", blocks: [{ type: "metric", label: "ARR", value: "$12M", change: "+18%", tone: "positive" }, { type: "callout", title: "下一步", text: "聚焦企业客户扩张", tone: "info" }] }] } })。',
@@ -2358,16 +2403,20 @@ function buildOrchestratorPlanPrompt(
     '- For tasks with quality requirements, add concise acceptanceCriteria that the assigned agent can verify.',
     ...localWorkspaceRules,
     '- For code or test tasks, set taskKind and declare targetPaths, expectedWorkspaceChanges, requiredCommands, and requiredEvidence whenever possible.',
-    '- Frontend and backend implementation tasks usually both depend on PRD/API contracts, not on each other; plan them as parallel siblings unless one truly consumes the other output.',
-    '- Prefer requiredCommands with cwd, for example { command: "pnpm build", cwd: "frontend", timeoutMs: 300000 }; avoid encoding directory changes as "cd frontend && ...".',
+    '- 写作工序通常是逐级依赖的串行链：资料研究 → 内容策划 → 主笔 → 润色编辑 → 审校；后一道工序在 dependsOn 里写上前一道。只有彼此真正无关的子任务（如同一篇里互不依赖的两块独立资料检索）才并行。',
+    '- 写作工序的 taskKind 取值：资料研究用 research，内容策划/Brief/提纲用 doc，主笔/润色成稿用 writing，审校用 review；这些都是文字型工序，不要声明 project expectedOutputs，用 expectedOutputs(document) 或 acceptanceCriteria 描述交付。',
+    '- 用户要求修改 / 润色 / 续写某个「已存在的产物（artifact）」时：你自己没有 write_artifact，不能直接改稿；只需发一个单任务 plan_tasks，派给原作者或合适的 writer agent，不要为一次小修订重启完整写作链。',
+    '- 该修订任务的 task 文本必须写明产物 id、要改哪一部分、保留哪些、基于原产物产出新版本（子 agent 会用 read_artifact 读原文，再用 write_artifact 带 parentArtifactId 指向原产物存为新版）；你在计划阶段只能用 plan_tasks / ask_user / 只读侦察工具，绝不要调用 write_artifact、ToolSearch 或其它未提供的工具。',
     '- A retry/remediation plan must preserve the original user goal. Do not replace implementation work with a narrower review-only task unless the user explicitly approved that scope change.',
     ...localWorkspaceRules,
     '',
-    '示例（设计 → 前端 → 审查，逐级依赖；agentId 用上面可用列表里的真实 id）：',
+    '示例（资料 → 策划 → 主笔 → 润色 → 审校，逐级依赖；agentId 用上面可用列表里的真实 id）：',
     'tasks: [',
-    '  { "id": "t1", "agentId": "<设计师 id>", "task": "产出 UI 设计稿" },',
-    '  { "id": "t2", "agentId": "<前端 id>", "task": "按设计稿实现页面", "dependsOn": ["t1"] },',
-    '  { "id": "t3", "agentId": "<Reviewer id>", "task": "审查 t2 的实现", "dependsOn": ["t2"] }',
+    '  { "id": "t1", "agentId": "<资料研究员 id>", "task": "联网检索主题资料，产出带出处的资料简报", "taskKind": "research" },',
+    '  { "id": "t2", "agentId": "<内容策划 id>", "task": "基于资料简报产出写作 Brief 与提纲", "taskKind": "doc", "dependsOn": ["t1"] },',
+    '  { "id": "t3", "agentId": "<主笔 id>", "task": "按 Brief 与提纲写出 Markdown 初稿", "taskKind": "writing", "dependsOn": ["t2"] },',
+    '  { "id": "t4", "agentId": "<润色编辑 id>", "task": "润色 t3 初稿，产出新版本", "taskKind": "writing", "dependsOn": ["t3"] },',
+    '  { "id": "t5", "agentId": "<审校 id>", "task": "终审 t4 稿件，输出审校报告", "taskKind": "review", "dependsOn": ["t4"] }',
     ']',
   ].join('\n')
 }
@@ -2396,7 +2445,7 @@ async function buildSubAgentPrompt(
   workspace: WorkspaceRow,
 ): Promise<string> {
   // 收集已完成上游任务的 artifact 列表，作为隐式上下文。
-  // 使用传递依赖闭包，避免 Review 只看到直接上游实现而看不到 PRD / UI 设计。
+  // 使用传递依赖闭包，避免审校只看到直接上游初稿而看不到资料简报 / 写作 Brief。
   const upstreamArtifactIds = new Set<string>()
   for (const dep of collectDependencyClosure(plan, task.id)) {
     const r = upstream.get(dep)

@@ -33,7 +33,7 @@ L3  Application Services（见 Spec 02/06）
 
 ## AppState 结构
 
-源文件：`src/stores/app-store.ts:20-89`
+源文件：`src/stores/app-store.ts:32-97`
 
 ```typescript
 interface AppState {
@@ -43,6 +43,9 @@ interface AppState {
   messages: Record<string, MessageRow>
   artifacts: Record<string, ArtifactRow>
 
+  // ─── 任务看板（跨会话，扁平数组非按 id normalize）─────
+  boardTasks: BoardTask[]        // TaskBoardPanel 挂载时 fetch 一次；v1 无 StreamEvent 实时同步
+
   // ─── 关系桶（按 conversationId 分桶）─────────────
   messageIdsByConv: Record<string, string[]>       // 该会话消息按时间顺序的 id 列表
   runsByConv: Record<string, Record<string, AgentRunRow>>
@@ -51,6 +54,7 @@ interface AppState {
   dispatchesByRunId: Record<string, DispatchState>
 
   // ─── UI 状态 ──────────────────────────────────────
+  railMode: RailMode                                          // 'conversations'|'artifacts'|'agents'|'analytics'|'tasks'；主区据此在会话/用量页间切换（首个非会话主区视图先例）
   activeConversationId: string | null
   previewArtifactId: string | null
   fileExplorerOpen: boolean                                   // 与 previewArtifactId 互斥
@@ -69,13 +73,14 @@ interface AppState {
 - **实体 normalize 成 `Record<id, Row>`**，不放在 conversations 的嵌套里（避免重复存储 + 局部更新困难）
 - **关系用「id 列表」分桶**，渲染时 map 拿实体。这样新增 / 删除消息只动 id 列表 + 实体 map，不破坏 React shallow equality
 - **UI 状态按 conversationId 分桶**（pendingAttachments / replyTarget），切会话不会污染
-- **不放在 store 的东西**：表单 draft、modal 开关、临时 hover 状态——这些用组件内 `useState`
+- **不放在 store 的东西**：表单 draft、modal 开关、临时 hover 状态——这些用组件内 `useState`（例外：`railMode` 从 sidebar 本地 state 提升为 store 切片，因为它现在驱动**主区**在会话/用量页间切换，跨组件；二级面板折叠 `panelHidden` 仍是 sidebar 本地态）
+- **例外：`boardTasks` 是扁平数组，不像其它实体那样 normalize 成 `Record<id, Row>`**。任务看板数据量小（个人本地场景），`setBoardTasks`/`upsertBoardTask`/`removeBoardTask` 直接对数组线性查找，换取实现最简单
 
 ---
 
 ## applyEvent reducer
 
-源文件：`src/stores/app-store.ts:274-442`
+源文件：`src/stores/app-store.ts:566-884`
 
 逐 `event.type` 分发，所有 case 都在一个 `set((s) => switch)` 内，依赖 immer 直接 mutate。
 
@@ -84,7 +89,7 @@ interface AppState {
 | `heartbeat` | 无变更（仅作连接保活信号，由 SSE 端定期发） |
 | `run.start` | `runsByConv[convId][runId] = { ...event, status: 'running', usage: null }` |
 | `run.end` | 更新 run 的 `status` / `finishedAt` / `error`；当 status 为 `failed` / `aborted` 时，把同 run 的 streaming 消息改为 `error` / `aborted`，并为未配对 `tool_result` 的 `tool_use` 补本地错误结果，避免工具卡停在「调用中」 |
-| `run.usage` | 更新 run 的 `usage` 字段（input/output/cache tokens）；派生 hook `useConversationUsageTotal` 据此聚合 |
+| `run.usage` | 更新 run 的 `usage` 字段（input/output/cache tokens + model）；派生 hook `useConversationUsageTotal` 聚合 token，`useConversationModelUsage` 按 model 归类四段供 UsageBadge 成本自算（× 生效价目表，未定价/无 model 不计）。注：`runsByConv` 只由本会话本次 SSE 填（无重放），刷新/切走再回则退回 messages 兜底 |
 | `message.start` | 在 `messages[messageId]` 创建空 parts 的 streaming agent 消息，挂入 `messageIdsByConv` |
 | `message.end` | `messages[messageId].status = 'complete'`；若用户不在该会话（`activeConversationId !== conversationId`）则 `unreadByConv[conversationId] +1`。**不在 message.start 计未读**——claude-code-adapter 整 run 只发一次 message.start，那时用户通常仍在该会话被抑制，后续切走再无 +1 机会 |
 | `part.start` | `messages[messageId].parts[partIndex] = event.part`（按 index 插入，不 push） |
@@ -117,7 +122,7 @@ interface AppState {
 
 为减少「发完才看到」的延迟，用户发消息时先在 store 插一条临时消息：
 
-源文件：`src/stores/app-store.ts:222-272`
+源文件：`src/stores/app-store.ts:510-564`
 
 ```typescript
 addLocalUserMessage({ tempId, ... })           // 用 tempId（'local-<nanoid>'）插入
@@ -136,7 +141,7 @@ replaceLocalMessageId(tempId, realId)          // 把 messages 表和 messageIds
 
 ## 派生 hooks
 
-源文件：`src/stores/app-store.ts:446-489`
+源文件：`src/stores/app-store.ts:1065-1140`
 
 所有派生 selector 返回新数组 / 对象时**必须**用 `useShallow`（Zustand 5 + immer 标配），否则每次 store 变更都触发新引用 → 无限 re-render。
 
@@ -197,16 +202,20 @@ useEffect(() => {
 ```
 app/page.tsx
 └── <Home>
-    ├── <Sidebar />               ── 对话/产物库/Agents/分析 四 tab 切换
-    │   ├── <ThemeToggle />
+    ├── <Sidebar />               ── 应用壳左段：IconRail + 262px 二级列表面板（redesign-ui-shell）
+    │   ├── <IconRail />          ── 56px 图标栏：logo + 会话(未读 badge)/Agents/产物库/分析/任务(open+blocked badge) 导航 + ThemeToggle/SettingsButton/用户位；点击当前导航折叠面板（aria-expanded）
     │   ├── <NewConversationDialog />
-    │   ├── <ConversationItem />  ── 单条会话 + hover 置顶/归档/重命名/删除
+    │   ├── <ConversationItem />  ── 单条会话（置顶/最近分组渲染）+ hover 置顶/归档/重命名/删除 + 激活态 3px 主色左条
     │   ├── <ArtifactLibrary />
+    │   ├── <UsageDashboard />    ── rail「分析」二级面板（瘦身版）：时间桶 + 按会话列表（条形 + tok，点击 setActiveConversation + setRailMode('conversations') 跳会话并切回会话模式）；按 Agent / 按模型已移入主区用量页
     │   ├── <AgentLibrary />
-    │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME
+    │   │   └── <CreateAgentDialog />    ── 顶部 radio 选 adapterName（'custom' / 'claude-code' / 'codex'）；SDK adapter 模式下隐藏 provider/工具集，Codex 使用 AgentHub 隔离 CODEX_HOME；claude-code 提供 Agent Skills 勾选 + <SkillLibraryDialog />（Spec 10）
+    │   ├── <TaskBoardPanel />    ── 任务看板：按状态分组（进行中/待办/受阻/已完成）+ 顶部内联「+ 新任务」+ hover 状态切换 select / 删除；行点击若有 conversationId 则 setActiveConversation 跳转来源会话
     │   └── <RenameInput />       ── 内联重命名
-    ├── <ChatPanel />             ── 当前会话主区
-    │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分）
+    ├── <MainView />              ── 主区分支容器（client 边界；page.tsx 是 server component）：railMode==='analytics' 渲染 <UsagePage />，否则 <ChatPanel />
+    │   ├── <UsagePage />         ── rail「分析」主区 880px 用量页：4 指标卡（总 tokens / 成本自算(formatCost, teal) / cache 命中率(null→'—') / 总 run 数）+ 按 Agent 条形（头像 + 主用 model + tok）+ 按模型价目表（单价**行内可编辑**，保存 PATCH settings.modelPrices 后重拉 summary 重算）；成本口径见 openspec usage-cost
+    ├── <ChatPanel />             ── 当前会话主区（railMode==='conversations' 时由 MainView 渲染）
+    │   ├── header: 头像堆 + AgentInfoPopover + 文件树/产物预览 toggle + FileLibraryDialog + AddAgentDialog + UsageBadge（点开 popover 看 token 拆分 + 「成本（自算）」行：按各 run 的 model × 生效价目分币种求和）
     │   ├── tab bar（openFiles 非空时显示）: 「对话」+ 每个打开的文件 / diff tab
     │   ├── 主体（按 activeTab 切换）:
     │   │   ├── activeTab === 'chat': <PinnedMessagesBar> + <MessageList> + <PendingWritesPanel> + <MessageInput>
@@ -251,6 +260,7 @@ app/page.tsx
 | `artifacts` | 不预加载；首次见到 `artifact_ref` part 时 lazy fetch 详情（`ArtifactRefPart` 组件内 effect） | `artifacts[id]` |
 | `attachments` | 打开 `FileLibraryDialog` 时拉该会话列表；附件 chip 渲染时也按需拉 | 组件内 useState |
 | `agents` / `conversations` | 应用启动时全量拉一次 | 同名 maps |
+| `boardTasks` | `TaskBoardPanel` 挂载时全量拉一次（`fetchBoardTasks`）；v1 无 `task.update` StreamEvent，agent `create_task` / dispatch 状态同步后需要重新打开面板才能看到最新数据，IconRail badge 同理只反映已加载过的快照 | `boardTasks` |
 
 **404 行为**：artifact lazy fetch 404 → 渲染「产物已删除」墓碑卡片（不在 store 标记 deleted；用组件 local state）。
 
@@ -292,7 +302,8 @@ app/page.tsx
 ## CSS / 样式
 
 - Tailwind v4 + shadcn/ui（base-ui 底座，「base-nova」preset）
-- 主题色由 `src/app/globals.css` 的 CSS 变量驱动：`--primary` (字节蓝 #3370FF) / `--destructive` (火山红 #FE3B25) / `--ring` 等。light / dark 双模式
+- 主题色由 `src/app/globals.css` 的 CSS 变量驱动：`--primary` teal `#0d9488`（dark 提亮 teal-500）/ `--destructive` red-600 / `--radius` 8px 基准（设计稿 `docs/design/Helm-Agent.dc.html`，openspec redesign-ui-shell）。light / dark 双模式
+- 组件禁止硬编码品牌色值，一律走 `primary` / `destructive` 等 token 类；消息列 760px 居中栏宽体系
 - 代码块用 shiki 双主题（github-light / dark）；shiki pre 强制透明底，外层 CodeBlock 容器统一底色（见 `src/components/code-block.tsx` 与 `src/lib/highlighter.ts`）
 - 不引入新 UI 库（CLAUDE.md §2）；新 UI 组件先在 shadcn registry 里找，没有就自写
 

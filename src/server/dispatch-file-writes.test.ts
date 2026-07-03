@@ -1,6 +1,16 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
-import { detectWaveConflicts, type RunFileWrites } from './dispatch-file-writes'
+import {
+  clearFileWrites,
+  detectWaveConflicts,
+  getFileWrites,
+  recordFileWriteFromDisk,
+  type RunFileWrites,
+} from './dispatch-file-writes'
 
 function run(taskId: string, agentId: string, writes: Record<string, string>): RunFileWrites {
   return {
@@ -54,5 +64,43 @@ describe('detectWaveConflicts', () => {
     expect(
       detectWaveConflicts([run('t1', 'a', { '/ws/a': 'h1', '/ws/b': 'h2', '/ws/c': 'h3' })]),
     ).toEqual([])
+  })
+})
+
+describe('recordFileWriteFromDisk', () => {
+  it('hashes files from disk so SDK writes join conflict detection', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-fw-'))
+    try {
+      const fileA = path.join(dir, 'same.txt')
+      fs.writeFileSync(fileA, 'identical content')
+      recordFileWriteFromDisk('run_disk_1', fileA)
+      recordFileWriteFromDisk('run_disk_2', fileA)
+      // 同内容 → 哈希一致 → 不算冲突
+      expect(
+        detectWaveConflicts([
+          { taskId: 't1', agentId: 'a1', runId: 'run_disk_1', writes: getFileWrites('run_disk_1') },
+          { taskId: 't2', agentId: 'a2', runId: 'run_disk_2', writes: getFileWrites('run_disk_2') },
+        ]),
+      ).toEqual([])
+
+      // 第二个 run 覆写不同内容后再记 → 冲突
+      recordFileWriteFromDisk('run_disk_3', fileA)
+      fs.writeFileSync(fileA, 'divergent content')
+      recordFileWriteFromDisk('run_disk_4', fileA)
+      const conflicts = detectWaveConflicts([
+        { taskId: 't3', agentId: 'a3', runId: 'run_disk_3', writes: getFileWrites('run_disk_3') },
+        { taskId: 't4', agentId: 'a4', runId: 'run_disk_4', writes: getFileWrites('run_disk_4') },
+      ])
+      expect(conflicts).toHaveLength(1)
+      expect(conflicts[0].path).toBe(fileA)
+    } finally {
+      for (const id of ['run_disk_1', 'run_disk_2', 'run_disk_3', 'run_disk_4']) clearFileWrites(id)
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('skips missing files silently', () => {
+    recordFileWriteFromDisk('run_disk_missing', '/nonexistent/agenthub-test-file')
+    expect(getFileWrites('run_disk_missing').size).toBe(0)
   })
 })

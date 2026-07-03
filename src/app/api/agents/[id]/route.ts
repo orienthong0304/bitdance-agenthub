@@ -19,7 +19,10 @@ const PatchBody = z
       .optional(),
     modelId: z.union([z.string().min(1), z.null()]).optional(),
     toolNames: z.array(z.string()).optional(),
+    skillNames: z.array(z.string().min(1).max(128)).max(64).optional(),
     supportsVision: z.boolean().optional(),
+    // 思考深度：null 表示清除（回退 SDK 默认 high）
+    effort: z.union([z.enum(['low', 'medium', 'high', 'xhigh', 'max']), z.null()]).optional(),
     // null 表示清除，空字符串当 null 处理
     apiKey: z.union([z.string(), z.null()]).optional(),
     apiBaseUrl: z.union([z.string(), z.null()]).optional(),

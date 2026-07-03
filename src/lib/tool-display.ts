@@ -6,8 +6,10 @@ const AGENTHUB_TOOL_LABELS = {
   read_attachment: '读取附件',
   plan_tasks: '拆分任务',
   report_task_result: '上报结果',
+  create_task: '建任务',
   fs_read: '读取文件',
   fs_write: '写入文件',
+  fs_list: '浏览目录',
   bash: '执行命令',
   ask_user: '询问用户',
 } as const
@@ -42,6 +44,11 @@ export function getToolDisplayName(toolName: string): string {
 export function isBashToolName(toolName: string): boolean {
   const lower = toolName.trim().toLowerCase()
   return findAgentHubToolName(lower) === 'bash' || lower === 'bash'
+}
+
+export function isCreateTaskToolName(toolName: string): boolean {
+  const lower = toolName.trim().toLowerCase()
+  return findAgentHubToolName(lower) === 'create_task' || lower === 'create_task'
 }
 
 function findAgentHubToolName(toolName: string): keyof typeof AGENTHUB_TOOL_LABELS | null {

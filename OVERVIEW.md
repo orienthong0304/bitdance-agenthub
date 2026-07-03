@@ -57,18 +57,21 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | MockAdapter | ✅ | 开发期不烧 token |
 | CodexAdapter | ✅ | @openai/codex-sdk + 线程续接 + AgentHub MCP bridge |
 | 自建 Agent | ✅ | 表单/对话式创建,自定义 prompt + 工具集 |
+| Agent Skills | ✅ | Claude Code agent 启用 SKILL.md 技能包（内置 docx · GitHub/本地导入 · SDK plugins 装载 · per-agent 勾选） |
 | Orchestrator 编排 | ✅ | 三阶段规划 + DAG 调度 + 级联中止 + 可视化卡 + 同波次代码冲突检测（检测+上报，不自动合并） |
 | 工具系统 | ✅ | write/deploy/read_artifact · read_attachment · fs_read/fs_write/bash · plan_tasks · ask_user |
 | Artifact 预览/编辑 | ✅ | web_app(iframe + preview URL + 本地静态发布/源码包/容器包) / document(md) / image / 版本对比 diff（历史 diff 只读兼容） / **ppt(幻灯片分页预览 + 完整 theme token + 导出真 .pptx)** · code_file workspace 预览/编辑 · 版本链 v1↔v2 · 选区改写 · 面板内编辑(CodeMirror)→提交新版本 · 导出 |
 | Workspace 沙箱 | ✅ | sandbox/local 双模式 · fs_write 审批(Review/Auto) · 双平台 Bash 黑名单 |
-| Token 计量 | ✅ | per-run/per-message · cache 命中率 · 全局分析 Tab |
+| Token 计量 + 成本自算 | ✅ | per-run/per-message · cache 命中率 · 主区 880px 用量页（4 指标卡 / 按 Agent / 按模型价目表，单价行内可编辑）· 成本按 token × 本地价目表自算（不读 provider total_cost；未定价/无 model 不计；多币种分桶不折算）· 会话 UsageBadge 成本行 |
 | 跨 run 对话记忆 | ✅ | 历史序列化注入 · token 预算 · 群聊跨 agent 可见 · 手动压缩 |
 | 平台抽象（Win/POSIX） | ✅ | shell 选择 · 多盘符 DirPicker · 子进程清理 |
 | Electron 桌面版 | ✅ | DMG / EXE 打包 · userData 路径迁移 |
 | 全局 API Key 设置面板 | ✅ | app_settings 单行表 · 三层 key 优先级 |
+| 跨会话任务看板（openspec task-board） | ✅ | IconRail 第五导航「任务」(open+blocked badge) · 手动建单/拖动状态(select 循环) · Orchestrator dispatch 子任务自动登记+单向状态同步 · Agent `create_task` 工具主动立单 · 看板不反向触发 run（v1 无 `task.update` StreamEvent，面板挂载时 fetch 兜底） |
 | 移动端伴随 App | ⏳ | 响应式 Web 已适配;Capacitor 原生壳脚手架已建,配对通信待打通 |
 | 斜杠命令菜单 | ✅ | 输入 `/` 弹命令浮层（打开设置 / Agents 库等 UI 命令） |
-| 测试覆盖 | 🟡 | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme）；Playwright **E2E 基建 + 核心 IM 流**（mock agent，见附录）；产物/群聊调度 E2E 待补（需测试假 adapter） |
+| UI 重设计（teal 体系） | ✅ | openspec redesign-ui-shell：token/应用壳(IconRail+二级面板)/聊天列/输入盒/弹窗族全部落地（设计稿 `docs/design/`）；主区 880px 用量页 + 成本自算已落地（openspec add-usage-cost：railMode 提升为 store 切片，主区首个非会话视图先例） |
+| 测试覆盖 | ✅ | Vitest 纯函数（security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / skills-service / task-service）；Playwright **E2E：核心 IM 流 + 产物预览/产物库 + 群聊调度 + 任务看板**（mock agent 走真实 write_artifact / plan_tasks / report_task_result / create_task 协议） |
 
 ---
 
@@ -87,14 +90,15 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 ### L5 UI 组件（`src/components/`）
 | 区域 | 文件 |
 |---|---|
-| 侧栏（会话/产物库/Agents/分析 Tab） | `sidebar.tsx` |
+| 应用壳（图标栏+二级面板） | `icon-rail.tsx` · `sidebar.tsx` · `main-view.tsx`（主区 railMode 分支：会话 / 用量页） |
+| 任务看板 | `task-board-panel.tsx` |
 | 聊天主面板 | `chat-panel.tsx` · `message-list.tsx` · `message-item.tsx` · `message-parts.tsx` |
 | 输入框（附件/审批模式/选区引用/斜杠命令） | `message-input.tsx` · `edit-message-input.tsx` |
 | Orchestrator 调度卡 | `dispatch-plan-card.tsx` |
 | 产物预览 / 产物库 | `artifact-preview-panel.tsx` · `artifact-library.tsx` |
 | fs_write 审批面板 + diff | `pending-writes-panel.tsx` · `pending-write-diff-tab.tsx` |
 | ask_user 结构化弹窗 | `ask-user-question-dialog.tsx` |
-| Token 计量 | `usage-dashboard.tsx` · `usage-badge.tsx` |
+| Token 计量 + 成本自算 | `usage-page.tsx`（主区 880px 用量页 + 行内改价）· `usage-dashboard.tsx`（侧栏瘦身：时间桶 + 按会话）· `usage-badge.tsx`（成本行）· 定价领域 `shared/model-pricing.ts` |
 | 文件浏览器 | `file-explorer-panel.tsx` · `file-tab.tsx` · `file-library-dialog.tsx` |
 | 选区改写 / 引用 | `selection-popover.tsx` · `quoted-message.tsx` |
 | 导航辅助 | `pinned-messages-bar.tsx` · `conversation-outline.tsx` |
@@ -110,6 +114,7 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | `conversations/route.ts` · `conversations/[id]/**` | 会话 CRUD · 消息 · `fs/{listdir,read,write}` · `pending-writes` · `pending-questions` · `attachments` · `regenerate` |
 | `messages/[id]/{edit,pin,bookmark,withdraw}` | 消息操作 |
 | `agents/**` · `artifacts/**`（含 `/versions` `/export`） · `deployments/**` · `attachments/**` | 实体 CRUD / 部署包下载 |
+| `tasks/**` | 任务看板 CRUD（list / create / patch / delete） |
 | `deployments/[id]/[[...path]]` | 本地静态发布预览 URL |
 | `runs/[id]/abort` | 中止 run（级联） |
 | `usage/summary` | Token 分析聚合 |
@@ -126,6 +131,8 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | 事件总线 | `event-bus.ts` | HMR-safe globalThis 单例,推 SSE |
 | 产物服务 | `artifact-service.ts` · `deployment-service.ts` · `ppt-export.ts` | 产物 CRUD + 版本链（parentArtifactId）· 本地静态发布与下载包 · slides JSON → 真 .pptx（pptxgenjs） |
 | Agent / 附件 / 文件 | `agent-service.ts` · `attachment-service.ts` · `fs-service.ts` | |
+| Agent Skills | `skills-service.ts` | 技能包发现/导入/注册 + per-agent 解析（openspec agent-skills；builtin 包在 `resources/agent-skills/`） |
+| 任务看板 | `task-service.ts` | CRUD + dispatch 状态单向同步（`upsertDispatchTask` / `syncDispatchTaskStatus`，openspec task-board） |
 | 审批中转 store | `pending-writes.ts` · `pending-questions.ts` | fs_write 审批 / ask_user 的内存中转 |
 | 设置 / Key | `settings-service.ts` | 三层 key 优先级解析 |
 | 安全 / 平台 / 沙箱 | `security.ts`（黑名单 `getBannedPatterns`） · `platform.ts`（shell 选择） · `workspace-utils.ts`（路径校验/配额） | `specs/11` |
@@ -142,48 +149,50 @@ L1 Persistence                          src/db/**（Drizzle+SQLite） + workspac
 | `mock-adapter.ts` | 假事件流,开发用 |
 
 ### 工具系统（`src/server/tools/`）
-`types.ts`（工具签名） · `registry.ts`（注册） · `write-artifact.ts` · `read-artifact.ts` · `read-attachment.ts` · `fs-read.ts` · `fs-write.ts` · `bash.ts` · `plan-tasks.ts`（Orchestrator DAG） · `ask-user.ts`。详见 `specs/07`。
+`types.ts`（工具签名） · `registry.ts`（注册） · `write-artifact.ts` · `read-artifact.ts` · `read-attachment.ts` · `fs-read.ts` · `fs-write.ts` · `fs-list.ts` · `bash.ts` · `plan-tasks.ts`（Orchestrator DAG） · `report-task-result.ts` · `ask-user.ts` · `create-task.ts`（跨会话任务看板立单）。详见 `specs/07`。
 
 ### L1 持久化（`src/db/`）
 | 文件 | 说明 |
 |---|---|
-| `schema.ts` | **9 张表**：`agents` · `conversations` · `messages` · `artifacts` · `workspaces` · `attachments` · `agent_runs` · `context_summaries` · `app_settings`（`specs/08`） |
+| `schema.ts` | **11 张表**：`agents` · `conversations` · `messages` · `artifacts` · `workspaces` · `attachments` · `agent_runs` · `context_summaries` · `skill_packages` · `tasks` · `app_settings`（`specs/08`） |
 | `client.ts` | better-sqlite3 + Drizzle 实例 |
 | `bootstrap.ts` | 首次启动自动建表 + seed |
-| `builtin-agents.ts` · `seed.ts` | 5 个内置 Agent（Orchestrator / PM 小灰 / UI 设计师 / 前端工程师 / Reviewer） |
+| `builtin-agents.ts` · `seed.ts` · `migrate-writing-agents.ts` | 6 个内置写作 Agent（主编 / 资料研究员 / 内容策划 / 主笔 / 润色编辑 / 审校）；资料研究员走 claude-code adapter 联网 |
 | `migrate-add-*.ts` | 增量迁移脚本（usage / bookmarks / workspace-mode / app-settings 等） |
 
 DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/<conv_xxx>/`（sandbox 模式）。
 
 ### 共享类型（`src/shared/`）
-`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单） · `ppt-theme.ts`（`PptTheme` 解析 + 专业默认,预览/导出共用）。
+`types.ts`（**`StreamEvent` / `MessagePart` 等跨层类型,改动牵一发动全身**） · `constants.ts` · `model-registry.ts`（模型清单） · `model-pricing.ts`（本地价目表 + `resolvePriceTable` / `computeBucketCost` / `formatCost` 纯函数,成本自算 client/server 共用） · `ppt-theme.ts`（`PptTheme` 解析 + 专业默认,预览/导出共用）。
 
 ### 桌面（`electron/`）& 移动（`apps/mobile/`）
 - Electron：`main.ts`（主进程） · `paths.ts`（userData 路径迁移） · `server-bootstrap.ts`（拉起 Next standalone）。`specs/12`。
 - 移动：`apps/mobile/`（Capacitor 伴随客户端,monorepo workspace `@agenthub/mobile`）。`specs/14`。
 
 ### 测试（`e2e/` + `*.test.ts`）
-- 单元：`src/**/*.test.ts`（Vitest 纯函数：security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme）。
-- E2E：`e2e/`（Playwright；`global-setup.ts` 建隔离库 + 插 mock agent，`chat.spec.ts` / `conversations.spec.ts` 跑核心 IM 流）；配置 `playwright.config.ts`，命令 `pnpm e2e`。
+- 单元：`src/**/*.test.ts`（Vitest 纯函数：security / workspace-utils / dispatch-plan / artifact-content / ppt-export / ppt-theme / task-service / tool-display）。
+- E2E：`e2e/`（Playwright；`global-setup.ts` 建隔离库 + 插 mock agent，`chat.spec.ts` / `conversations.spec.ts` / `artifacts.spec.ts` / `dispatch.spec.ts` / `export.spec.ts` / `tasks.spec.ts` 跑核心 IM 流 + 产物 + 调度 + 任务看板）；配置 `playwright.config.ts`，命令 `pnpm e2e`。
 
 ---
 
 ## 附 · 当前现状（易过时,以 git 为准）
 
 ### ✅ 近期完成（最新一批）
+- **主区用量页 + 成本自算**（openspec add-usage-cost）：`shared/model-pricing.ts` 本地价目表（公开牌价快照 + 用户字段级覆盖，存 `app_settings.model_prices`）+ `/api/usage/summary` 四段细分/成本/cacheRate 扩展 + `main-view.tsx` 主区 railMode 分支 + `usage-page.tsx`（880px，按模型价目表单价行内可编辑，保存即重算）+ 侧栏 `usage-dashboard.tsx` 瘦身（时间桶 + 按会话）+ UsageBadge 成本行；成本纯 token × 价目自算（不读 provider total_cost，未定价/无 model 不计，多币种分桶）；`railMode` 提升为 store 切片（主区首个非会话视图先例）；mock adapter 发 `run.usage` 支撑 e2e 全链路
+- **跨会话任务看板**（openspec task-board）：`tasks` 表 + `task-service.ts` + `/api/tasks` + `create_task` 工具（claude-code/codex MCP bridge + custom adapter + builder 勾选） + Orchestrator dispatch 单向状态同步 + IconRail 第五导航「任务」+ `task-board-panel.tsx`；v1 看板不反向触发 run，也没有 `task.update` StreamEvent（面板挂载时 fetch 兜底，deferred v1.1）
+- **UI 重设计 Phase A-D**（openspec redesign-ui-shell）：teal token 体系、IconRail+二级面板应用壳、聊天列 760px 居中 + 统筹 chip、一体化输入盒、右侧面板对齐
+- **Agent Skills**（openspec add-agent-skills）：`skill_packages` 表 + `agents.skillNames`、skills-service（内置 docx 包 + GitHub/本地导入）、ClaudeCodeAdapter `plugins`/`skills` 接线、`/api/skills`、builder 技能选择器 + 技能包面板
 - 会话归档（service / API / sidebar，`archived` 字段早有，本批接通 UI）
-- Orchestrator **同波次代码冲突检测**（fs_write 写入追踪 + 聚合阶段上报；盲区 bash / SDK adapter，`specs/06`）
+- Orchestrator **同波次代码冲突检测**（fs_write + Claude/Codex SDK 写盘三路追踪 + 聚合阶段上报；余留盲区仅 bash，`specs/06`）
 - **PPT 产物**：`ppt` 类型 + 结构化 slides JSON + 真 .pptx 导出（pptxgenjs）+ 完整 theme token（预览/导出同源消费 `resolvePptTheme`）
 - **Playwright E2E** 基建 + 核心 IM 流（mock agent；本机 `pnpm e2e` 跑，详见「测试」节）
 - 斜杠命令菜单（`/` 浮层）
 
 ### 📋 待办
-- E2E 第二批：产物预览/导出 + 群聊调度（需「会产 artifact / dispatch」的测试假 adapter）
-- PPT 深化：辅色语义着色（正面↑ / 警示↓）+ 数据页卡片化
-- 冲突检测盲区：bash / SDK adapter 写入（可加波次快照补全）
+- 冲突检测余留盲区：bash 写文件（需波次快照 diff，且难归属到具体子 run，暂不做）
 - Codex 写盘审批 hook（当前 Review 模式用 read-only sandbox）
-- sandbox 配额对 Claude Code SDK 失效（SDK 自己写盘绕过 quota）
 - 移动端伴随 App 配对通信打通
+- 任务看板 v1.1：`task.update` StreamEvent 实时推送（当前面板挂载时 fetch 兜底）；`create_task` 工具卡的任务 id 高亮/跳转 UI
 
 ### ⚠️ 关键约定（动手前必看）
 - 改实体字段 → 同步 `specs/01`;改事件 → `specs/02`;改 Bash 黑名单 → 同步 `specs/11` + `src/server/security.ts`（单一数据源）。
@@ -192,4 +201,4 @@ DB 文件：`.agenthub-data/agenthub.db`;workspace：`.agenthub-data/workspaces/
 
 ---
 
-*最后更新：2026-06-06 · 同步本批成果（会话归档 / Orchestrator 冲突检测 / PPT 产物+真 pptx+theme / Playwright E2E 基建）到功能矩阵、代码地图、当前现状三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*
+*最后更新：2026-07-03 · 同步主区用量页 + 成本自算（openspec add-usage-cost：`shared/model-pricing.ts` 价目表 / `app_settings.model_prices` 覆盖 / `/api/usage/summary` 成本扩展 / `main-view.tsx` 主区分支 / `usage-page.tsx` 行内改价 / railMode 提升为 store 切片 / UsageBadge 成本行）到功能矩阵、代码地图、共享类型三节。改动较大后请同步本文件的「功能矩阵」与「当前现状」两节。*

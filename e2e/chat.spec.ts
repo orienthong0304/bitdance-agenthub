@@ -1,20 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-const MOCK_AGENT = 'E2E Mock'
-
-async function createSingleChat(page: Page) {
-  await page.goto('/')
-  await page.getByRole('button', { name: '新建对话' }).click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button').filter({ hasText: MOCK_AGENT }).first().click()
-  await expect(dialog.getByText(/将创建单聊/)).toBeVisible()
-  await dialog.getByRole('button', { name: '创建' }).click()
-  await expect(dialog).toBeHidden()
-}
-
-const lastCompleteAgentMsg = (page: Page) =>
-  page.locator('[data-role="agent"][data-status="complete"]').last()
+import { createSingleChat, lastCompleteAgentMsg } from './helpers'
 
 test('单聊：发「你好」→ mock 流式回复 → 完成', async ({ page }) => {
   await createSingleChat(page)

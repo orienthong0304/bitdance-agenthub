@@ -238,6 +238,19 @@ registerTool(
   async (args) => callAgentHubTool('report_task_result', args),
 )
 
+registerTool(
+  'create_task',
+  {
+    description:
+      'Log a follow-up to-do on the global cross-conversation task board when you notice something that should happen later but is outside the current task (e.g. a bug to fix, a doc to update, a decision the user still owes). Not for tracking your own in-progress steps. Returns the created taskId.',
+    inputSchema: {
+      title: z.string().describe('Short task title (1-120 chars)'),
+      note: z.string().optional().describe('Optional longer note/context (up to 2000 chars)'),
+    },
+  },
+  async (args) => callAgentHubTool('create_task', args),
+)
+
 async function callAgentHubTool(toolName, args) {
   const response = await fetch(`${baseUrl}/api/internal/agenthub-tools`, {
     method: 'POST',

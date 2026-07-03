@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
-const MOCK_AGENT = 'E2E Mock'
+import { MOCK_AGENT } from './helpers'
+
 const ORCH_AGENT = 'E2E Orchestrator'
 
 async function createGroupChat(page: Page) {

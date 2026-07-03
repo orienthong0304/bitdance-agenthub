@@ -33,4 +33,4 @@
 - [x] 6.2 dispatch 同步 DB 集成测试（P2：`upsertDispatchTask` 幂等 + `syncDispatchTaskStatus` 全终态）。`task-service.test.ts` 用 `vi.mock('@/db/client')` 注入 in-memory drizzle，实测幂等不产生第二行、title 变更发事件/未变不写不发、状态全终态映射、状态未变不写不发、createBoardTask 发事件；同步收敛 `upsertDispatchTask`/`syncDispatchTaskStatus` 无实质变化时的 updatedAt bump（早退不写库不发事件）。
 - [ ] 6.3 create_task 工具卡确认反馈（P3：任务 id 高亮 + 跳转看板）。
 - [x] 6.4 评估 create_task 在 SDK 桥上的授权控制——**裁定：接受现状**。SDK agent（claude-code/codex）本就不消费 `toolNames`（强制 `[]`，Spec 01），AgentHub MCP 工具组对 SDK agent 一直是固定集合（write_artifact / deploy / ask_user 等同样全量可用），create_task 加入该集合与既有授权模型一致；单独收敛反而制造特例。风险面（agent 噪音立单）由看板可删、来源徽标、仅 open 态缓解，个人使用场景可接受。若未来引入 per-agent MCP 工具授权机制，create_task 纳入同一机制即可。
-- [ ] 6.5 e2e `createSingleChat` 抽共享 fixture（四处重复已达阈值）。
+- [x] 6.5 e2e `createSingleChat` 抽共享 fixture（四处重复已达阈值）。抽到 `e2e/helpers.ts`（非 barrel，导出 `MOCK_AGENT` / `createSingleChat` / `lastCompleteAgentMsg`）；chat/artifacts/export/tasks 四个 spec 改为 import，dispatch.spec 的 `createGroupChat` 留原文件但 MOCK_AGENT 也收敛自 helpers。

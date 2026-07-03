@@ -910,6 +910,28 @@ async function bridgePermission(
     }
 
     const oldContent = readIfExists(ctx.workspace, target)
+
+    // readIfExists 对「>1MB 拒读」也返回 null:Edit 既有大文件时无法重建 diff,
+    // 不能误报「文件不存在」——Auto 走近似配额后放行(维持 b156615 之前的可编辑性),Review 提示切 Auto
+    if (toolName === 'Edit' && oldContent === null && isExistingFile(absPath)) {
+      if (ctx.approvalMode === 'auto') {
+        try {
+          // 旧内容读不到,增量按 new_string 字节数近似(单次替换的增长上界)
+          const approxBytes = Buffer.byteLength(
+            (toolInput.new_string as string | undefined) ?? '',
+            'utf8',
+          )
+          assertSandboxWriteQuota(ctx.workspace, approxBytes)
+        } catch (e) {
+          return deny(e instanceof Error ? e.message : 'Workspace quota exceeded')
+        }
+        return allow()
+      }
+      return deny(
+        `Edit target exceeds diffable size (1 MB): ${target}; Review mode cannot render a diff — switch fs_write approval to Auto mode.`,
+      )
+    }
+
     const newContent = computeNewContent(toolName, toolInput, oldContent)
     if (newContent instanceof Error) {
       return deny(newContent.message)
@@ -967,6 +989,15 @@ async function bridgePermission(
 
   // 5. 默认放行（Read / Grep / Glob / WebFetch / WebSearch / Task / TodoWrite / ...）
   return allow()
+}
+
+/** target 已存在且是普通文件(absPath 必须先过 assertPathWithinWorkspace)。 */
+function isExistingFile(absPath: string): boolean {
+  try {
+    return statSync(absPath).isFile()
+  } catch {
+    return false
+  }
 }
 
 /** 把 Write/Edit 的输入转成「应用后的完整文件内容」用于 diff viewer。 */

@@ -34,6 +34,11 @@ test('产物：发「写一份文档」→ document 卡片 → markdown 预览',
 
   const card = msg.getByRole('button').filter({ hasText: 'Mock 说明文档' })
   await expect(card).toBeVisible()
+
+  // 行内 <artifact_ref/> 裸标签绝不透出原文；store 未命中兜底为弱化「产物（不可用）」chip（P0-1）
+  await expect(msg.getByText('产物（不可用）')).toBeVisible()
+  await expect(msg).not.toContainText('<artifact_ref')
+
   await card.click()
 
   await expect(page.getByTitle('关闭预览')).toBeVisible()

@@ -449,7 +449,12 @@ const DOC_ARTIFACT_SCRIPT: ScriptStep[] = [
       },
     },
   },
-  { kind: 'text', content: '文档产物已创建完成。' },
+  // 结尾正文故意夹一个指向不存在产物的行内 <artifact_ref/> 裸标签，驱动 e2e 断言：
+  // 标签绝不透出原文，store 未命中兜底为弱化「产物（不可用）」chip（P0-1）。
+  {
+    kind: 'text',
+    content: '文档产物已创建完成。相关草稿另见 <artifact_ref id="art_e2eMissingRef01"/>。',
+  },
 ]
 
 const PPT_ARTIFACT_SCRIPT: ScriptStep[] = [

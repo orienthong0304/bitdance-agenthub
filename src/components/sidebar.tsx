@@ -7,7 +7,7 @@ import { AgentLibrary } from '@/components/agent-library'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { GlobalSearchTrigger } from '@/components/global-search-trigger'
 import { ArtifactLibrary } from '@/components/artifact-library'
-import { IconRail, type RailMode } from '@/components/icon-rail'
+import { IconRail } from '@/components/icon-rail'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
 import { TaskBoardPanel } from '@/components/task-board-panel'
 import { UsageDashboard } from '@/components/usage-dashboard'
@@ -33,7 +33,7 @@ import {
 import { subscribeUiCommand } from '@/lib/ui-command-events'
 import { cn } from '@/lib/utils'
 import type { AgentRow, ConversationRow } from '@/db/schema'
-import { useAppStore, useConversationList, useUnreadCount } from '@/stores/app-store'
+import { useAppStore, useConversationList, useUnreadCount, type RailMode } from '@/stores/app-store'
 
 type Mode = RailMode
 
@@ -49,7 +49,9 @@ export function Sidebar() {
   const removeConversation = useAppStore((s) => s.removeConversation)
   const upsertConversation = useAppStore((s) => s.upsertConversation)
 
-  const [mode, setMode] = useState<Mode>('conversations')
+  // rail 选中态提升为 store 切片（主区据此在会话 / 用量页间切换）；面板折叠仍是本地 UI 态
+  const mode = useAppStore((s) => s.railMode)
+  const setMode = useAppStore((s) => s.setRailMode)
   const [dialogOpen, setDialogOpen] = useState(false)
   // 点击当前导航折叠/展开二级面板（rail 常驻，等价旧「收起侧边栏」）
   const [panelHidden, setPanelHidden] = useState(false)
@@ -136,7 +138,7 @@ export function Sidebar() {
         setMobileSidebarOpen(true)
       }
     })
-  }, [setMobileSidebarOpen])
+  }, [setMobileSidebarOpen, setMode])
 
   const deleteTarget = deleteTargetId ? conversations.find((c) => c.id === deleteTargetId) : null
 

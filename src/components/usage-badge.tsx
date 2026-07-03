@@ -1,13 +1,19 @@
 'use client'
 
 import { Archive, Coins } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { compactConversation } from '@/lib/api'
+import { compactConversation, fetchAppSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import {
+  computeBucketCost,
+  formatCost,
+  resolvePriceTable,
+  type ModelPriceTable,
+} from '@/shared/model-pricing'
 import { getModelLimits } from '@/shared/model-registry'
-import { useAppStore, useConversationUsageTotal } from '@/stores/app-store'
+import { useAppStore, useConversationModelUsage, useConversationUsageTotal } from '@/stores/app-store'
 
 /**
  * UsageBadge —— ChatPanel header 里的 token 用量徽章。
@@ -19,12 +25,39 @@ import { useAppStore, useConversationUsageTotal } from '@/stores/app-store'
  */
 export function UsageBadge({ conversationId }: { conversationId: string }) {
   const total = useConversationUsageTotal(conversationId)
+  const modelUsage = useConversationModelUsage(conversationId)
   const agents = useAppStore((s) => s.agents)
   const conv = useAppStore((s) => s.conversations[conversationId])
   const upsertMessage = useAppStore((s) => s.upsertMessage)
   const [compacting, setCompacting] = useState(false)
+  // 价目覆盖惰性拉取：打开弹层时取一次（null = 未取/回退默认表）
+  const [priceOverrides, setPriceOverrides] = useState<ModelPriceTable | null>(null)
+  const [pricesLoaded, setPricesLoaded] = useState(false)
+
+  // 本会话成本（自算）：按各 model 的四段 token × 生效单价，多币种分桶不折算；未定价/无 model 不计
+  const cost = useMemo(() => {
+    const pricing = resolvePriceTable(priceOverrides)
+    const acc = { usd: 0, cny: 0 }
+    for (const [model, b] of Object.entries(modelUsage)) {
+      const p = pricing[model]
+      if (!p) continue
+      const c = computeBucketCost(b, p)
+      if (p.currency === 'USD') acc.usd += c
+      else acc.cny += c
+    }
+    return acc
+  }, [modelUsage, priceOverrides])
 
   if (total.runCount === 0) return null
+
+  const handleOpenChange = (open: boolean) => {
+    if (open && !pricesLoaded) {
+      setPricesLoaded(true)
+      fetchAppSettings()
+        .then((s) => setPriceOverrides(s.modelPrices ?? {}))
+        .catch((err) => console.error('[UsageBadge] load prices failed', err))
+    }
+  }
 
   // 取本会话内 contextWindow 最大的 agent 作为可见上限。详见 specs/13-conversation-context.md。
   const contextWindow = (() => {
@@ -53,7 +86,7 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger
         className={cn(
           'inline-flex shrink-0 items-center gap-1 rounded-md border bg-muted/30 px-2 py-1 font-mono text-[10px] text-muted-foreground transition hover:border-foreground/30 hover:bg-muted hover:text-foreground',
@@ -138,6 +171,17 @@ export function UsageBadge({ conversationId }: { conversationId: string }) {
               </span>
             </div>
           )}
+          {/* 成本（自算）：按各 run 的 model 分别计价求和，口径同主区用量页 */}
+          <div className="my-1 border-t" />
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-medium">成本（自算）</span>
+            <span className="shrink-0 font-mono font-semibold text-primary">
+              {formatCost(cost.usd, cost.cny)}
+            </span>
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            按各 run 的 model 分别计价 · 未定价 / 无 model 不计入
+          </div>
         </div>
 
         <div className="mt-2 border-t pt-2 text-[10px] text-muted-foreground">

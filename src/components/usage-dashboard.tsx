@@ -9,9 +9,10 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/app-store'
 
 /**
- * UsageDashboard —— 侧栏「分析」tab 内容。
+ * UsageDashboard —— 侧栏「分析」tab 内容（瘦身版）。
  *
- * 展示跨会话的 token 用量聚合：今日 / 本周 / 全部 + per-agent / per-model / per-conv top。
+ * 只保留 时间桶 + 按会话列表（条形 + token，点击跳会话并切回会话模式）；
+ * 按 Agent / 按模型 已移入主区用量页（UsagePage），此处职责去重。
  * 数据来自 /api/usage/summary（每次 mount 拉一次；用户切回 tab 也重拉，保证 fresh）。
  */
 export function UsageDashboard() {
@@ -19,6 +20,16 @@ export function UsageDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const setActiveConversation = useAppStore((s) => s.setActiveConversation)
+  const setRailMode = useAppStore((s) => s.setRailMode)
+
+  // 点击按会话行：激活会话 + 切回会话模式（主区恢复聊天视图）
+  const openConversation = useCallback(
+    (id: string) => {
+      setActiveConversation(id)
+      setRailMode('conversations')
+    },
+    [setActiveConversation, setRailMode],
+  )
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -88,52 +99,36 @@ export function UsageDashboard() {
           <BucketRow label="全部" b={data.allTime} bold />
         </Section>
 
-        {/* 按 Model */}
-        {data.byModel.length > 0 && (
-          <Section title="按 Model">
-            {data.byModel.map((m) => (
-              <BarRow
-                key={m.model}
-                label={<code className="font-mono">{m.model}</code>}
-                value={m.totalTokens}
-                runs={m.runs}
-                max={data.byModel[0].totalTokens}
-              />
-            ))}
-          </Section>
-        )}
-
-        {/* 按 Agent */}
-        {data.byAgent.length > 0 && (
-          <Section title="按 Agent">
-            {data.byAgent.map((a) => (
-              <BarRow
-                key={a.agentId}
-                label={a.name}
-                value={a.totalTokens}
-                runs={a.runs}
-                max={data.byAgent[0].totalTokens}
-              />
-            ))}
-          </Section>
-        )}
-
-        {/* Top 会话 */}
+        {/* 按会话 —— 点击跳会话并切回会话模式 */}
         {data.topConversations.length > 0 && (
-          <Section title={`Top ${Math.min(data.topConversations.length, 10)} 会话`}>
+          <Section title="按会话">
             {data.topConversations.map((c) => (
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setActiveConversation(c.id)}
-                className="flex w-full items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-accent"
+                onClick={() => openConversation(c.id)}
+                className="w-full space-y-1 rounded px-1.5 py-1 text-left transition hover:bg-accent"
                 title={`点击跳转 · 更新时间 ${new Date(c.updatedAt).toLocaleString('zh-CN')}`}
               >
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                <span className="shrink-0 font-mono text-muted-foreground">
-                  <Coins className="mr-1 inline size-3" />
-                  {formatTok(c.totalTokens)}
-                </span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                  <span className="shrink-0 font-mono text-muted-foreground">
+                    <Coins className="mr-1 inline size-3" />
+                    {formatTok(c.totalTokens)}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width: `${
+                        data.topConversations[0].totalTokens > 0
+                          ? (c.totalTokens * 100) / data.topConversations[0].totalTokens
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
               </button>
             ))}
           </Section>
@@ -178,37 +173,6 @@ function BucketRow({
           {b.runs > 0 ? `· ${b.runs} run` : ''}
         </span>
       </span>
-    </div>
-  )
-}
-
-function BarRow({
-  label,
-  value,
-  runs,
-  max,
-}: {
-  label: React.ReactNode
-  value: number
-  runs: number
-  max: number
-}) {
-  const pct = max > 0 ? (value * 100) / max : 0
-  return (
-    <div className="space-y-0.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        <span className="shrink-0 font-mono text-muted-foreground">
-          {formatTok(value)}
-          <span className="ml-1 text-[10px]">· {runs}</span>
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
     </div>
   )
 }

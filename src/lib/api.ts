@@ -21,6 +21,7 @@ import type {
   SkillPackage,
 } from '@/shared/types'
 import type { AgentConfigDraft, AgentDraftRequest } from '@/shared/agent-builder-config'
+import type { ModelPrice, ModelPriceTable } from '@/shared/model-pricing'
 
 export interface ArtifactListItem {
   id: string
@@ -798,6 +799,7 @@ export function attachmentDownloadUrl(attachmentId: string): string {
 }
 
 // ─── Usage / Analytics ─────────────────────────────
+// 形状与 /api/usage/summary route 导出保持一致（成本自算见 shared/model-pricing）。
 export interface UsageBucket {
   inputTokens: number
   outputTokens: number
@@ -805,6 +807,25 @@ export interface UsageBucket {
   cacheCreationTokens: number
   totalTokens: number
   runs: number
+}
+
+/** byModel / byAgent 行携带的 token 细分，与 UsageBucket 同形。 */
+export type UsageTokenBreakdown = UsageBucket
+
+export interface UsageModelRow extends UsageTokenBreakdown {
+  model: string
+  /** 生效单价（默认 + 用户覆盖后）；未定价为 null */
+  price: ModelPrice | null
+  /** 成本（price.currency 的元）；未定价为 null，不计入 totalCost */
+  cost: number | null
+}
+
+export interface UsageAgentRow extends UsageTokenBreakdown {
+  agentId: string
+  name: string
+  avatar: string | null
+  /** 该 agent token 数最多的 model；无 model 用量时 null */
+  topModel: string | null
 }
 
 export interface UsageSummary {
@@ -818,8 +839,16 @@ export interface UsageSummary {
     runs: number
     updatedAt: number
   }>
-  byAgent: Array<{ agentId: string; name: string; totalTokens: number; runs: number }>
-  byModel: Array<{ model: string; totalTokens: number; runs: number }>
+  byAgent: UsageAgentRow[]
+  byModel: UsageModelRow[]
+  /** 按币种分桶的成本总额（不折算） */
+  totalCost: { usd: number; cny: number }
+  /** allTime 桶的 cache 命中率；分母 0 → null */
+  cacheRate: number | null
+  /** 未计入成本的 token 数（未定价模型 + 无 model 的 run） */
+  unpricedTokens: number
+  /** 生效价目表（默认 + 用户覆盖） */
+  pricing: ModelPriceTable
 }
 
 export async function fetchUsageSummary(): Promise<UsageSummary> {
@@ -857,6 +886,8 @@ export interface AppSettingsPatchBody {
   deploymentPublishEnabled?: boolean
   deploymentPublishDir?: string | null
   deploymentPublicBaseUrl?: string | null
+  /** 价目表覆盖：record(model → price)；null 清除全部覆盖，undefined 不改 */
+  modelPrices?: ModelPriceTable | null
 }
 
 export async function updateAppSettings(patch: AppSettingsPatchBody): Promise<AppSettingsRow> {

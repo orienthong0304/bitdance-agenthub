@@ -19,6 +19,9 @@ import type {
 
 enableMapSet()
 
+/** 左缘 rail 当前选中的导航（会话 / 产物库 / Agents / 分析 / 任务）。'analytics' 时主区渲染用量页。 */
+export type RailMode = 'conversations' | 'artifacts' | 'agents' | 'analytics' | 'tasks'
+
 export interface DispatchState {
   runId: string                                    // Orchestrator 的 runId
   messageId: string                                // 触发 plan 的 Orchestrator message id
@@ -45,6 +48,9 @@ interface AppState {
 
   // Orchestrator 的调度状态，按 Orchestrator runId 索引
   dispatchesByRunId: Record<string, DispatchState>
+
+  // ─── 左缘 rail 导航（提升为 store 切片：主区首个非会话视图，'analytics' 时主区渲染用量页）─
+  railMode: RailMode
 
   // ─── 当前会话 ──────────────────────────────────────
   activeConversationId: string | null
@@ -111,6 +117,8 @@ interface AppState {
   /** 单条 message upsert（编辑后重发场景：服务端写完 user message，前端要自己塞进 store）。 */
   upsertMessage(message: MessageRow): void
   setActiveConversation(id: string | null): void
+
+  setRailMode(mode: RailMode): void
 
   setMobileSidebarOpen(open: boolean): void
 
@@ -186,6 +194,7 @@ export const useAppStore = create<AppState>()(
     messageIdsByConv: {},
     runsByConv: {},
     dispatchesByRunId: {},
+    railMode: 'conversations',
     activeConversationId: null,
     previewArtifactId: null,
     fileExplorerOpen: false,
@@ -276,6 +285,11 @@ export const useAppStore = create<AppState>()(
         if (id) delete s.unreadByConv[id]
         // 切会话时自动收起移动 sidebar
         if (id) s.mobileSidebarOpen = false
+      }),
+
+    setRailMode: (mode) =>
+      set((s) => {
+        s.railMode = mode
       }),
 
     setMobileSidebarOpen: (open) =>
@@ -1299,5 +1313,67 @@ export const useConversationUsageTotal = (conversationId: string | null): Conver
     result.totalTokens =
       result.inputTokens + result.outputTokens + result.cacheCreationTokens + result.cacheReadTokens
     return result
+  }, [runs, messageIds, messages, agents])
+}
+
+/** 一个会话内某个 model 的四段 token 累计（成本自算用；与 RunUsage 同形的子集）。 */
+export interface ConversationModelBucket {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+}
+
+/**
+ * 按 model 归类本会话的四段 token（供 UsageBadge 按各 run 的 model 分别计价）。
+ * 数据源与 useConversationUsageTotal 一致：runs 优先（含 model + 四段），刷新后 messages 兜底
+ * （model 由 agent.modelId 推断，message.usage 无 cacheCreation）。无 model 的 run 不计入。
+ */
+export const useConversationModelUsage = (
+  conversationId: string | null,
+): Record<string, ConversationModelBucket> => {
+  const runs = useAppStore((s) => (conversationId ? s.runsByConv[conversationId] : undefined))
+  const messageIds = useAppStore((s) =>
+    conversationId ? s.messageIdsByConv[conversationId] : undefined,
+  )
+  const messages = useAppStore((s) => s.messages)
+  const agents = useAppStore((s) => s.agents)
+  return useMemo(() => {
+    const byModel: Record<string, ConversationModelBucket> = {}
+    const add = (model: string, seg: Partial<ConversationModelBucket>) => {
+      const b = (byModel[model] ??= {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      })
+      b.inputTokens += seg.inputTokens ?? 0
+      b.outputTokens += seg.outputTokens ?? 0
+      b.cacheReadTokens += seg.cacheReadTokens ?? 0
+      b.cacheCreationTokens += seg.cacheCreationTokens ?? 0
+    }
+    let hasRunUsage = false
+    if (runs) {
+      for (const run of Object.values(runs)) {
+        const u = run.usage
+        if (!u) continue
+        hasRunUsage = true
+        if (u.model) add(u.model, u)
+      }
+    }
+    if (!hasRunUsage && messageIds) {
+      for (const mid of messageIds) {
+        const m = messages[mid]
+        if (!m || !m.usage || m.role !== 'agent' || !m.agentId) continue
+        const model = agents[m.agentId]?.modelId
+        if (!model) continue
+        add(model, {
+          inputTokens: m.usage.inputTokens,
+          outputTokens: m.usage.outputTokens,
+          cacheReadTokens: m.usage.cacheReadTokens,
+        })
+      }
+    }
+    return byModel
   }, [runs, messageIds, messages, agents])
 }

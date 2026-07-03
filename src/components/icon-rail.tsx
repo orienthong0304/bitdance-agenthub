@@ -5,9 +5,9 @@ import { BarChart3, Layers, LifeBuoy, ListTodo, MessageSquare, Users } from 'luc
 import { SettingsButton } from '@/components/settings-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
-import { useAppStore } from '@/stores/app-store'
+import { useAppStore, type RailMode } from '@/stores/app-store'
 
-export type RailMode = 'conversations' | 'artifacts' | 'agents' | 'analytics' | 'tasks'
+export type { RailMode }
 
 /**
  * IconRail — 应用左缘 56px 图标导航栏（redesign-ui-shell Phase B）。

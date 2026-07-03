@@ -48,6 +48,45 @@ describe('transformArtifactRefs — <artifact_ref/> 标签', () => {
     expect(out).toBe('文档已完成 ')
     expect(out).not.toContain('<artifact_ref')
   })
+
+  it('成对标签的内文不外泄（折叠为单个引用点）', () => {
+    const out = transformArtifactRefs(
+      'x <artifact_ref id="art_ABCDEFGH">终稿标题文本</artifact_ref> y',
+      none,
+    )
+    expect(out).toBe(`x ${link('art_ABCDEFGH')} y`)
+    expect(out).not.toContain('终稿标题文本')
+  })
+
+  it('成对折叠限段内：两个自闭合引用间的正文不被误吞', () => {
+    const out = transformArtifactRefs(
+      '<artifact_ref id="art_AAAABBBB"/> 中间正文\n\n结尾 </artifact_ref>',
+      none,
+    )
+    expect(out).toContain('中间正文')
+    expect(out).toContain('结尾')
+    expect(out).not.toContain('artifact_ref')
+  })
+
+  it('空 id / 异形 id（括号空白）不破坏链接语法，落到不可用 chip', () => {
+    expect(transformArtifactRefs('a <artifact_ref id=""/> b', none)).toBe(`a ${link('')} b`)
+    const out = transformArtifactRefs('a <artifact_ref id="art_a)b"/> b', none)
+    expect(out).toBe(`a ${link('')} b`)
+    expect(out).not.toContain(')b)')
+  })
+
+  it('大写标签同样被转（gi）', () => {
+    const out = transformArtifactRefs('a <ARTIFACT_REF ID="art_ABCDEFGH"/> b', none)
+    expect(out).toBe(`a ${link('art_ABCDEFGH')} b`)
+  })
+
+  it('单串多引用各自转写', () => {
+    const out = transformArtifactRefs(
+      '<artifact_ref id="art_AAAABBBB"/> 和 <artifact_ref id="art_CCCCDDDD"/>',
+      none,
+    )
+    expect(out).toBe(`${link('art_AAAABBBB')} 和 ${link('art_CCCCDDDD')}`)
+  })
 })
 
 describe('transformArtifactRefs — 裸 art_ 词', () => {
@@ -82,6 +121,18 @@ describe('transformArtifactRefs — 代码区不动', () => {
   it('行内代码里的裸词不转', () => {
     const text = '用 `art_IJBBKYJUkJ0E` 举例'
     expect(transformArtifactRefs(text, all)).toBe(text)
+  })
+
+  it('4+ 反引号 fence 内嵌 3 反引号示例也整体受保护', () => {
+    const text = '````\n```\n<artifact_ref id="art_ABCDEFGH"/>\n```\n````'
+    expect(transformArtifactRefs(text, all)).toBe(text)
+  })
+
+  it('原文混入哨兵控制符时被剥掉，不与占位撞车', () => {
+    const dirty = `a \x010\x02 <artifact_ref id="art_ABCDEFGH"/> b`
+    const out = transformArtifactRefs(dirty, none)
+    expect(out).toBe(`a 0 ${link('art_ABCDEFGH')} b`)
+    expect(out).not.toContain('\x01')
   })
 })
 

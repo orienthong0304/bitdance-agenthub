@@ -40,12 +40,21 @@ export function transformArtifactRefs(
     return token
   }
 
+  // 原文若混入哨兵控制符（正常正文不会有），先剥掉，防止与占位 token 撞车损坏内容
+  const sentinels = new RegExp(`[${STASH_OPEN}${STASH_CLOSE}]`, 'g')
   let s = content
-    .replace(/```[\s\S]*?```/g, (m) => put(m)) // fenced ```
-    .replace(/~~~[\s\S]*?~~~/g, (m) => put(m)) // fenced ~~~
+    .replace(sentinels, '')
+    .replace(/(`{3,})[\s\S]*?\1/g, (m) => put(m)) // fenced ```（≥3 个反引号，含 4+ 嵌套示例形态）
+    .replace(/(~{3,})[\s\S]*?\1/g, (m) => put(m)) // fenced ~~~
     .replace(/`[^`\n]+`/g, (m) => put(m)) // 行内代码
 
-  // 成对闭合标签的闭合部分直接去掉（开始标签已作为引用点处理）
+  // 成对标签（含内文）整体折叠为引用点：内文不外泄，chip 标题以 store 为准。
+  // 开始标签须非自闭合（负向后顾），内文限段内（不跨空行），防止把两个独立引用间的正文误吞
+  s = s.replace(
+    /<artifact_ref\b([^>]*?)(?<!\/)>(?:(?!\n{2})[\s\S])*?<\/artifact_ref\s*>/gi,
+    (_m, attrs: string) => put(refLink(extractId(attrs) ?? '')),
+  )
+  // 落单的闭合标签直接去掉
   s = s.replace(/<\/artifact_ref\s*>/gi, '')
   // 开始 / 自闭合标签 → 内联链接占位（始终转，绝不透标签）
   s = s.replace(/<artifact_ref\b([^>]*?)\/?>/gi, (_m, attrs: string) =>
@@ -63,7 +72,9 @@ export function transformArtifactRefs(
 
 function extractId(attrs: string): string | null {
   const m = /\bid\s*=\s*["']([^"']*)["']/i.exec(attrs)
-  return m ? m[1] : null
+  if (!m) return null
+  // 异形 id（含空白 / 括号等 markdown 特殊符）不进链接，落到「不可用」chip 而不是破坏链接语法
+  return /^[A-Za-z0-9_-]+$/.test(m[1]) ? m[1] : null
 }
 
 function refLink(artifactId: string): string {
